@@ -1,9 +1,8 @@
-
 import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RotateCcw, Save } from "lucide-react";
+import { RotateCcw, Save, ChevronDown, ChevronUp } from "lucide-react";
 
 interface Point {
   x: number;
@@ -17,6 +16,7 @@ interface FieldPathDrawerProps {
 
 const FieldPathDrawer = ({ onPathChange, initialPath = [] }: FieldPathDrawerProps) => {
   const [path, setPath] = useState<Point[]>(initialPath);
+  const [isExpanded, setIsExpanded] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -24,8 +24,10 @@ const FieldPathDrawer = ({ onPathChange, initialPath = [] }: FieldPathDrawerProp
   const FIELD_HEIGHT = 324; // 27 feet in inches / 12 = 27 feet represented
 
   useEffect(() => {
-    drawField();
-  }, [path]);
+    if (isExpanded) {
+      drawField();
+    }
+  }, [path, isExpanded]);
 
   const drawField = () => {
     const canvas = canvasRef.current;
@@ -124,40 +126,69 @@ const FieldPathDrawer = ({ onPathChange, initialPath = [] }: FieldPathDrawerProp
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <span>Autonomous Path</span>
-          <div className="flex space-x-2">
-            <Badge variant="outline">{path.length} points</Badge>
+          <div className="flex items-center space-x-2">
+            <span>Autonomous Path</span>
+            <Badge variant="secondary" className="text-xs">Optional</Badge>
+          </div>
+          <div className="flex items-center space-x-2">
+            {path.length > 0 && <Badge variant="outline">{path.length} points</Badge>}
+            <Button
+              onClick={() => setIsExpanded(!isExpanded)}
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+            >
+              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
           </div>
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div className="flex space-x-2 justify-center">
-            <Button onClick={undoLastPoint} variant="outline" size="sm" disabled={path.length === 0}>
-              Undo Point
-            </Button>
-            <Button onClick={clearPath} variant="outline" size="sm">
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Clear Path
-            </Button>
+      {isExpanded && (
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex space-x-2 justify-center">
+              <Button onClick={undoLastPoint} variant="outline" size="sm" disabled={path.length === 0}>
+                Undo Point
+              </Button>
+              <Button onClick={clearPath} variant="outline" size="sm">
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Clear Path
+              </Button>
+            </div>
+            
+            <div ref={containerRef} className="border rounded-lg overflow-hidden bg-gray-800">
+              <canvas
+                ref={canvasRef}
+                width={FIELD_WIDTH}
+                height={FIELD_HEIGHT}
+                onClick={handleCanvasClick}
+                className="w-full h-auto cursor-crosshair max-w-full"
+                style={{ display: 'block' }}
+              />
+            </div>
+            
+            <div className="text-sm text-muted-foreground text-center">
+              Click on the field to add waypoints for the autonomous path
+            </div>
           </div>
-          
-          <div ref={containerRef} className="border rounded-lg overflow-hidden bg-gray-800">
-            <canvas
-              ref={canvasRef}
-              width={FIELD_WIDTH}
-              height={FIELD_HEIGHT}
-              onClick={handleCanvasClick}
-              className="w-full h-auto cursor-crosshair max-w-full"
-              style={{ display: 'block' }}
-            />
+        </CardContent>
+      )}
+      {!isExpanded && path.length === 0 && (
+        <CardContent className="pt-0">
+          <div className="text-sm text-muted-foreground text-center py-2">
+            Click to expand and draw autonomous path (optional)
           </div>
-          
-          <div className="text-sm text-muted-foreground text-center">
-            Click on the field to add waypoints for the autonomous path
+        </CardContent>
+      )}
+      {!isExpanded && path.length > 0 && (
+        <CardContent className="pt-0">
+          <div className="text-sm text-center py-2">
+            <Badge variant="outline" className="bg-green-50">
+              Path recorded with {path.length} waypoints
+            </Badge>
           </div>
-        </div>
-      </CardContent>
+        </CardContent>
+      )}
     </Card>
   );
 };
