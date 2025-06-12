@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Settings, Plus, Trash2, Save } from "lucide-react";
 
-interface FormField {
+export interface FormField {
   id: string;
   label: string;
   type: 'text' | 'number' | 'textarea' | 'select';
@@ -28,21 +28,27 @@ const FormConfiguration = () => {
     matchScouting: [
       { id: 'teamNumber', label: 'Team Number', type: 'number', required: true },
       { id: 'matchNumber', label: 'Match Number', type: 'number', required: true },
-      { id: 'autoPoints', label: 'Auto Points', type: 'number', required: false },
-      { id: 'teleopPoints', label: 'Teleop Points', type: 'number', required: false },
-      { id: 'notes', label: 'Additional Notes', type: 'textarea', required: false }
+      { id: 'alliance', label: 'Alliance', type: 'select', options: ['red', 'blue'], required: true },
+      { id: 'autoGamePieces', label: 'Auto Game Pieces', type: 'number', required: false },
+      { id: 'autoMobility', label: 'Auto Mobility', type: 'select', options: ['yes', 'no'], required: false },
+      { id: 'teleopGamePieces', label: 'Teleop Game Pieces', type: 'number', required: false },
+      { id: 'climbing', label: 'Climbing', type: 'select', options: ['success', 'fail', 'not attempted'], required: false },
+      { id: 'defense', label: 'Defense Rating (1-10)', type: 'number', required: false },
+      { id: 'reliability', label: 'Reliability Rating (1-10)', type: 'number', required: false },
+      { id: 'comments', label: 'Additional Comments', type: 'textarea', required: false }
     ],
     pitScouting: [
       { id: 'teamNumber', label: 'Team Number', type: 'number', required: true },
       { id: 'robotWeight', label: 'Robot Weight (lbs)', type: 'text', required: false },
       { id: 'drivetrainType', label: 'Drivetrain Type', type: 'select', 
         options: ['Tank Drive', 'Mecanum Drive', 'Swerve Drive', 'West Coast Drive', 'Other'], required: false },
-      { id: 'autoCapabilities', label: 'Autonomous Capabilities', type: 'textarea', required: false }
+      { id: 'autoCapabilities', label: 'Autonomous Capabilities', type: 'textarea', required: false },
+      { id: 'teamExperience', label: 'Team Experience Level', type: 'select', 
+        options: ['Rookie', 'Sophomore', 'Veteran', 'Elite'], required: false }
     ]
   });
 
   useEffect(() => {
-    // Load saved configuration from localStorage
     const savedConfig = localStorage.getItem('formConfiguration');
     if (savedConfig) {
       setConfig(JSON.parse(savedConfig));
@@ -51,6 +57,8 @@ const FormConfiguration = () => {
 
   const saveConfiguration = () => {
     localStorage.setItem('formConfiguration', JSON.stringify(config));
+    // Trigger a storage event for other components to listen to
+    window.dispatchEvent(new Event('formConfigurationUpdated'));
     toast({
       title: "Configuration Saved",
       description: "Form configuration has been updated successfully.",
@@ -103,7 +111,7 @@ const FormConfiguration = () => {
             <span>Form Configuration</span>
           </CardTitle>
           <CardDescription>
-            Customize the fields available in scouting forms
+            Customize the fields available in scouting forms. Changes will apply to new form submissions.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -151,13 +159,14 @@ const FormConfiguration = () => {
 
                     {field.type === 'select' && (
                       <div className="space-y-2">
-                        <Label>Options (comma-separated)</Label>
-                        <Input
-                          value={field.options?.join(', ') || ''}
+                        <Label>Options (one per line)</Label>
+                        <Textarea
+                          value={field.options?.join('\n') || ''}
                           onChange={(e) => updateField(field.id, { 
-                            options: e.target.value.split(',').map(opt => opt.trim()).filter(Boolean)
+                            options: e.target.value.split('\n').map(opt => opt.trim()).filter(Boolean)
                           })}
-                          placeholder="Option 1, Option 2, Option 3"
+                          placeholder="Option 1&#10;Option 2&#10;Option 3"
+                          rows={3}
                         />
                       </div>
                     )}
