@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Save, RotateCcw } from "lucide-react";
+import { Save, RotateCcw, Plus, Minus } from "lucide-react";
 
 interface ScoutingData {
   teamNumber: string;
@@ -82,6 +82,71 @@ const ScoutingForm = () => {
     });
   };
 
+  const incrementValue = (field: keyof ScoutingData, max?: number) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: max ? Math.min(prev[field] as number + 1, max) : (prev[field] as number) + 1
+    }));
+  };
+
+  const decrementValue = (field: keyof ScoutingData, min: number = 0) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: Math.max((prev[field] as number) - 1, min)
+    }));
+  };
+
+  const NumberInputWithButtons = ({ 
+    id, 
+    label, 
+    value, 
+    field, 
+    min = 0, 
+    max 
+  }: { 
+    id: string; 
+    label: string; 
+    value: number; 
+    field: keyof ScoutingData; 
+    min?: number; 
+    max?: number; 
+  }) => (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex items-center space-x-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-10 w-10 shrink-0"
+          onClick={() => decrementValue(field, min)}
+          disabled={value <= min}
+        >
+          <Minus className="h-4 w-4" />
+        </Button>
+        <Input
+          id={id}
+          type="number"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(e) => setFormData({ ...formData, [field]: parseInt(e.target.value) || min })}
+          className="text-center"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-10 w-10 shrink-0"
+          onClick={() => incrementValue(field, max)}
+          disabled={max ? value >= max : false}
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="max-w-2xl mx-auto">
       <Card>
@@ -141,16 +206,12 @@ const ScoutingForm = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="autoGamePieces">Game Pieces Scored</Label>
-                    <Input
-                      id="autoGamePieces"
-                      type="number"
-                      min="0"
-                      value={formData.autoGamePieces}
-                      onChange={(e) => setFormData({ ...formData, autoGamePieces: parseInt(e.target.value) || 0 })}
-                    />
-                  </div>
+                  <NumberInputWithButtons
+                    id="autoGamePieces"
+                    label="Game Pieces Scored"
+                    value={formData.autoGamePieces}
+                    field="autoGamePieces"
+                  />
                   <div className="space-y-2">
                     <Label htmlFor="autoMobility">Mobility</Label>
                     <Select value={formData.autoMobility} onValueChange={(value) => setFormData({ ...formData, autoMobility: value })}>
@@ -175,16 +236,12 @@ const ScoutingForm = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="teleopGamePieces">Game Pieces Scored</Label>
-                    <Input
-                      id="teleopGamePieces"
-                      type="number"
-                      min="0"
-                      value={formData.teleopGamePieces}
-                      onChange={(e) => setFormData({ ...formData, teleopGamePieces: parseInt(e.target.value) || 0 })}
-                    />
-                  </div>
+                  <NumberInputWithButtons
+                    id="teleopGamePieces"
+                    label="Game Pieces Scored"
+                    value={formData.teleopGamePieces}
+                    field="teleopGamePieces"
+                  />
                   <div className="space-y-2">
                     <Label htmlFor="climbing">Climbing Performance</Label>
                     <Select value={formData.climbing} onValueChange={(value) => setFormData({ ...formData, climbing: value })}>
@@ -211,28 +268,22 @@ const ScoutingForm = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="defense">Defense Rating (1-10)</Label>
-                    <Input
-                      id="defense"
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={formData.defense}
-                      onChange={(e) => setFormData({ ...formData, defense: parseInt(e.target.value) || 5 })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reliability">Reliability Rating (1-10)</Label>
-                    <Input
-                      id="reliability"
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={formData.reliability}
-                      onChange={(e) => setFormData({ ...formData, reliability: parseInt(e.target.value) || 5 })}
-                    />
-                  </div>
+                  <NumberInputWithButtons
+                    id="defense"
+                    label="Defense Rating (1-10)"
+                    value={formData.defense}
+                    field="defense"
+                    min={1}
+                    max={10}
+                  />
+                  <NumberInputWithButtons
+                    id="reliability"
+                    label="Reliability Rating (1-10)"
+                    value={formData.reliability}
+                    field="reliability"
+                    min={1}
+                    max={10}
+                  />
                 </div>
               </CardContent>
             </Card>
