@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
-import { Download, Trophy, Target, Shield, Zap } from "lucide-react";
+import { Download, Trophy, Target, Shield, Zap, Star, MessageSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface ScoutingData {
@@ -22,13 +22,23 @@ interface ScoutingData {
   timestamp: string;
 }
 
+interface SuperScoutNote {
+  strategicNotes: string;
+  picklistPriority: string;
+  timestamp: string;
+  id: number;
+}
+
 const AdminDashboard = () => {
   const { toast } = useToast();
   const [scoutingData, setScoutingData] = useState<ScoutingData[]>([]);
+  const [superScoutNotes, setSuperScoutNotes] = useState<{[key: string]: SuperScoutNote}>({});
 
   useEffect(() => {
     const data = JSON.parse(localStorage.getItem("scoutingData") || "[]");
+    const notes = JSON.parse(localStorage.getItem("superScoutNotes") || "{}");
     setScoutingData(data);
+    setSuperScoutNotes(notes);
   }, []);
 
   // Calculate team statistics
@@ -73,7 +83,7 @@ const AdminDashboard = () => {
 
   const handleExportData = () => {
     const csvContent = [
-      ["Team", "Matches", "Avg Auto", "Avg Teleop", "Defense", "Reliability", "Climb Rate", "Mobility Rate"].join(","),
+      ["Team", "Matches", "Avg Auto", "Avg Teleop", "Defense", "Reliability", "Climb Rate", "Mobility Rate", "Strategic Notes", "Priority"].join(","),
       ...teamStatsArray.map(team => [
         team.teamNumber,
         team.matches,
@@ -82,7 +92,9 @@ const AdminDashboard = () => {
         team.avgDefense,
         team.avgReliability,
         team.climbRate + "%",
-        team.mobilityRate + "%"
+        team.mobilityRate + "%",
+        `"${superScoutNotes[team.teamNumber]?.strategicNotes || 'No notes'}"`,
+        superScoutNotes[team.teamNumber]?.picklistPriority || 'Not rated'
       ].join(","))
     ].join("\n");
 
@@ -99,6 +111,22 @@ const AdminDashboard = () => {
     });
   };
 
+  const getPriorityBadge = (priority: string) => {
+    switch (priority) {
+      case "high":
+        return <Badge className="bg-green-600">Must Pick</Badge>;
+      case "medium":
+        return <Badge variant="secondary">Good Option</Badge>;
+      case "low":
+        return <Badge variant="outline">Last Resort</Badge>;
+      case "avoid":
+        return <Badge className="bg-red-600">Avoid</Badge>;
+      default:
+        return <Badge variant="outline">Not Rated</Badge>;
+    }
+  };
+
+  // Convert to array and calculate averages
   const allianceData = [
     { name: "Red Alliance Wins", value: scoutingData.filter(d => d.alliance === "red").length, color: "#ef4444" },
     { name: "Blue Alliance Wins", value: scoutingData.filter(d => d.alliance === "blue").length, color: "#3b82f6" }
@@ -138,17 +166,13 @@ const AdminDashboard = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Auto Score</CardTitle>
-            <Zap className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Strategic Notes</CardTitle>
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {scoutingData.length > 0 ? 
-                (scoutingData.reduce((sum, d) => sum + d.autoGamePieces, 0) / scoutingData.length).toFixed(1) : 
-                "0"}
-            </div>
+            <div className="text-2xl font-bold">{Object.keys(superScoutNotes).length}</div>
             <p className="text-xs text-muted-foreground">
-              Game pieces per match
+              Teams with notes
             </p>
           </CardContent>
         </Card>
@@ -188,27 +212,43 @@ const AdminDashboard = () => {
           <Card>
             <CardHeader>
               <CardTitle>Team Performance Rankings</CardTitle>
-              <CardDescription>Teams ranked by total game pieces scored</CardDescription>
+              <CardDescription>Teams ranked by total game pieces scored with strategic notes</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {teamStatsArray.slice(0, 15).map((team, index) => (
-                  <div key={team.teamNumber} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 border rounded-lg gap-3">
-                    <div className="flex items-center space-x-3">
-                      <Badge variant={index < 3 ? "default" : "secondary"}>
-                        #{index + 1}
-                      </Badge>
-                      <div>
-                        <div className="font-semibold">Team {team.teamNumber}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {team.matches} matches • {team.totalScore} total points
+                  <div key={team.teamNumber} className="border rounded-lg p-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex items-center space-x-3">
+                        <Badge variant={index < 3 ? "default" : "secondary"}>
+                          #{index + 1}
+                        </Badge>
+                        <div>
+                          <div className="font-semibold">Team {team.teamNumber}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {team.matches} matches • {team.totalScore} total points
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {getPriorityBadge(superScoutNotes[team.teamNumber]?.picklistPriority)}
+                        <div className="text-left sm:text-right">
+                          <div className="font-medium">{team.avgAutoPoints} / {team.avgTeleopPoints}</div>
+                          <div className="text-sm text-muted-foreground">Auto / Teleop Avg</div>
                         </div>
                       </div>
                     </div>
-                    <div className="text-left sm:text-right">
-                      <div className="font-medium">{team.avgAutoPoints} / {team.avgTeleopPoints}</div>
-                      <div className="text-sm text-muted-foreground">Auto / Teleop Avg</div>
-                    </div>
+                    {superScoutNotes[team.teamNumber]?.strategicNotes && (
+                      <div className="bg-yellow-50 p-3 rounded border-l-4 border-yellow-400">
+                        <div className="flex items-start space-x-2">
+                          <Star className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <div className="text-sm font-medium text-yellow-800">Strategic Notes:</div>
+                            <div className="text-sm text-yellow-700">{superScoutNotes[team.teamNumber].strategicNotes}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

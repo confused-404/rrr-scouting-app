@@ -3,12 +3,13 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Users, BarChart3, Trophy, Target } from "lucide-react";
+import { Users, BarChart3, Trophy, Target, Star } from "lucide-react";
 import ScoutingForm from "@/components/ScoutingForm";
 import AdminDashboard from "@/components/AdminDashboard";
+import SuperScoutForm from "@/components/SuperScoutForm";
 
 const Index = () => {
-  const [currentView, setCurrentView] = useState<"home" | "scout" | "admin">("home");
+  const [currentView, setCurrentView] = useState<"home" | "scout" | "admin" | "superscout">("home");
 
   if (currentView === "scout") {
     return (
@@ -48,6 +49,25 @@ const Index = () => {
     );
   }
 
+  if (currentView === "superscout") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-red-50">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-3">
+              <Star className="h-8 w-8 text-yellow-600" />
+              <h1 className="text-2xl font-bold text-foreground">Super Scout</h1>
+            </div>
+            <Button variant="outline" onClick={() => setCurrentView("home")}>
+              Back to Home
+            </Button>
+          </div>
+          <SuperScoutForm />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-red-50">
       <div className="container mx-auto px-4 py-8">
@@ -66,7 +86,7 @@ const Index = () => {
         </div>
 
         {/* Main Action Cards */}
-        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+        <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
           <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setCurrentView("scout")}>
             <CardHeader className="text-center">
               <div className="flex justify-center mb-4">
@@ -74,23 +94,30 @@ const Index = () => {
               </div>
               <CardTitle className="text-2xl">Robot Scouting</CardTitle>
               <CardDescription className="text-lg">
-                Quick and easy form to scout robots during matches
+                Quick form to scout robots during matches
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Button className="w-full bg-blue-600 hover:bg-blue-700" size="lg">
                 Start Scouting
               </Button>
-              <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-                <div className="flex justify-between">
-                  <span>• Auto scoring</span>
-                  <span>• Teleop performance</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>• Climbing ability</span>
-                  <span>• Defense rating</span>
-                </div>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setCurrentView("superscout")}>
+            <CardHeader className="text-center">
+              <div className="flex justify-center mb-4">
+                <Star className="h-16 w-16 text-yellow-600" />
               </div>
+              <CardTitle className="text-2xl">Super Scout</CardTitle>
+              <CardDescription className="text-lg">
+                Strategic notes and picklist priorities
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button className="w-full bg-yellow-600 hover:bg-yellow-700" size="lg">
+                Add Strategic Notes
+              </Button>
             </CardContent>
           </Card>
 
@@ -101,23 +128,13 @@ const Index = () => {
               </div>
               <CardTitle className="text-2xl">Data Analysis</CardTitle>
               <CardDescription className="text-lg">
-                Analyze scouting data and generate alliance picklists
+                Analyze data and generate alliance picklists
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Button className="w-full bg-red-600 hover:bg-red-700" size="lg">
                 View Dashboard
               </Button>
-              <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-                <div className="flex justify-between">
-                  <span>• Performance charts</span>
-                  <span>• Team rankings</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>• Alliance predictor</span>
-                  <span>• Export reports</span>
-                </div>
-              </div>
             </CardContent>
           </Card>
         </div>
