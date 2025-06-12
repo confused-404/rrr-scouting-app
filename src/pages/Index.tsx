@@ -66,7 +66,7 @@ const Index = () => {
         </div>
 
         {/* Main Action Cards */}
-        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto mb-12">
+        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
           <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setCurrentView("scout")}>
             <CardHeader className="text-center">
               <div className="flex justify-center mb-4">
@@ -120,45 +120,6 @@ const Index = () => {
               </div>
             </CardContent>
           </Card>
-        </div>
-
-        {/* Features Grid */}
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-2xl font-bold text-center mb-8">Key Features</h2>
-          <div className="grid md:grid-cols-3 gap-6">
-            <Card className="text-center">
-              <CardHeader>
-                <CardTitle className="text-lg">Fast Data Entry</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Streamlined forms designed for quick scouting during intense match action
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="text-center">
-              <CardHeader>
-                <CardTitle className="text-lg">Real-time Analytics</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Instant insights and visualizations to track robot performance trends
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="text-center">
-              <CardHeader>
-                <CardTitle className="text-lg">Alliance Strategy</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Generate optimal picklists and alliance combinations for selection
-                </p>
-              </CardContent>
-            </Card>
-          </div>
         </div>
       </div>
     </div>

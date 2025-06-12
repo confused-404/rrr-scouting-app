@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -173,13 +172,13 @@ const AdminDashboard = () => {
       </div>
 
       <Tabs defaultValue="rankings" className="space-y-4">
-        <div className="flex justify-between items-center">
-          <TabsList>
-            <TabsTrigger value="rankings">Team Rankings</TabsTrigger>
-            <TabsTrigger value="analytics">Performance Analytics</TabsTrigger>
-            <TabsTrigger value="picklist">Alliance Picklist</TabsTrigger>
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <TabsList className="grid w-full grid-cols-3 lg:w-auto">
+            <TabsTrigger value="rankings" className="text-xs sm:text-sm">Team Rankings</TabsTrigger>
+            <TabsTrigger value="analytics" className="text-xs sm:text-sm">Performance Analytics</TabsTrigger>
+            <TabsTrigger value="picklist" className="text-xs sm:text-sm">Alliance Picklist</TabsTrigger>
           </TabsList>
-          <Button onClick={handleExportData} variant="outline">
+          <Button onClick={handleExportData} variant="outline" className="w-full sm:w-auto">
             <Download className="h-4 w-4 mr-2" />
             Export Data
           </Button>
@@ -194,7 +193,7 @@ const AdminDashboard = () => {
             <CardContent>
               <div className="space-y-3">
                 {teamStatsArray.slice(0, 15).map((team, index) => (
-                  <div key={team.teamNumber} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div key={team.teamNumber} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 border rounded-lg gap-3">
                     <div className="flex items-center space-x-3">
                       <Badge variant={index < 3 ? "default" : "secondary"}>
                         #{index + 1}
@@ -206,7 +205,7 @@ const AdminDashboard = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-left sm:text-right">
                       <div className="font-medium">{team.avgAutoPoints} / {team.avgTeleopPoints}</div>
                       <div className="text-sm text-muted-foreground">Auto / Teleop Avg</div>
                     </div>
@@ -218,10 +217,10 @@ const AdminDashboard = () => {
         </TabsContent>
 
         <TabsContent value="analytics" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
-                <CardTitle>Top 10 Teams - Total Points</CardTitle>
+                <CardTitle className="text-lg">Top 10 Teams - Total Points</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -238,7 +237,7 @@ const AdminDashboard = () => {
 
             <Card>
               <CardHeader>
-                <CardTitle>Alliance Distribution</CardTitle>
+                <CardTitle className="text-lg">Alliance Distribution</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -264,7 +263,7 @@ const AdminDashboard = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle>Defense vs Reliability Ratings</CardTitle>
+              <CardTitle className="text-lg">Defense vs Reliability Ratings</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -289,7 +288,7 @@ const AdminDashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   <Card className="border-yellow-200 bg-yellow-50">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-lg text-yellow-800">Tier 1 - First Picks</CardTitle>
@@ -297,7 +296,7 @@ const AdminDashboard = () => {
                     <CardContent>
                       {teamStatsArray.slice(0, 3).map((team, index) => (
                         <div key={team.teamNumber} className="flex items-center justify-between mb-2 p-2 bg-white rounded">
-                          <span className="font-semibold">Team {team.teamNumber}</span>
+                          <span className="font-semibold text-sm sm:text-base">Team {team.teamNumber}</span>
                           <Badge className="bg-yellow-600">
                             {team.totalScore} pts
                           </Badge>
@@ -313,7 +312,7 @@ const AdminDashboard = () => {
                     <CardContent>
                       {teamStatsArray.slice(3, 8).map((team, index) => (
                         <div key={team.teamNumber} className="flex items-center justify-between mb-2 p-2 bg-white rounded">
-                          <span className="font-semibold">Team {team.teamNumber}</span>
+                          <span className="font-semibold text-sm sm:text-base">Team {team.teamNumber}</span>
                           <Badge variant="secondary">
                             {team.totalScore} pts
                           </Badge>
@@ -329,7 +328,7 @@ const AdminDashboard = () => {
                     <CardContent>
                       {teamStatsArray.slice(8, 13).map((team, index) => (
                         <div key={team.teamNumber} className="flex items-center justify-between mb-2 p-2 bg-white rounded">
-                          <span className="font-semibold">Team {team.teamNumber}</span>
+                          <span className="font-semibold text-sm sm:text-base">Team {team.teamNumber}</span>
                           <Badge variant="outline">
                             {team.totalScore} pts
                           </Badge>
