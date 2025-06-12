@@ -8,27 +8,33 @@ import ScoutingForm from "@/components/ScoutingForm";
 import AdminDashboard from "@/components/AdminDashboard";
 import SuperScoutForm from "@/components/SuperScoutForm";
 import PitScoutingForm from "@/components/PitScoutingForm";
-import RoleSelector from "@/components/RoleSelector";
+import LoginForm from "@/components/LoginForm";
+import FormConfiguration from "@/components/FormConfiguration";
 
 type UserRole = 'admin' | 'scouter' | null;
-type ViewType = "home" | "match-scout" | "pit-scout" | "admin" | "superscout";
+type ViewType = "home" | "match-scout" | "pit-scout" | "admin" | "superscout" | "form-config";
+
+interface User {
+  role: UserRole;
+  username: string;
+}
 
 const Index = () => {
-  const [currentRole, setCurrentRole] = useState<UserRole>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>("home");
 
-  const handleRoleSelect = (role: UserRole) => {
-    setCurrentRole(role);
+  const handleLogin = (role: UserRole, username: string) => {
+    setCurrentUser({ role, username });
     setCurrentView("home");
   };
 
   const handleLogout = () => {
-    setCurrentRole(null);
+    setCurrentUser(null);
     setCurrentView("home");
   };
 
-  if (!currentRole) {
-    return <RoleSelector onRoleSelect={handleRoleSelect} />;
+  if (!currentUser) {
+    return <LoginForm onLogin={handleLogin} />;
   }
 
   if (currentView === "match-scout") {
@@ -39,7 +45,8 @@ const Index = () => {
             <div className="flex items-center space-x-3">
               <Target className="h-8 w-8 text-blue-600" />
               <h1 className="text-2xl font-bold text-foreground">Match Scouting</h1>
-              <Badge className="bg-blue-600">{currentRole}</Badge>
+              <Badge className="bg-blue-600">{currentUser.role}</Badge>
+              <Badge variant="outline">{currentUser.username}</Badge>
             </div>
             <div className="flex items-center space-x-2">
               <Button variant="outline" onClick={() => setCurrentView("home")}>
@@ -65,7 +72,8 @@ const Index = () => {
             <div className="flex items-center space-x-3">
               <Wrench className="h-8 w-8 text-orange-600" />
               <h1 className="text-2xl font-bold text-foreground">Pit Scouting</h1>
-              <Badge className="bg-orange-600">{currentRole}</Badge>
+              <Badge className="bg-orange-600">{currentUser.role}</Badge>
+              <Badge variant="outline">{currentUser.username}</Badge>
             </div>
             <div className="flex items-center space-x-2">
               <Button variant="outline" onClick={() => setCurrentView("home")}>
@@ -83,7 +91,7 @@ const Index = () => {
     );
   }
 
-  if (currentView === "admin" && currentRole === "admin") {
+  if (currentView === "admin" && currentUser.role === "admin") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-red-50">
         <div className="container mx-auto px-4 py-6">
@@ -92,6 +100,7 @@ const Index = () => {
               <BarChart3 className="h-8 w-8 text-red-600" />
               <h1 className="text-2xl font-bold text-foreground">Admin Dashboard</h1>
               <Badge className="bg-red-600">Admin</Badge>
+              <Badge variant="outline">{currentUser.username}</Badge>
             </div>
             <div className="flex items-center space-x-2">
               <Button variant="outline" onClick={() => setCurrentView("home")}>
@@ -109,7 +118,7 @@ const Index = () => {
     );
   }
 
-  if (currentView === "superscout" && currentRole === "admin") {
+  if (currentView === "superscout" && currentUser.role === "admin") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-red-50">
         <div className="container mx-auto px-4 py-6">
@@ -118,6 +127,7 @@ const Index = () => {
               <Star className="h-8 w-8 text-yellow-600" />
               <h1 className="text-2xl font-bold text-foreground">Super Scout</h1>
               <Badge className="bg-yellow-600">Admin</Badge>
+              <Badge variant="outline">{currentUser.username}</Badge>
             </div>
             <div className="flex items-center space-x-2">
               <Button variant="outline" onClick={() => setCurrentView("home")}>
@@ -130,6 +140,33 @@ const Index = () => {
             </div>
           </div>
           <SuperScoutForm />
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === "form-config" && currentUser.role === "admin") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-red-50">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-3">
+              <Settings className="h-8 w-8 text-purple-600" />
+              <h1 className="text-2xl font-bold text-foreground">Form Configuration</h1>
+              <Badge className="bg-purple-600">Admin</Badge>
+              <Badge variant="outline">{currentUser.username}</Badge>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button variant="outline" onClick={() => setCurrentView("home")}>
+                Back to Home
+              </Button>
+              <Button variant="ghost" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
+            </div>
+          </div>
+          <FormConfiguration />
         </div>
       </div>
     );
@@ -149,12 +186,13 @@ const Index = () => {
           </p>
           <div className="flex items-center justify-center space-x-2 mt-4">
             <Badge variant="secondary">2024 Season Ready</Badge>
-            <Badge className={currentRole === 'admin' ? 'bg-red-600' : 'bg-blue-600'}>
-              {currentRole === 'admin' ? 'Admin Access' : 'Scouter Access'}
+            <Badge className={currentUser.role === 'admin' ? 'bg-red-600' : 'bg-blue-600'}>
+              {currentUser.role === 'admin' ? 'Admin Access' : 'Scouter Access'}
             </Badge>
+            <Badge variant="outline">{currentUser.username}</Badge>
             <Button variant="ghost" size="sm" onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-2" />
-              Switch Role
+              Logout
             </Button>
           </div>
         </div>
@@ -195,7 +233,7 @@ const Index = () => {
             </CardContent>
           </Card>
 
-          {currentRole === "admin" && (
+          {currentUser.role === "admin" && (
             <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setCurrentView("superscout")}>
               <CardHeader className="text-center">
                 <div className="flex justify-center mb-4">
@@ -214,7 +252,7 @@ const Index = () => {
             </Card>
           )}
 
-          {currentRole === "admin" && (
+          {currentUser.role === "admin" && (
             <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setCurrentView("admin")}>
               <CardHeader className="text-center">
                 <div className="flex justify-center mb-4">
@@ -233,7 +271,26 @@ const Index = () => {
             </Card>
           )}
 
-          {currentRole === "scouter" && (
+          {currentUser.role === "admin" && (
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setCurrentView("form-config")}>
+              <CardHeader className="text-center">
+                <div className="flex justify-center mb-4">
+                  <Settings className="h-12 w-12 text-purple-600" />
+                </div>
+                <CardTitle className="text-xl">Form Configuration</CardTitle>
+                <CardDescription>
+                  Customize scouting form questions
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button className="w-full bg-purple-600 hover:bg-purple-700" size="lg">
+                  Configure Forms
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {currentUser.role === "scouter" && (
             <Card className="border-gray-200 bg-gray-50 opacity-60">
               <CardHeader className="text-center">
                 <div className="flex justify-center mb-4">
