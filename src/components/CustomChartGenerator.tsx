@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, ScatterChart, Scatter } from "recharts";
-import { BarChart3, TrendingUp, Scatter as ScatterIcon } from "lucide-react";
+import { BarChart3, TrendingUp, ScatterChart as ScatterIcon } from "lucide-react";
 
 interface ScoutingData {
   id: number;
