@@ -1,73 +1,39 @@
-# Welcome to your Lovable project
+# RRR Scouting App
 
-## Project info
+## high priority
+when adding data through admin view, it doesnt save
 
-**URL**: https://lovable.dev/projects/eb1f8338-b117-401e-aea4-f4500b15a00f
+how to change rating 
 
-## How can I edit this code?
+non admins shouldnt be able to change match schedule
 
-There are several ways of editing your application.
+fix phone viewing
 
-**Use Lovable**
+add team names
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/eb1f8338-b117-401e-aea4-f4500b15a00f) and start prompting.
+import match schedule
 
-Changes made via Lovable will be committed automatically to this repo.
+make it so that admins can see multiple autos if multiple autos added
 
-**Use your preferred IDE**
+match strategy (look at 3 teams data simultaneously)
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+team lookup
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+also have one big pick list
 
-Follow these steps:
+make everything in picklist manually editable
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+make buttons on dashboard look better (align them)
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+manually create scouting teams and automatically assign them to shiffts of scouting one slot (eg. red 1)
+    - let us enter desired shift length by number of matches
 
-# Step 3: Install the necessary dependencies.
-npm i
+make data analysis better
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+super scouting notes won't show up for a team if no normal notes are present
 
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/eb1f8338-b117-401e-aea4-f4500b15a00f) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+## low priority
+data analysis graph generator: 
+    -x axis should be time (during a regional or across the season)
+    -plot only selected teams (let us enter unlimited team numbers which get plotted against each other) and have an option to plot all teams at the regional
+    -y axis should have all the current options from both the x and y axis dropdowns (excluding team number and match number)
