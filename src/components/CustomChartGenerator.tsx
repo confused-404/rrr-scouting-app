@@ -25,9 +25,12 @@ interface ScoutingData {
 
 interface CustomChartGeneratorProps {
   scoutingData: ScoutingData[];
+  teamNames?: Map<string, string>;
 }
 
-const CustomChartGenerator = ({ scoutingData }: CustomChartGeneratorProps) => {
+import { getTeamNameWithCustom } from "@/lib/teamNames";
+
+const CustomChartGenerator = ({ scoutingData, teamNames }: CustomChartGeneratorProps) => {
   const [chartType, setChartType] = useState<'bar' | 'line' | 'scatter'>('bar');
   const [xAxis, setXAxis] = useState<string>('teamNumber');
   const [yAxis, setYAxis] = useState<string>('autoGamePieces');
@@ -69,6 +72,7 @@ const CustomChartGenerator = ({ scoutingData }: CustomChartGeneratorProps) => {
 
       return {
         [xAxis]: group[xAxis],
+        teamName: xAxis === 'teamNumber' ? (teamNames?.get(group[xAxis]) || getTeamNameWithCustom(group[xAxis])) : undefined,
         average: parseFloat(avg.toFixed(2)),
         total: sum,
         maximum: max,
@@ -106,8 +110,14 @@ const CustomChartGenerator = ({ scoutingData }: CustomChartGeneratorProps) => {
               <XAxis dataKey={xAxis} />
               <YAxis />
               <Tooltip 
-                formatter={(value, name) => [value, `Average ${yAxis}`]}
-                labelFormatter={(label) => `${xAxis}: ${label}`}
+                formatter={(value, name, props) => [value, `Average ${yAxis}`]}
+                labelFormatter={(label, payload) => {
+                  if (xAxis === 'teamNumber' && payload && payload[0]) {
+                    const teamName = payload[0].payload.teamName;
+                    return `Team ${label}${teamName ? ` - ${teamName}` : ''}`;
+                  }
+                  return `${xAxis}: ${label}`;
+                }}
               />
               <Bar dataKey={getYAxisDataKey()} fill="#3b82f6" />
             </BarChart>
@@ -122,8 +132,14 @@ const CustomChartGenerator = ({ scoutingData }: CustomChartGeneratorProps) => {
               <XAxis dataKey={xAxis} />
               <YAxis />
               <Tooltip 
-                formatter={(value, name) => [value, `Average ${yAxis}`]}
-                labelFormatter={(label) => `${xAxis}: ${label}`}
+                formatter={(value, name, props) => [value, `Average ${yAxis}`]}
+                labelFormatter={(label, payload) => {
+                  if (xAxis === 'teamNumber' && payload && payload[0]) {
+                    const teamName = payload[0].payload.teamName;
+                    return `Team ${label}${teamName ? ` - ${teamName}` : ''}`;
+                  }
+                  return `${xAxis}: ${label}`;
+                }}
               />
               <Line type="monotone" dataKey={getYAxisDataKey()} stroke="#3b82f6" strokeWidth={2} />
             </LineChart>
@@ -144,8 +160,14 @@ const CustomChartGenerator = ({ scoutingData }: CustomChartGeneratorProps) => {
                 type="number"
               />
               <Tooltip 
-                formatter={(value, name) => [value, yAxis]}
-                labelFormatter={(label) => `${xAxis}: ${label}`}
+                formatter={(value, name, props) => [value, yAxis]}
+                labelFormatter={(label, payload) => {
+                  if (xAxis === 'teamNumber' && payload && payload[0]) {
+                    const teamName = payload[0].payload.teamName;
+                    return `Team ${label}${teamName ? ` - ${teamName}` : ''}`;
+                  }
+                  return `${xAxis}: ${label}`;
+                }}
               />
               <Scatter dataKey={getYAxisDataKey()} fill="#3b82f6" />
             </ScatterChart>

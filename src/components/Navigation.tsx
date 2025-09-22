@@ -43,22 +43,34 @@ const Navigation = ({ currentView, userRole, username, onViewChange, onLogout }:
   }
 
   return (
-    <div className="flex items-center justify-between mb-6">
-      <div className="flex items-center space-x-3">
-        {getViewIcon()}
-        <h1 className="text-2xl font-bold text-foreground">{getViewTitle()}</h1>
-        <Badge className={userRole === 'admin' ? 'bg-red-600' : 'bg-blue-600'}>
-          {userRole === 'admin' ? 'Admin' : 'Scouter'}
-        </Badge>
-        <Badge variant="outline">{username}</Badge>
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-3 px-2 sm:px-0">
+      <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+        <div className="flex-shrink-0">
+          {getViewIcon()}
+        </div>
+        <h1 className="text-lg sm:text-2xl font-bold text-foreground truncate">{getViewTitle()}</h1>
+        <div className="hidden sm:flex items-center space-x-2">
+          <Badge className={userRole === 'admin' ? 'bg-red-600' : 'bg-blue-600'}>
+            {userRole === 'admin' ? 'Admin' : 'Scouter'}
+          </Badge>
+          <Badge variant="outline">{username}</Badge>
+        </div>
       </div>
-      <div className="flex items-center space-x-2">
-        <Button variant="outline" onClick={() => onViewChange("home")}>
-          Back to Home
+      <div className="flex items-center gap-2 sm:gap-2 flex-shrink-0">
+        <div className="flex sm:hidden items-center space-x-1">
+          <Badge className={`text-xs ${userRole === 'admin' ? 'bg-red-600' : 'bg-blue-600'}`}>
+            {userRole === 'admin' ? 'Admin' : 'Scouter'}
+          </Badge>
+          <Badge variant="outline" className="text-xs">{username}</Badge>
+        </div>
+        <Button variant="outline" onClick={() => onViewChange("home")} size="sm" className="text-xs whitespace-nowrap">
+          <span className="hidden sm:inline">Back to Home</span>
+          <span className="sm:hidden">Home</span>
         </Button>
-        <Button variant="ghost" onClick={onLogout}>
-          <LogOut className="h-4 w-4 mr-2" />
-          Logout
+        <Button variant="ghost" onClick={onLogout} size="sm" className="text-xs whitespace-nowrap">
+          <LogOut className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+          <span className="hidden sm:inline">Logout</span>
+          <span className="sm:hidden">Exit</span>
         </Button>
       </div>
     </div>

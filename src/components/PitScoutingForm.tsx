@@ -250,12 +250,12 @@ const PitScoutingForm = () => {
               </div>
             </div>
 
-            <div className="flex space-x-4">
-              <Button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+              <Button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 w-full">
                 <Save className="h-4 w-4 mr-2" />
                 Save Pit Scouting Data
               </Button>
-              <Button type="button" variant="outline" onClick={handleReset}>
+              <Button type="button" variant="outline" onClick={handleReset} className="w-full sm:w-auto">
                 <RotateCcw className="h-4 w-4 mr-2" />
                 Reset Form
               </Button>

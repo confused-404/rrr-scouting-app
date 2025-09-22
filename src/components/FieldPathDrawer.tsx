@@ -133,6 +133,7 @@ const FieldPathDrawer = ({ onPathChange, initialPath = [] }: FieldPathDrawerProp
           <div className="flex items-center space-x-2">
             {path.length > 0 && <Badge variant="outline">{path.length} points</Badge>}
             <Button
+              type="button"
               onClick={() => setIsExpanded(!isExpanded)}
               variant="ghost"
               size="sm"
@@ -147,10 +148,10 @@ const FieldPathDrawer = ({ onPathChange, initialPath = [] }: FieldPathDrawerProp
         <CardContent>
           <div className="space-y-4">
             <div className="flex space-x-2 justify-center">
-              <Button onClick={undoLastPoint} variant="outline" size="sm" disabled={path.length === 0}>
+              <Button type="button" onClick={undoLastPoint} variant="outline" size="sm" disabled={path.length === 0}>
                 Undo Point
               </Button>
-              <Button onClick={clearPath} variant="outline" size="sm">
+              <Button type="button" onClick={clearPath} variant="outline" size="sm">
                 <RotateCcw className="h-4 w-4 mr-2" />
                 Clear Path
               </Button>

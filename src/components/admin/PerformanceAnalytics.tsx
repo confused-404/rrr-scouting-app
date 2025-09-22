@@ -19,9 +19,12 @@ interface ScoutingData {
 
 interface PerformanceAnalyticsProps {
   scoutingData: ScoutingData[];
+  teamNames?: Map<string, string>;
 }
 
-const PerformanceAnalytics = ({ scoutingData }: PerformanceAnalyticsProps) => {
+import { getTeamNameWithCustom } from "@/lib/teamNames";
+
+const PerformanceAnalytics = ({ scoutingData, teamNames }: PerformanceAnalyticsProps) => {
   // Calculate team statistics
   const teamStats = scoutingData.reduce((acc, entry) => {
     const team = entry.teamNumber;
@@ -52,6 +55,7 @@ const PerformanceAnalytics = ({ scoutingData }: PerformanceAnalyticsProps) => {
 
   const teamStatsArray = Object.values(teamStats).map((team: any) => ({
     ...team,
+    teamName: teamNames?.get(team.teamNumber) || getTeamNameWithCustom(team.teamNumber),
     avgAutoPoints: (team.totalAutoPoints / team.matches).toFixed(1),
     avgTeleopPoints: (team.totalTeleopPoints / team.matches).toFixed(1),
     avgDefense: (team.avgDefense / team.matches).toFixed(1),
@@ -78,9 +82,22 @@ const PerformanceAnalytics = ({ scoutingData }: PerformanceAnalyticsProps) => {
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={top10Teams}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="teamNumber" />
+              <XAxis 
+                dataKey="teamNumber" 
+                tick={{ fontSize: 12 }}
+                interval={0}
+                angle={-45}
+                textAnchor="end"
+                height={60}
+              />
               <YAxis />
-              <Tooltip />
+              <Tooltip 
+                formatter={(value, name, props) => [
+                  value,
+                  name,
+                  `Team ${props.payload.teamNumber} - ${props.payload.teamName}`
+                ]}
+              />
               <Bar dataKey="totalScore" fill="#3b82f6" />
             </BarChart>
           </ResponsiveContainer>
@@ -120,9 +137,22 @@ const PerformanceAnalytics = ({ scoutingData }: PerformanceAnalyticsProps) => {
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={top10Teams}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="teamNumber" />
+              <XAxis 
+                dataKey="teamNumber" 
+                tick={{ fontSize: 12 }}
+                interval={0}
+                angle={-45}
+                textAnchor="end"
+                height={60}
+              />
               <YAxis domain={[0, 10]} />
-              <Tooltip />
+              <Tooltip 
+                formatter={(value, name, props) => [
+                  value,
+                  name,
+                  `Team ${props.payload.teamNumber} - ${props.payload.teamName}`
+                ]}
+              />
               <Line type="monotone" dataKey="avgDefense" stroke="#ef4444" name="Defense" />
               <Line type="monotone" dataKey="avgReliability" stroke="#22c55e" name="Reliability" />
             </LineChart>

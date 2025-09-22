@@ -6,7 +6,7 @@ import ViewRenderer from "@/components/ViewRenderer";
 import HomeView from "@/components/HomeView";
 
 type UserRole = 'admin' | 'scouter' | null;
-type ViewType = "home" | "match-scout" | "pit-scout" | "admin" | "superscout" | "form-config" | "schedule";
+type ViewType = "home" | "match-scout" | "pit-scout" | "admin" | "superscout" | "form-config" | "schedule" | "team-lookup" | "match-strategy" | "scouting-teams";
 
 interface User {
   role: UserRole;
@@ -47,7 +47,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-red-50">
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6">
         <Navigation
           currentView={currentView}
           userRole={currentUser.role!}
@@ -58,6 +58,7 @@ const Index = () => {
         <ViewRenderer 
           currentView={currentView}
           userRole={currentUser.role!}
+          username={currentUser.username}
         />
       </div>
     </div>

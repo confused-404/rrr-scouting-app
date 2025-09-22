@@ -8,6 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Calendar, Plus, Clock, Users, Target } from "lucide-react";
+import { getTeamNameWithCustom } from "@/lib/teamNames";
+import { ProcessedMatch } from "@/lib/tbaApi";
+import { useTeamNames } from "@/hooks/useTeamNames";
+import EventImport from "./EventImport";
 
 interface MatchData {
   id: string;
@@ -26,7 +30,12 @@ interface ScheduledMatch {
   blueAlliance: [string, string, string];
 }
 
-const MatchSchedule = () => {
+interface MatchScheduleProps {
+  userRole?: 'admin' | 'scouter';
+  username?: string;
+}
+
+const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchScheduleProps) => {
   const { toast } = useToast();
   const [schedule, setSchedule] = useState<ScheduledMatch[]>([]);
   const [newMatch, setNewMatch] = useState({
@@ -36,12 +45,24 @@ const MatchSchedule = () => {
     blue1: '', blue2: '', blue3: ''
   });
   const [scoutingData, setScoutingData] = useState<MatchData[]>([]);
+  const [importData, setImportData] = useState('');
+  const [scoutingAssignments, setScoutingAssignments] = useState<any[]>([]);
+  const [showMyAssignments, setShowMyAssignments] = useState(false);
+
+  // Get all unique team numbers from the schedule for team name fetching
+  const allTeamNumbers = Array.from(new Set(
+    schedule.flatMap(match => [...match.redAlliance, ...match.blueAlliance])
+  )).filter(Boolean);
+  
+  const { teamNames } = useTeamNames(allTeamNumbers);
 
   useEffect(() => {
     const savedSchedule = JSON.parse(localStorage.getItem("matchSchedule") || "[]");
     const savedScoutingData = JSON.parse(localStorage.getItem("scoutingData") || "[]");
+    const savedAssignments = JSON.parse(localStorage.getItem("scoutingAssignments") || "[]");
     setSchedule(savedSchedule);
     setScoutingData(savedScoutingData);
+    setScoutingAssignments(savedAssignments);
   }, []);
 
   const saveSchedule = (updatedSchedule: ScheduledMatch[]) => {
@@ -77,6 +98,30 @@ const MatchSchedule = () => {
         </span>
       </div>
     );
+  };
+
+  const getScoutingAssignments = (matchNumber: string) => {
+    return scoutingAssignments.filter(a => a.matchNumber === parseInt(matchNumber));
+  };
+
+  const getPositionLabel = (position: string) => {
+    const color = position.startsWith('red') ? 'Red' : 'Blue';
+    const num = position.slice(-1);
+    return `${color} ${num}`;
+  };
+
+  const isUserAssignedToMatch = (matchNumber: string) => {
+    const assignments = getScoutingAssignments(matchNumber);
+    return assignments.some(assignment => 
+      assignment.scouts.includes(username)
+    );
+  };
+
+  const getFilteredSchedule = () => {
+    if (!showMyAssignments || userRole !== 'scouter') {
+      return schedule;
+    }
+    return schedule.filter(match => isUserAssignedToMatch(match.matchNumber));
   };
 
   const addMatch = () => {
@@ -127,28 +172,112 @@ const MatchSchedule = () => {
     });
   };
 
+  const importSchedule = () => {
+    if (!importData.trim()) {
+      toast({
+        title: "No Data",
+        description: "Please paste CSV data to import.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const lines = importData.trim().split('\n');
+      const newMatches: ScheduledMatch[] = [];
+
+      lines.forEach((line, index) => {
+        const parts = line.split(',').map(part => part.trim());
+        if (parts.length !== 8) {
+          throw new Error(`Line ${index + 1}: Expected 8 columns, got ${parts.length}`);
+        }
+
+        const [matchNum, time, red1, red2, red3, blue1, blue2, blue3] = parts;
+        
+        newMatches.push({
+          id: `import-${Date.now()}-${index}`,
+          matchNumber: matchNum,
+          time: time,
+          redAlliance: [red1, red2, red3],
+          blueAlliance: [blue1, blue2, blue3]
+        });
+      });
+
+      const updatedSchedule = [...schedule, ...newMatches].sort((a, b) => 
+        parseInt(a.matchNumber) - parseInt(b.matchNumber)
+      );
+      
+      saveSchedule(updatedSchedule);
+      setImportData('');
+
+      toast({
+        title: "Schedule Imported",
+        description: `Successfully imported ${newMatches.length} matches.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Import Error",
+        description: error instanceof Error ? error.message : "Invalid CSV format",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleEventImport = (matches: ProcessedMatch[], clearExisting = false) => {
+    const newMatches: ScheduledMatch[] = matches.map((match, index) => ({
+      id: `tba-import-${Date.now()}-${index}`,
+      matchNumber: match.matchNumber,
+      time: match.time,
+      redAlliance: match.redAlliance,
+      blueAlliance: match.blueAlliance
+    }));
+
+    // If clearExisting is true, replace the entire schedule, otherwise append
+    const updatedSchedule = clearExisting 
+      ? newMatches.sort((a, b) => parseInt(a.matchNumber) - parseInt(b.matchNumber))
+      : [...schedule, ...newMatches].sort((a, b) => parseInt(a.matchNumber) - parseInt(b.matchNumber));
+    
+    saveSchedule(updatedSchedule);
+  };
+
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center space-x-3">
-            <Calendar className="h-6 w-6 text-blue-600" />
-            <div>
-              <CardTitle>Match Schedule</CardTitle>
-              <CardDescription>View upcoming matches with team last match data</CardDescription>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Calendar className="h-6 w-6 text-blue-600" />
+              <div>
+                <CardTitle>Match Schedule</CardTitle>
+                <CardDescription>View upcoming matches with team last match data and scout assignments</CardDescription>
+              </div>
             </div>
+            {userRole === 'scouter' && (
+              <Button
+                variant={showMyAssignments ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowMyAssignments(!showMyAssignments)}
+              >
+                <Users className="h-4 w-4 mr-2" />
+                {showMyAssignments 
+                  ? `Show All (${getFilteredSchedule().length} assigned)` 
+                  : "My Assignments"
+                }
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {/* Add Match Form */}
-            <Card className="border-dashed">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center space-x-2">
-                  <Plus className="h-5 w-5" />
-                  <span>Add New Match</span>
-                </CardTitle>
-              </CardHeader>
+            {/* Add Match Form - Admin Only */}
+            {userRole === 'admin' && (
+              <Card className="border-dashed">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center space-x-2">
+                    <Plus className="h-5 w-5" />
+                    <span>Add New Match</span>
+                  </CardTitle>
+                </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -227,70 +356,188 @@ const MatchSchedule = () => {
                 </Button>
               </CardContent>
             </Card>
+            )}
 
-            {/* Schedule Table */}
-            <div className="border rounded-lg">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-20">Match</TableHead>
-                    <TableHead className="w-24">Time</TableHead>
-                    <TableHead>Red Alliance</TableHead>
-                    <TableHead>Blue Alliance</TableHead>
-                    <TableHead className="w-20">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {schedule.map((match) => (
-                    <TableRow key={match.id}>
-                      <TableCell className="font-medium">#{match.matchNumber}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-1">
-                          <Clock className="h-3 w-3" />
-                          <span className="text-sm">{match.time}</span>
+            {/* Import from TBA - Admin Only */}
+            {userRole === 'admin' && (
+              <EventImport onImportMatches={handleEventImport} />
+            )}
+
+            {/* Manual CSV Import - Admin Only */}
+            {userRole === 'admin' && (
+              <Card className="border-dashed">
+                <CardHeader>
+                  <CardTitle className="text-lg">Manual CSV Import</CardTitle>
+                  <CardDescription>
+                    Paste CSV data with format: Match,Time,Red1,Red2,Red3,Blue1,Blue2,Blue3
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <textarea
+                      className="w-full h-32 p-3 border rounded-md resize-none"
+                      placeholder="1,10:00,1114,254,118,148,1678,2056&#10;2,10:15,973,1323,5940,6328,7492,8033"
+                      value={importData}
+                      onChange={(e) => setImportData(e.target.value)}
+                    />
+                    <Button onClick={importSchedule} className="w-full">
+                      Import CSV Schedule
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Mobile-First Schedule Cards */}
+            <div className="space-y-4">
+              {getFilteredSchedule().map((match) => {
+                const isMyMatch = isUserAssignedToMatch(match.matchNumber);
+                return (
+                  <Card 
+                    key={match.id}
+                    className={`${isMyMatch && userRole === 'scouter' ? 'border-l-4 border-l-blue-500 bg-blue-50' : ''}`}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="text-lg font-bold">Match #{match.matchNumber}</div>
+                          <div className="flex items-center space-x-1 text-sm text-gray-600">
+                            <Clock className="h-4 w-4" />
+                            <span>{match.time}</span>
+                          </div>
+                          {isMyMatch && userRole === 'scouter' && (
+                            <Badge className="bg-blue-600 text-white">Your Match</Badge>
+                          )}
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-2">
-                          {match.redAlliance.map((team, index) => (
-                            <div key={index} className="flex items-center justify-between">
-                              <span className="font-medium">Team {team}</span>
-                              {getTeamBadge(team)}
+                        {userRole === 'admin' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteMatch(match.id)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            Delete
+                          </Button>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {/* Teams Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          {/* Red Alliance */}
+                          <div className="space-y-2">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <div className="w-4 h-4 bg-red-600 rounded"></div>
+                              <span className="font-semibold text-red-700">Red Alliance</span>
                             </div>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-2">
-                          {match.blueAlliance.map((team, index) => (
-                            <div key={index} className="flex items-center justify-between">
-                              <span className="font-medium">Team {team}</span>
-                              {getTeamBadge(team)}
+                            {match.redAlliance.map((team, index) => (
+                              <div key={index} className="bg-red-50 p-2 rounded border border-red-200">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-medium">Team {team}</span>
+                                  <Badge className="bg-red-100 text-red-800 text-xs">Red {index + 1}</Badge>
+                                </div>
+                                <div className="text-xs text-gray-600 mb-2">{teamNames.get(team) || getTeamNameWithCustom(team)}</div>
+                                {getTeamBadge(team)}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Blue Alliance */}
+                          <div className="space-y-2">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <div className="w-4 h-4 bg-blue-600 rounded"></div>
+                              <span className="font-semibold text-blue-700">Blue Alliance</span>
                             </div>
-                          ))}
+                            {match.blueAlliance.map((team, index) => (
+                              <div key={index} className="bg-blue-50 p-2 rounded border border-blue-200">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-medium">Team {team}</span>
+                                  <Badge className="bg-blue-100 text-blue-800 text-xs">Blue {index + 1}</Badge>
+                                </div>
+                                <div className="text-xs text-gray-600 mb-2">{teamNames.get(team) || getTeamNameWithCustom(team)}</div>
+                                {getTeamBadge(team)}
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteMatch(match.id)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          Delete
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {schedule.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                        No matches scheduled yet. Add your first match above.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+
+                        {/* Scout Assignments */}
+                        {getScoutingAssignments(match.matchNumber).length > 0 && (
+                          <div className="border-t pt-4">
+                            <div className="flex items-center space-x-2 mb-3">
+                              <Users className="h-4 w-4 text-gray-600" />
+                              <span className="font-semibold text-gray-700">Scout Assignments</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                              {getScoutingAssignments(match.matchNumber).map((assignment, index) => {
+                                const isMyAssignment = assignment.scouts.includes(username);
+                                return (
+                                  <div 
+                                    key={index} 
+                                    className={`p-2 rounded border text-sm ${
+                                      isMyAssignment && userRole === 'scouter' 
+                                        ? 'bg-yellow-100 border-yellow-300 ring-2 ring-yellow-400' 
+                                        : assignment.position.startsWith('red')
+                                          ? 'bg-red-50 border-red-200'
+                                          : 'bg-blue-50 border-blue-200'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between mb-1">
+                                      <Badge 
+                                        className={`text-xs ${
+                                          assignment.position.startsWith('red') 
+                                            ? 'bg-red-100 text-red-800' 
+                                            : 'bg-blue-100 text-blue-800'
+                                        }`}
+                                      >
+                                        {getPositionLabel(assignment.position)}
+                                      </Badge>
+                                      {isMyAssignment && userRole === 'scouter' && (
+                                        <Badge className="bg-yellow-600 text-white text-xs">YOU</Badge>
+                                      )}
+                                    </div>
+                                    <div className="font-medium text-xs">{assignment.teamName}</div>
+                                    <div className="text-xs text-gray-600 mt-1">
+                                      {assignment.scouts.map(scout => 
+                                        scout === username && userRole === 'scouter' 
+                                          ? <span key={scout} className="font-bold text-blue-700">{scout}</span>
+                                          : scout
+                                      ).reduce((prev, curr, index) => 
+                                        index === 0 ? [curr] : [...prev, ', ', curr], []
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+
+              {getFilteredSchedule().length === 0 && (
+                <Card>
+                  <CardContent className="text-center py-8">
+                    <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                    <p className="text-gray-500 mb-2">
+                      {showMyAssignments && userRole === 'scouter' 
+                        ? `No matches assigned to ${username}`
+                        : "No matches scheduled yet"
+                      }
+                    </p>
+                    <p className="text-sm text-gray-400">
+                      {showMyAssignments && userRole === 'scouter' 
+                        ? 'Check with your admin or switch to "Show All"'
+                        : userRole === 'admin' ? 'Add your first match above to get started' : 'Ask your admin to add matches'
+                      }
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </div>
         </CardContent>

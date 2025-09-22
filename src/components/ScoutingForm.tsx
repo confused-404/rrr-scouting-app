@@ -208,15 +208,15 @@ const ScoutingForm = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6 px-4 sm:px-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Match Scouting Form</span>
-            <div className="flex items-center space-x-2">
-              <Badge variant="outline" className="bg-blue-50">Quick Entry</Badge>
-              <Button onClick={generateDummyData} variant="outline" size="sm">
-                <Database className="h-4 w-4 mr-2" />
+          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <span className="text-lg sm:text-xl">Match Scouting Form</span>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+              <Badge variant="outline" className="bg-blue-50 text-xs">Quick Entry</Badge>
+              <Button onClick={generateDummyData} variant="outline" size="sm" className="w-full sm:w-auto text-xs">
+                <Database className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                 Add Demo Data
               </Button>
             </div>
@@ -273,16 +273,16 @@ const ScoutingForm = () => {
                   
                   <div className="space-y-2">
                     <Label htmlFor="autoGamePieces">Game Pieces Scored</Label>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1 sm:space-x-2">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         onClick={() => decrementValue('autoGamePieces')}
                         disabled={formData.autoGamePieces <= 0}
-                        className="h-10 w-10 p-0"
+                        className="h-8 w-8 sm:h-10 sm:w-10 p-0 flex-shrink-0"
                       >
-                        <Minus className="h-4 w-4" />
+                        <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
                       <Input
                         id="autoGamePieces"
@@ -291,7 +291,7 @@ const ScoutingForm = () => {
                         max="10"
                         value={formData.autoGamePieces}
                         onChange={(e) => setFormData({ ...formData, autoGamePieces: parseInt(e.target.value) || 0 })}
-                        className="text-center flex-1"
+                        className="text-center flex-1 min-w-0"
                       />
                       <Button
                         type="button"
@@ -299,9 +299,9 @@ const ScoutingForm = () => {
                         size="sm"
                         onClick={() => incrementValue('autoGamePieces', 10)}
                         disabled={formData.autoGamePieces >= 10}
-                        className="h-10 w-10 p-0"
+                        className="h-8 w-8 sm:h-10 sm:w-10 p-0 flex-shrink-0"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
                     </div>
                   </div>
@@ -325,16 +325,16 @@ const ScoutingForm = () => {
                   
                   <div className="space-y-2">
                     <Label htmlFor="teleopGamePieces">Game Pieces Scored</Label>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1 sm:space-x-2">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         onClick={() => decrementValue('teleopGamePieces')}
                         disabled={formData.teleopGamePieces <= 0}
-                        className="h-10 w-10 p-0"
+                        className="h-8 w-8 sm:h-10 sm:w-10 p-0 flex-shrink-0"
                       >
-                        <Minus className="h-4 w-4" />
+                        <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
                       <Input
                         id="teleopGamePieces"
@@ -343,7 +343,7 @@ const ScoutingForm = () => {
                         max="50"
                         value={formData.teleopGamePieces}
                         onChange={(e) => setFormData({ ...formData, teleopGamePieces: parseInt(e.target.value) || 0 })}
-                        className="text-center flex-1"
+                        className="text-center flex-1 min-w-0"
                       />
                       <Button
                         type="button"
@@ -351,9 +351,9 @@ const ScoutingForm = () => {
                         size="sm"
                         onClick={() => incrementValue('teleopGamePieces', 50)}
                         disabled={formData.teleopGamePieces >= 50}
-                        className="h-10 w-10 p-0"
+                        className="h-8 w-8 sm:h-10 sm:w-10 p-0 flex-shrink-0"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
                     </div>
                   </div>
@@ -376,27 +376,42 @@ const ScoutingForm = () => {
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-purple-600">Performance Ratings</h3>
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="defense">Defense Rating (1-10)</Label>
-                    <div className="flex items-center space-x-2">
+                  <div className="space-y-3">
+                    <Label htmlFor="defense">Defense Rating: {formData.defense}/10</Label>
+                    <div className="px-2">
+                      <input
+                        type="range"
+                        id="defense"
+                        min="1"
+                        max="10"
+                        value={formData.defense}
+                        onChange={(e) => setFormData({ ...formData, defense: parseInt(e.target.value) })}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>Poor</span>
+                        <span>Average</span>
+                        <span>Excellent</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-1 sm:space-x-2 justify-center">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         onClick={() => decrementValue('defense', 1)}
                         disabled={formData.defense <= 1}
-                        className="h-10 w-10 p-0"
+                        className="h-7 w-7 sm:h-8 sm:w-8 p-0 flex-shrink-0"
                       >
-                        <Minus className="h-4 w-4" />
+                        <Minus className="h-3 w-3" />
                       </Button>
                       <Input
-                        id="defense"
                         type="number"
                         min="1"
                         max="10"
                         value={formData.defense}
                         onChange={(e) => setFormData({ ...formData, defense: parseInt(e.target.value) || 1 })}
-                        className="text-center flex-1"
+                        className="text-center w-12 sm:w-16 h-7 sm:h-8 text-sm"
                       />
                       <Button
                         type="button"
@@ -404,34 +419,49 @@ const ScoutingForm = () => {
                         size="sm"
                         onClick={() => incrementValue('defense', 10)}
                         disabled={formData.defense >= 10}
-                        className="h-10 w-10 p-0"
+                        className="h-7 w-7 sm:h-8 sm:w-8 p-0 flex-shrink-0"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-3 w-3" />
                       </Button>
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="reliability">Reliability Rating (1-10)</Label>
-                    <div className="flex items-center space-x-2">
+                  <div className="space-y-3">
+                    <Label htmlFor="reliability">Reliability Rating: {formData.reliability}/10</Label>
+                    <div className="px-2">
+                      <input
+                        type="range"
+                        id="reliability"
+                        min="1"
+                        max="10"
+                        value={formData.reliability}
+                        onChange={(e) => setFormData({ ...formData, reliability: parseInt(e.target.value) })}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>Unreliable</span>
+                        <span>Consistent</span>
+                        <span>Very Reliable</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-1 sm:space-x-2 justify-center">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         onClick={() => decrementValue('reliability', 1)}
                         disabled={formData.reliability <= 1}
-                        className="h-10 w-10 p-0"
+                        className="h-7 w-7 sm:h-8 sm:w-8 p-0 flex-shrink-0"
                       >
-                        <Minus className="h-4 w-4" />
+                        <Minus className="h-3 w-3" />
                       </Button>
                       <Input
-                        id="reliability"
                         type="number"
                         min="1"
                         max="10"
                         value={formData.reliability}
                         onChange={(e) => setFormData({ ...formData, reliability: parseInt(e.target.value) || 1 })}
-                        className="text-center flex-1"
+                        className="text-center w-12 sm:w-16 h-7 sm:h-8 text-sm"
                       />
                       <Button
                         type="button"
@@ -439,9 +469,9 @@ const ScoutingForm = () => {
                         size="sm"
                         onClick={() => incrementValue('reliability', 10)}
                         disabled={formData.reliability >= 10}
-                        className="h-10 w-10 p-0"
+                        className="h-7 w-7 sm:h-8 sm:w-8 p-0 flex-shrink-0"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-3 w-3" />
                       </Button>
                     </div>
                   </div>
@@ -467,12 +497,12 @@ const ScoutingForm = () => {
               </div>
             </div>
 
-            <div className="flex space-x-4">
-              <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+              <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 w-full">
                 <Save className="h-4 w-4 mr-2" />
                 Save Scouting Data
               </Button>
-              <Button type="button" variant="outline" onClick={handleReset}>
+              <Button type="button" variant="outline" onClick={handleReset} className="w-full sm:w-auto">
                 <RotateCcw className="h-4 w-4 mr-2" />
                 Reset Form
               </Button>

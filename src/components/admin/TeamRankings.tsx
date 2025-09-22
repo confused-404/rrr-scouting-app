@@ -28,9 +28,12 @@ interface SuperScoutNote {
 interface TeamRankingsProps {
   scoutingData: ScoutingData[];
   superScoutNotes: {[key: string]: SuperScoutNote};
+  teamNames?: Map<string, string>;
 }
 
-const TeamRankings = ({ scoutingData, superScoutNotes }: TeamRankingsProps) => {
+import { getTeamNameWithCustom } from "@/lib/teamNames";
+
+const TeamRankings = ({ scoutingData, superScoutNotes, teamNames }: TeamRankingsProps) => {
   // Calculate team statistics
   const teamStats = scoutingData.reduce((acc, entry) => {
     const team = entry.teamNumber;
@@ -102,6 +105,9 @@ const TeamRankings = ({ scoutingData, superScoutNotes }: TeamRankingsProps) => {
                   </Badge>
                   <div>
                     <div className="font-semibold">Team {team.teamNumber}</div>
+                    <div className="text-sm font-medium text-blue-600">
+                      {teamNames?.get(team.teamNumber) || getTeamNameWithCustom(team.teamNumber)}
+                    </div>
                     <div className="text-sm text-muted-foreground">
                       {team.matches} matches • {team.totalScore} total points
                     </div>

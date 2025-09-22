@@ -1,6 +1,11 @@
 
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { Plus, X, Save, RotateCcw, Edit, ArrowUp, ArrowDown } from "lucide-react";
 
 interface ScoutingData {
   id: number;
@@ -19,9 +24,25 @@ interface ScoutingData {
 
 interface AlliancePicklistProps {
   scoutingData: ScoutingData[];
+  teamNames?: Map<string, string>;
 }
 
-const AlliancePicklist = ({ scoutingData }: AlliancePicklistProps) => {
+interface PicklistTeam {
+  teamNumber: string;
+  tier: number;
+  notes: string;
+  isManual: boolean;
+}
+
+import { getTeamNameWithCustom } from "@/lib/teamNames";
+
+const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) => {
+  const { toast } = useToast();
+  const [isEditing, setIsEditing] = useState(false);
+  const [customPicklist, setCustomPicklist] = useState<PicklistTeam[]>([]);
+  const [newTeam, setNewTeam] = useState("");
+
+
   // Calculate team statistics
   const teamStats = scoutingData.reduce((acc, entry) => {
     const team = entry.teamNumber;
@@ -61,113 +82,325 @@ const AlliancePicklist = ({ scoutingData }: AlliancePicklistProps) => {
     totalScore: team.totalAutoPoints + team.totalTeleopPoints
   })).sort((a, b) => b.totalScore - a.totalScore);
 
+  const savePicklist = () => {
+    localStorage.setItem("customPicklist", JSON.stringify(customPicklist));
+    toast({
+      title: "Picklist Saved",
+      description: "Your custom picklist has been saved.",
+    });
+  };
+
+  const resetToAuto = () => {
+    const autoPicklist: PicklistTeam[] = teamStatsArray.slice(0, 20).map((team, index) => ({
+      teamNumber: team.teamNumber,
+      tier: Math.floor(index / 5) + 1,
+      notes: `Auto: ${team.avgAutoPoints}, Teleop: ${team.avgTeleopPoints}, Climb: ${team.climbRate}%`,
+      isManual: false
+    }));
+    setCustomPicklist(autoPicklist);
+    toast({
+      title: "Picklist Reset",
+      description: "Picklist has been reset to auto-generated rankings.",
+    });
+  };
+
+  const addTeam = () => {
+    if (!newTeam.trim()) {
+      toast({
+        title: "Invalid Team",
+        description: "Please enter a team number.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Check if team already exists
+    if (customPicklist.some(team => team.teamNumber === newTeam.trim())) {
+      toast({
+        title: "Team Already Exists",
+        description: `Team ${newTeam} is already in the picklist.`,
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const newPicklistTeam: PicklistTeam = {
+      teamNumber: newTeam.trim(),
+      tier: 1,
+      notes: "Manually added",
+      isManual: true
+    };
+    
+    setCustomPicklist([newPicklistTeam, ...customPicklist]);
+    setNewTeam("");
+    
+    toast({
+      title: "Team Added",
+      description: `Team ${newTeam.trim()} has been added to the picklist.`,
+    });
+  };
+
+  const removeTeam = (teamNumber: string) => {
+    setCustomPicklist(customPicklist.filter(team => team.teamNumber !== teamNumber));
+    toast({
+      title: "Team Removed",
+      description: `Team ${teamNumber} has been removed from the picklist.`,
+    });
+  };
+
+  const moveTeam = (teamNumber: string, direction: 'up' | 'down') => {
+    const index = customPicklist.findIndex(team => team.teamNumber === teamNumber);
+    if (index === -1) return;
+    
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= customPicklist.length) return;
+    
+    const newPicklist = [...customPicklist];
+    [newPicklist[index], newPicklist[newIndex]] = [newPicklist[newIndex], newPicklist[index]];
+    setCustomPicklist(newPicklist);
+  };
+
+  const updateTeamNotes = (teamNumber: string, notes: string) => {
+    setCustomPicklist(customPicklist.map(team => 
+      team.teamNumber === teamNumber ? { ...team, notes } : team
+    ));
+  };
+
+  // Initialize customPicklist with auto-generated data if empty
+  useEffect(() => {
+    const saved = localStorage.getItem("customPicklist");
+    if (saved) {
+      setCustomPicklist(JSON.parse(saved));
+    } else if (teamStatsArray.length > 0) {
+      const autoPicklist: PicklistTeam[] = teamStatsArray.slice(0, 15).map((team, index) => ({
+        teamNumber: team.teamNumber,
+        tier: Math.floor(index / 5) + 1,
+        notes: `Auto: ${team.avgAutoPoints}, Teleop: ${team.avgTeleopPoints}, Climb: ${team.climbRate}%`,
+        isManual: false
+      }));
+      setCustomPicklist(autoPicklist);
+    }
+  }, [scoutingData.length]); // Use scoutingData.length as dependency instead
+
+  const displayPicklist = customPicklist;
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Alliance Selection Picklist</CardTitle>
-        <CardDescription>Recommended teams for alliance selection based on overall performance</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card className="border-yellow-200 bg-yellow-50">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg text-yellow-800">Tier 1 - First Picks</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {teamStatsArray.slice(0, 3).map((team, index) => (
-                  <div key={team.teamNumber} className="flex items-center justify-between mb-2 p-2 bg-white rounded">
-                    <span className="font-semibold text-sm sm:text-base">Team {team.teamNumber}</span>
-                    <Badge className="bg-yellow-600">
-                      {team.totalScore} pts
-                    </Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+            <div>
+              <CardTitle className="text-lg sm:text-xl">Alliance Selection Picklist</CardTitle>
+              <CardDescription className="text-sm">
+                {isEditing ? "Edit your custom picklist" : "Recommended teams for alliance selection"}
+              </CardDescription>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsEditing(!isEditing)}
+                className="w-full sm:w-auto text-sm"
+              >
+                <Edit className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                {isEditing ? "View Mode" : "Edit Mode"}
+              </Button>
+              {isEditing && (
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={resetToAuto} className="flex-1 sm:flex-none text-sm">
+                    <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                    Reset
+                  </Button>
+                  <Button onClick={savePicklist} className="flex-1 sm:flex-none text-sm">
+                    <Save className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                    Save
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {isEditing && (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  placeholder="Add team number"
+                  value={newTeam}
+                  onChange={(e) => setNewTeam(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && addTeam()}
+                  className="flex-1"
+                />
+                <Button onClick={addTeam} className="w-full sm:w-auto">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Team
+                </Button>
+              </div>
+            )}
 
-            <Card className="border-blue-200 bg-blue-50">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg text-blue-800">Tier 2 - Strong Options</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {teamStatsArray.slice(3, 8).map((team, index) => (
-                  <div key={team.teamNumber} className="flex items-center justify-between mb-2 p-2 bg-white rounded">
-                    <span className="font-semibold text-sm sm:text-base">Team {team.teamNumber}</span>
-                    <Badge variant="secondary">
-                      {team.totalScore} pts
-                    </Badge>
+            <div className="space-y-2">
+              {displayPicklist.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No teams in picklist yet.</p>
+                  <p className="text-sm">Add teams manually or wait for scouting data to generate auto rankings.</p>
+                </div>
+              ) : (
+                displayPicklist.map((team, index) => {
+                const teamData = teamStatsArray.find(t => t.teamNumber === team.teamNumber);
+                const tierColor = index < 3 ? "bg-yellow-100 border-yellow-300" : 
+                                index < 8 ? "bg-blue-100 border-blue-300" : 
+                                "bg-green-100 border-green-300";
+                const editModeColor = isEditing ? "ring-2 ring-blue-200" : "";
+                
+                return (
+                  <div key={team.teamNumber} className={`p-3 border rounded-lg ${tierColor} ${editModeColor}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="flex flex-col items-center">
+                          <span className="text-xs text-gray-500">#{index + 1}</span>
+                          {isEditing && (
+                            <div className="flex flex-col space-y-1 mt-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => moveTeam(team.teamNumber, 'up')}
+                                disabled={index === 0}
+                                className="h-6 w-6 p-0"
+                              >
+                                <ArrowUp className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => moveTeam(team.teamNumber, 'down')}
+                                disabled={index === customPicklist.length - 1}
+                                className="h-6 w-6 p-0"
+                              >
+                                <ArrowDown className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="font-semibold text-lg">Team {team.teamNumber}</span>
+                            {team.isManual && <Badge variant="outline">Manual</Badge>}
+                            {teamData && (
+                              <Badge className={index < 3 ? "bg-yellow-600" : index < 8 ? "bg-blue-600" : "bg-green-600"}>
+                                {teamData.totalScore} pts
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-sm font-medium text-blue-600">
+                            {teamNames?.get(team.teamNumber) || getTeamNameWithCustom(team.teamNumber)}
+                          </div>
+                          {isEditing ? (
+                            <Input
+                              className="mt-1 text-sm"
+                              value={team.notes}
+                              onChange={(e) => updateTeamNotes(team.teamNumber, e.target.value)}
+                              placeholder="Add notes..."
+                            />
+                          ) : (
+                            <p className="text-sm text-gray-600">{team.notes}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {teamData && (
+                          <div className="text-right text-sm">
+                            <div>Auto: {teamData.avgAutoPoints}</div>
+                            <div>Teleop: {teamData.avgTeleopPoints}</div>
+                            <div>Climb: {teamData.climbRate}%</div>
+                          </div>
+                        )}
+                        {isEditing && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeTeam(team.teamNumber)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card className="border-green-200 bg-green-50">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg text-green-800">Tier 3 - Solid Choices</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {teamStatsArray.slice(8, 13).map((team, index) => (
-                  <div key={team.teamNumber} className="flex items-center justify-between mb-2 p-2 bg-white rounded">
-                    <span className="font-semibold text-sm sm:text-base">Team {team.teamNumber}</span>
-                    <Badge variant="outline">
-                      {team.totalScore} pts
-                    </Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                );
+                })
+              )}
+            </div>
           </div>
 
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Specialist Teams</CardTitle>
-              <CardDescription>Teams with unique strengths for specific alliance needs</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-purple-700">Best Climbers</h4>
-                  {teamStatsArray
-                    .filter(team => parseInt(team.climbRate) > 75)
-                    .slice(0, 3)
-                    .map(team => (
-                      <div key={team.teamNumber} className="flex justify-between text-sm">
-                        <span>Team {team.teamNumber}</span>
-                        <span>{team.climbRate}% climb rate</span>
+
+        </CardContent>
+      </Card>
+
+      {/* Specialist Teams - Only show in view mode */}
+      {!isEditing && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Specialist Teams</CardTitle>
+            <CardDescription>Teams with unique strengths for specific alliance needs</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <h4 className="font-semibold text-purple-700">Best Climbers</h4>
+                {teamStatsArray
+                  .filter(team => parseInt(team.climbRate) > 75)
+                  .slice(0, 3)
+                  .map(team => (
+                    <div key={team.teamNumber} className="flex justify-between text-sm">
+                      <div>
+                        <div>Team {team.teamNumber}</div>
+                        <div className="text-xs text-gray-600">
+                          {teamNames?.get(team.teamNumber) || getTeamNameWithCustom(team.teamNumber)}
+                        </div>
                       </div>
-                    ))}
-                </div>
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-blue-700">Auto Specialists</h4>
-                  {teamStatsArray
-                    .sort((a, b) => parseFloat(b.avgAutoPoints) - parseFloat(a.avgAutoPoints))
-                    .slice(0, 3)
-                    .map(team => (
-                      <div key={team.teamNumber} className="flex justify-between text-sm">
-                        <span>Team {team.teamNumber}</span>
-                        <span>{team.avgAutoPoints} avg auto</span>
-                      </div>
-                    ))}
-                </div>
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-red-700">Defense Bots</h4>
-                  {teamStatsArray
-                    .sort((a, b) => parseFloat(b.avgDefense) - parseFloat(a.avgDefense))
-                    .slice(0, 3)
-                    .map(team => (
-                      <div key={team.teamNumber} className="flex justify-between text-sm">
-                        <span>Team {team.teamNumber}</span>
-                        <span>{team.avgDefense}/10 defense</span>
-                      </div>
-                    ))}
-                </div>
+                      <span>{team.climbRate}% climb rate</span>
+                    </div>
+                  ))}
               </div>
-            </CardContent>
-          </Card>
-        </div>
-      </CardContent>
-    </Card>
+              <div className="space-y-2">
+                <h4 className="font-semibold text-blue-700">Auto Specialists</h4>
+                {teamStatsArray
+                  .sort((a, b) => parseFloat(b.avgAutoPoints) - parseFloat(a.avgAutoPoints))
+                  .slice(0, 3)
+                  .map(team => (
+                    <div key={team.teamNumber} className="flex justify-between text-sm">
+                      <div>
+                        <div>Team {team.teamNumber}</div>
+                        <div className="text-xs text-gray-600">
+                          {teamNames?.get(team.teamNumber) || getTeamNameWithCustom(team.teamNumber)}
+                        </div>
+                      </div>
+                      <span>{team.avgAutoPoints} avg auto</span>
+                    </div>
+                  ))}
+              </div>
+              <div className="space-y-2">
+                <h4 className="font-semibold text-red-700">Defense Bots</h4>
+                {teamStatsArray
+                  .sort((a, b) => parseFloat(b.avgDefense) - parseFloat(a.avgDefense))
+                  .slice(0, 3)
+                  .map(team => (
+                    <div key={team.teamNumber} className="flex justify-between text-sm">
+                      <div>
+                        <div>Team {team.teamNumber}</div>
+                        <div className="text-xs text-gray-600">
+                          {teamNames?.get(team.teamNumber) || getTeamNameWithCustom(team.teamNumber)}
+                        </div>
+                      </div>
+                      <span>{team.avgDefense}/10 defense</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 };
 

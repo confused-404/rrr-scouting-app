@@ -10,6 +10,9 @@ import PerformanceAnalytics from "@/components/admin/PerformanceAnalytics";
 import AlliancePicklist from "@/components/admin/AlliancePicklist";
 import OverviewCards from "@/components/admin/OverviewCards";
 import CustomChartGenerator from "@/components/CustomChartGenerator";
+import TeamManagement from "@/components/admin/TeamManagement";
+import { useTeamNames } from "@/hooks/useTeamNames";
+import { getTeamNameWithCustom } from "@/lib/teamNames";
 
 interface ScoutingData {
   id: number;
@@ -37,6 +40,10 @@ const AdminDashboard = () => {
   const { toast } = useToast();
   const [scoutingData, setScoutingData] = useState<ScoutingData[]>([]);
   const [superScoutNotes, setSuperScoutNotes] = useState<{[key: string]: SuperScoutNote}>({});
+
+  // Get all unique team numbers for team name fetching
+  const allTeamNumbers = Array.from(new Set(scoutingData.map(entry => entry.teamNumber)));
+  const { teamNames } = useTeamNames(allTeamNumbers);
 
   useEffect(() => {
     const data = JSON.parse(localStorage.getItem("scoutingData") || "[]");
@@ -86,9 +93,10 @@ const AdminDashboard = () => {
     }));
 
     const csvContent = [
-      ["Team", "Matches", "Avg Auto", "Avg Teleop", "Defense", "Reliability", "Climb Rate", "Mobility Rate", "Strategic Notes", "Priority"].join(","),
+      ["Team", "Team Name", "Matches", "Avg Auto", "Avg Teleop", "Defense", "Reliability", "Climb Rate", "Mobility Rate", "Strategic Notes", "Priority"].join(","),
       ...teamStatsArray.map(team => [
         team.teamNumber,
+        `"${teamNames.get(team.teamNumber) || getTeamNameWithCustom(team.teamNumber)}"`,
         team.matches,
         team.avgAutoPoints,
         team.avgTeleopPoints,
@@ -120,11 +128,12 @@ const AdminDashboard = () => {
 
       <Tabs defaultValue="rankings" className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto">
+          <TabsList className="grid w-full grid-cols-5 lg:w-auto">
             <TabsTrigger value="rankings" className="text-xs sm:text-sm">Rankings</TabsTrigger>
             <TabsTrigger value="analytics" className="text-xs sm:text-sm">Analytics</TabsTrigger>
             <TabsTrigger value="picklist" className="text-xs sm:text-sm">Picklist</TabsTrigger>
-            <TabsTrigger value="custom" className="text-xs sm:text-sm">Custom Charts</TabsTrigger>
+            <TabsTrigger value="teams" className="text-xs sm:text-sm">Teams</TabsTrigger>
+            <TabsTrigger value="custom" className="text-xs sm:text-sm">Charts</TabsTrigger>
           </TabsList>
           <Button onClick={handleExportData} variant="outline" className="w-full sm:w-auto">
             <Download className="h-4 w-4 mr-2" />
@@ -133,19 +142,23 @@ const AdminDashboard = () => {
         </div>
 
         <TabsContent value="rankings" className="space-y-4">
-          <TeamRankings scoutingData={scoutingData} superScoutNotes={superScoutNotes} />
+          <TeamRankings scoutingData={scoutingData} superScoutNotes={superScoutNotes} teamNames={teamNames} />
         </TabsContent>
 
         <TabsContent value="analytics" className="space-y-4">
-          <PerformanceAnalytics scoutingData={scoutingData} />
+          <PerformanceAnalytics scoutingData={scoutingData} teamNames={teamNames} />
         </TabsContent>
 
         <TabsContent value="picklist" className="space-y-4">
-          <AlliancePicklist scoutingData={scoutingData} />
+          <AlliancePicklist scoutingData={scoutingData} teamNames={teamNames} />
+        </TabsContent>
+
+        <TabsContent value="teams" className="space-y-4">
+          <TeamManagement />
         </TabsContent>
 
         <TabsContent value="custom" className="space-y-4">
-          <CustomChartGenerator scoutingData={scoutingData} />
+          <CustomChartGenerator scoutingData={scoutingData} teamNames={teamNames} />
         </TabsContent>
       </Tabs>
     </div>
