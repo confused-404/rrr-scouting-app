@@ -28,7 +28,9 @@ function initDb() {
 // Scouting entries (collection)
 export async function addScoutingEntry(entry: any) {
   const db = initDb()
+  console.log('[Firebase] Adding scouting entry:', entry)
   await addDoc(collection(db, 'scoutingData'), { ...entry })
+  console.log('[Firebase] Successfully added scouting entry')
 }
 
 export async function getAllScoutingEntries(): Promise<any[]> {
@@ -48,7 +50,9 @@ export function subscribeScoutingEntries(cb: (rows: any[]) => void) {
 // Generic small document store under collection 'appData'
 export async function setAppDoc(id: string, value: any) {
   const db = initDb()
+  console.log(`[Firebase] Setting appData/${id}:`, value)
   await setDoc(doc(db, 'appData', id), { value, updatedAt: serverTimestamp() })
+  console.log(`[Firebase] Successfully set appData/${id}`)
 }
 
 export async function getAppDoc(id: string): Promise<any | null> {

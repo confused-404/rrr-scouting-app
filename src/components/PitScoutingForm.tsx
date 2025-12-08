@@ -59,11 +59,14 @@ const PitScoutingForm = () => {
       timestamp: new Date().toISOString()
     };
     try {
+      console.log('Saving pit scouting entry:', newEntry);
       const existingData = (await getAppDoc('pitScoutingData')) || []
+      console.log('Existing pit data:', existingData);
       const all = [...existingData, newEntry]
       await setAppDoc('pitScoutingData', all)
+      console.log('Successfully saved pit scouting data');
     } catch (error) {
-      console.warn('Failed to save pit scouting data to Firestore:', error)
+      console.error('Failed to save pit scouting data to Firestore:', error)
     }
     
     toast({

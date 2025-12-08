@@ -65,9 +65,11 @@ const ScoutingForm = () => {
       timestamp: new Date().toISOString()
     };
     try {
+      console.log('Saving scouting entry to Firestore:', newEntry);
       await addScoutingEntry(newEntry);
+      console.log('Successfully saved scouting entry');
     } catch (error) {
-      console.warn('Failed to save scouting entry to Firestore:', error);
+      console.error('Failed to save scouting entry to Firestore:', error);
     }
     
     toast({

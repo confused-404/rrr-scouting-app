@@ -58,11 +58,18 @@ const AdminDashboard = () => {
     const load = async () => {
       const data = await getAllScoutingEntries();
       const notes = (await getAppDoc('superScoutNotes')) || {};
+      console.log('AdminDashboard loaded from Firestore:', { dataCount: data?.length, notes });
       setScoutingData(data || []);
       setSuperScoutNotes(notes || {});
 
-      unsubEntries = subscribeScoutingEntries((rows) => setScoutingData(rows || []));
-      unsubNotes = subscribeAppDoc('superScoutNotes', (val) => setSuperScoutNotes(val || {}));
+      unsubEntries = subscribeScoutingEntries((rows) => {
+        console.log('AdminDashboard real-time update:', rows?.length);
+        setScoutingData(rows || []);
+      });
+      unsubNotes = subscribeAppDoc('superScoutNotes', (val) => {
+        console.log('AdminDashboard notes update:', val);
+        setSuperScoutNotes(val || {});
+      });
     }
 
     load();
