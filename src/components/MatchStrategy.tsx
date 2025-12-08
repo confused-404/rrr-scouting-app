@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Users, TrendingUp, Shield, Zap, Target, Plus, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getAllScoutingEntries, subscribeScoutingEntries, getAppDoc, subscribeAppDoc } from '@/lib/firebase'
 
 interface ScoutingData {
   id: number;
@@ -51,10 +52,25 @@ const MatchStrategy = () => {
   const [analysisResult, setAnalysisResult] = useState('');
 
   useEffect(() => {
-    const data = JSON.parse(localStorage.getItem("scoutingData") || "[]");
-    const notes = JSON.parse(localStorage.getItem("superScoutNotes") || "{}");
-    setScoutingData(data);
-    setSuperScoutNotes(notes);
+    let unsubEntries: any | null = null
+    let unsubNotes: any | null = null
+
+    const load = async () => {
+      const data = await getAllScoutingEntries();
+      const notes = (await getAppDoc('superScoutNotes')) || {};
+      setScoutingData(data || []);
+      setSuperScoutNotes(notes || {});
+
+      unsubEntries = subscribeScoutingEntries((rows) => setScoutingData(rows || []));
+      unsubNotes = subscribeAppDoc('superScoutNotes', (val) => setSuperScoutNotes(val || {}));
+    }
+
+    load();
+
+    return () => {
+      if (unsubEntries) unsubEntries();
+      if (unsubNotes) unsubNotes();
+    }
   }, []);
 
   const calculateTeamStats = (teamNumber: string): TeamStats | null => {

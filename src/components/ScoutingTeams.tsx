@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { getAppDoc, setAppDoc, subscribeAppDoc } from '@/lib/firebase'
 import { Users, Plus, X, Clock, Target } from "lucide-react";
 
 interface Scout {
@@ -38,23 +39,34 @@ const ScoutingTeams = () => {
   const [totalMatches, setTotalMatches] = useState(50);
 
   useEffect(() => {
-    const savedTeams = localStorage.getItem("scoutingTeams");
-    const savedAssignments = localStorage.getItem("scoutingAssignments");
-    if (savedTeams) {
-      setTeams(JSON.parse(savedTeams));
+    let unsubTeams: any | null = null
+    let unsubAssignments: any | null = null
+
+    const load = async () => {
+      const savedTeams = (await getAppDoc('scoutingTeams')) || []
+      const savedAssignments = (await getAppDoc('scoutingAssignments')) || []
+      setTeams(savedTeams)
+      setAssignments(savedAssignments)
+
+      unsubTeams = subscribeAppDoc('scoutingTeams', (val) => setTeams(val || []))
+      unsubAssignments = subscribeAppDoc('scoutingAssignments', (val) => setAssignments(val || []))
     }
-    if (savedAssignments) {
-      setAssignments(JSON.parse(savedAssignments));
+
+    load()
+
+    return () => {
+      if (unsubTeams) unsubTeams()
+      if (unsubAssignments) unsubAssignments()
     }
   }, []);
 
   const saveTeams = (updatedTeams: ScoutingTeam[]) => {
-    localStorage.setItem("scoutingTeams", JSON.stringify(updatedTeams));
+    setAppDoc('scoutingTeams', updatedTeams).catch(e => console.warn('Failed saving teams:', e))
     setTeams(updatedTeams);
   };
 
   const saveAssignments = (updatedAssignments: GeneratedAssignment[]) => {
-    localStorage.setItem("scoutingAssignments", JSON.stringify(updatedAssignments));
+    setAppDoc('scoutingAssignments', updatedAssignments).catch(e => console.warn('Failed saving assignments:', e))
     setAssignments(updatedAssignments);
   };
 

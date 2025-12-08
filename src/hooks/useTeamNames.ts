@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getTeamNameWithCustom, fetchTeamNameFromTBA, fetchMultipleTeamNames } from '@/lib/teamNames';
+import { getTeamNameWithCustom, fetchTeamNameFromTBA, fetchMultipleTeamNames, getCustomTeamNames } from '@/lib/teamNames';
 
 export const useTeamName = (teamNumber: string) => {
   const [teamName, setTeamName] = useState(() => getTeamNameWithCustom(teamNumber));
@@ -43,6 +43,16 @@ export const useTeamNames = (teamNumbers: string[]) => {
       setLoading(true);
       try {
         const names = await fetchMultipleTeamNames(teamNumbers);
+        // Merge any custom team names from Firestore
+        try {
+          const customs = await getCustomTeamNames();
+          customs && Object.keys(customs).forEach(k => {
+            if (!names.has(k)) names.set(k, customs[k]);
+            else names.set(k, customs[k]);
+          })
+        } catch (err) {
+          // ignore
+        }
         setTeamNames(names);
       } catch (error) {
         console.warn('Failed to load team names:', error);

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { getAppDoc, setAppDoc } from '@/lib/firebase'
 import { Save, RotateCcw, Star } from "lucide-react";
 
 interface SuperScoutData {
@@ -23,7 +24,7 @@ const SuperScoutForm = () => {
     picklistPriority: "medium"
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.teamNumber || !formData.strategicNotes) {
@@ -35,15 +36,19 @@ const SuperScoutForm = () => {
       return;
     }
     
-    // Save to localStorage
-    const existingNotes = JSON.parse(localStorage.getItem("superScoutNotes") || "{}");
-    existingNotes[formData.teamNumber] = {
-      strategicNotes: formData.strategicNotes,
-      picklistPriority: formData.picklistPriority,
-      timestamp: new Date().toISOString(),
-      id: Date.now()
-    };
-    localStorage.setItem("superScoutNotes", JSON.stringify(existingNotes));
+    // Save to Firestore
+    try {
+      const existingNotes = (await getAppDoc('superScoutNotes')) || {}
+      existingNotes[formData.teamNumber] = {
+        strategicNotes: formData.strategicNotes,
+        picklistPriority: formData.picklistPriority,
+        timestamp: new Date().toISOString(),
+        id: Date.now()
+      }
+      await setAppDoc('superScoutNotes', existingNotes)
+    } catch (error) {
+      console.warn('Failed to save strategic notes to Firestore:', error)
+    }
     
     toast({
       title: "Strategic Notes Saved!",

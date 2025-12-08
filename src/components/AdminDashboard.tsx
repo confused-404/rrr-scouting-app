@@ -13,6 +13,12 @@ import CustomChartGenerator from "@/components/CustomChartGenerator";
 import TeamManagement from "@/components/admin/TeamManagement";
 import { useTeamNames } from "@/hooks/useTeamNames";
 import { getTeamNameWithCustom } from "@/lib/teamNames";
+import {
+  getAllScoutingEntries,
+  subscribeScoutingEntries,
+  getAppDoc,
+  subscribeAppDoc,
+} from '@/lib/firebase'
 
 interface ScoutingData {
   id: number;
@@ -46,10 +52,25 @@ const AdminDashboard = () => {
   const { teamNames } = useTeamNames(allTeamNumbers);
 
   useEffect(() => {
-    const data = JSON.parse(localStorage.getItem("scoutingData") || "[]");
-    const notes = JSON.parse(localStorage.getItem("superScoutNotes") || "{}");
-    setScoutingData(data);
-    setSuperScoutNotes(notes);
+    let unsubEntries: any | null = null
+    let unsubNotes: any | null = null
+
+    const load = async () => {
+      const data = await getAllScoutingEntries();
+      const notes = (await getAppDoc('superScoutNotes')) || {};
+      setScoutingData(data || []);
+      setSuperScoutNotes(notes || {});
+
+      unsubEntries = subscribeScoutingEntries((rows) => setScoutingData(rows || []));
+      unsubNotes = subscribeAppDoc('superScoutNotes', (val) => setSuperScoutNotes(val || {}));
+    }
+
+    load();
+
+    return () => {
+      if (unsubEntries) unsubEntries();
+      if (unsubNotes) unsubNotes();
+    }
   }, []);
 
   const handleExportData = () => {

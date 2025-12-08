@@ -1,4 +1,5 @@
 import { tbaApi, type TBATeam } from './tbaApi';
+import { getAppDoc, setAppDoc } from '@/lib/firebase'
 
 // Fallback team names for when API is unavailable
 const fallbackTeamNames: { [key: string]: string } = {
@@ -33,28 +34,25 @@ export const getTeamName = (teamNumber: string): string => {
   return fallbackTeamNames[teamNumber] || "Unknown Team";
 };
 
-export const addTeamName = (teamNumber: string, teamName: string): void => {
-  const customNames = JSON.parse(localStorage.getItem("customTeamNames") || "{}");
-  customNames[teamNumber] = teamName;
-  localStorage.setItem("customTeamNames", JSON.stringify(customNames));
+export const addTeamName = async (teamNumber: string, teamName: string): Promise<void> => {
+  const customNames = (await getAppDoc('customTeamNames')) || {}
+  customNames[teamNumber] = teamName
+  await setAppDoc('customTeamNames', customNames)
 };
 
 export const getTeamNameWithCustom = (teamNumber: string): string => {
-  // Check custom names first
-  const customNames = JSON.parse(localStorage.getItem("customTeamNames") || "{}");
-  if (customNames[teamNumber]) {
-    return customNames[teamNumber];
-  }
-
-  // Check TBA cache
+  // Return fallback or any cached TBA data synchronously. Custom names are loaded asynchronously elsewhere.
   const cached = teamCache.get(teamNumber);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
     return cached.name;
   }
-
-  // Return fallback while we fetch from TBA
   return fallbackTeamNames[teamNumber] || `Team ${teamNumber}`;
 };
+
+export const getCustomTeamNames = async (): Promise<{[key:string]: string}> => {
+  const customNames = (await getAppDoc('customTeamNames')) || {}
+  return customNames
+}
 
 export const fetchTeamNameFromTBA = async (teamNumber: string): Promise<string> => {
   try {

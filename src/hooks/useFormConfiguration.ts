@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import type { FormField } from '@/components/FormConfiguration';
+import { getAppDoc, subscribeAppDoc } from '@/lib/firebase'
 
 interface FormConfiguration {
   matchScouting: FormField[];
@@ -35,25 +36,16 @@ export const useFormConfiguration = () => {
   const [config, setConfig] = useState<FormConfiguration>(defaultConfig);
 
   useEffect(() => {
-    const loadConfig = () => {
-      const savedConfig = localStorage.getItem('formConfiguration');
-      if (savedConfig) {
-        setConfig(JSON.parse(savedConfig));
-      }
-    };
+    let unsub: any | null = null
+    const loadConfig = async () => {
+      const savedConfig = await getAppDoc('formConfiguration')
+      if (savedConfig) setConfig(savedConfig)
+    }
 
-    loadConfig();
+    loadConfig()
+    unsub = subscribeAppDoc('formConfiguration', (val) => { if (val) setConfig(val) })
 
-    // Listen for configuration updates
-    const handleConfigUpdate = () => {
-      loadConfig();
-    };
-
-    window.addEventListener('formConfigurationUpdated', handleConfigUpdate);
-
-    return () => {
-      window.removeEventListener('formConfigurationUpdated', handleConfigUpdate);
-    };
+    return () => { if (unsub) unsub() }
   }, []);
 
   return config;

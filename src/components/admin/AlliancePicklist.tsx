@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { getAppDoc, setAppDoc, subscribeAppDoc } from '@/lib/firebase'
 import { Plus, X, Save, RotateCcw, Edit, ArrowUp, ArrowDown } from "lucide-react";
 
 interface ScoutingData {
@@ -83,7 +84,7 @@ const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) =>
   })).sort((a, b) => b.totalScore - a.totalScore);
 
   const savePicklist = () => {
-    localStorage.setItem("customPicklist", JSON.stringify(customPicklist));
+    setAppDoc('customPicklist', customPicklist).catch(e => console.warn('Failed saving picklist:', e))
     toast({
       title: "Picklist Saved",
       description: "Your custom picklist has been saved.",
@@ -168,10 +169,12 @@ const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) =>
 
   // Initialize customPicklist with auto-generated data if empty
   useEffect(() => {
-    const saved = localStorage.getItem("customPicklist");
-    if (saved) {
-      setCustomPicklist(JSON.parse(saved));
-    } else if (teamStatsArray.length > 0) {
+    let unsub: any | null = null
+    const load = async () => {
+      const saved = await getAppDoc('customPicklist')
+      if (saved) {
+        setCustomPicklist(saved)
+      } else if (teamStatsArray.length > 0) {
       const autoPicklist: PicklistTeam[] = teamStatsArray.slice(0, 15).map((team, index) => ({
         teamNumber: team.teamNumber,
         tier: Math.floor(index / 5) + 1,
@@ -180,6 +183,14 @@ const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) =>
       }));
       setCustomPicklist(autoPicklist);
     }
+      unsub = subscribeAppDoc('customPicklist', (val) => {
+        if (val) setCustomPicklist(val)
+      })
+    }
+
+    load()
+
+    return () => { if (unsub) unsub() }
   }, [scoutingData.length]); // Use scoutingData.length as dependency instead
 
   const displayPicklist = customPicklist;

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { getAppDoc, setAppDoc } from '@/lib/firebase'
 import { Save, RotateCcw, Wrench } from "lucide-react";
 
 interface PitScoutData {
@@ -39,7 +40,7 @@ const PitScoutingForm = () => {
     overallRating: 5
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.teamNumber) {
@@ -51,16 +52,19 @@ const PitScoutingForm = () => {
       return;
     }
     
-    // Save to localStorage
-    const existingData = JSON.parse(localStorage.getItem("pitScoutingData") || "[]");
+    // Save to Firestore (stored as app doc `pitScoutingData` array)
     const newEntry = {
       ...formData,
       id: Date.now(),
       timestamp: new Date().toISOString()
     };
-    
-    existingData.push(newEntry);
-    localStorage.setItem("pitScoutingData", JSON.stringify(existingData));
+    try {
+      const existingData = (await getAppDoc('pitScoutingData')) || []
+      const all = [...existingData, newEntry]
+      await setAppDoc('pitScoutingData', all)
+    } catch (error) {
+      console.warn('Failed to save pit scouting data to Firestore:', error)
+    }
     
     toast({
       title: "Pit Scouting Data Saved!",

@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Save, RotateCcw, Plus, Minus, Database } from "lucide-react";
+import { addScoutingEntry, addMultipleScoutingEntries, setAppDoc } from '@/lib/firebase'
 import FieldPathDrawer from "./FieldPathDrawer";
 
 interface Point {
@@ -45,7 +46,7 @@ const ScoutingForm = () => {
     autoPath: []
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.teamNumber || !formData.matchNumber) {
@@ -57,16 +58,17 @@ const ScoutingForm = () => {
       return;
     }
     
-    // Save to localStorage
-    const existingData = JSON.parse(localStorage.getItem("scoutingData") || "[]");
+    // Save to Firestore
     const newEntry = {
       ...formData,
       id: Date.now(),
       timestamp: new Date().toISOString()
     };
-    
-    existingData.push(newEntry);
-    localStorage.setItem("scoutingData", JSON.stringify(existingData));
+    try {
+      await addScoutingEntry(newEntry);
+    } catch (error) {
+      console.warn('Failed to save scouting entry to Firestore:', error);
+    }
     
     toast({
       title: "Data Saved!",
@@ -105,7 +107,7 @@ const ScoutingForm = () => {
     });
   };
 
-  const generateDummyData = () => {
+  const generateDummyData = async () => {
     const teams = ['1114', '254', '118', '148', '1678', '2056', '973', '1323', '5940', '6328', '7492', '8033', '9999', '1234', '5678'];
     const alliances = ['red', 'blue'];
     const climbOptions = ['none', 'attempted', 'success'];
@@ -182,10 +184,14 @@ const ScoutingForm = () => {
       }
     };
     
-    const existingData = JSON.parse(localStorage.getItem("scoutingData") || "[]");
-    const allData = [...existingData, ...dummyEntries];
-    localStorage.setItem("scoutingData", JSON.stringify(allData));
-    localStorage.setItem("superScoutNotes", JSON.stringify(strategicNotes));
+    (async () => {
+      try {
+        await addMultipleScoutingEntries(dummyEntries);
+        await setAppDoc('superScoutNotes', strategicNotes);
+      } catch (error) {
+        console.warn('Failed to add demo data to Firestore:', error);
+      }
+    })()
     
     toast({
       title: "Dummy Data Generated!",

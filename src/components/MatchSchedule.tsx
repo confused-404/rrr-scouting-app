@@ -12,6 +12,7 @@ import { getTeamNameWithCustom } from "@/lib/teamNames";
 import { ProcessedMatch } from "@/lib/tbaApi";
 import { useTeamNames } from "@/hooks/useTeamNames";
 import EventImport from "./EventImport";
+import { getAppDoc, setAppDoc, getAllScoutingEntries, subscribeScoutingEntries, subscribeAppDoc } from '@/lib/firebase'
 
 interface MatchData {
   id: string;
@@ -57,16 +58,28 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
   const { teamNames } = useTeamNames(allTeamNumbers);
 
   useEffect(() => {
-    const savedSchedule = JSON.parse(localStorage.getItem("matchSchedule") || "[]");
-    const savedScoutingData = JSON.parse(localStorage.getItem("scoutingData") || "[]");
-    const savedAssignments = JSON.parse(localStorage.getItem("scoutingAssignments") || "[]");
-    setSchedule(savedSchedule);
-    setScoutingData(savedScoutingData);
-    setScoutingAssignments(savedAssignments);
+    let unsubScouting: any | null = null
+    let unsubAssignments: any | null = null
+
+    const load = async () => {
+      const savedSchedule = (await getAppDoc('matchSchedule')) || []
+      const savedScoutingData = await getAllScoutingEntries() || []
+      const savedAssignments = (await getAppDoc('scoutingAssignments')) || []
+      setSchedule(savedSchedule)
+      setScoutingData(savedScoutingData)
+      setScoutingAssignments(savedAssignments)
+
+      unsubScouting = subscribeScoutingEntries(rows => setScoutingData(rows || []))
+      unsubAssignments = subscribeAppDoc('scoutingAssignments', val => setScoutingAssignments(val || []))
+    }
+
+    load()
+
+    return () => { if (unsubScouting) unsubScouting(); if (unsubAssignments) unsubAssignments(); }
   }, []);
 
   const saveSchedule = (updatedSchedule: ScheduledMatch[]) => {
-    localStorage.setItem("matchSchedule", JSON.stringify(updatedSchedule));
+    setAppDoc('matchSchedule', updatedSchedule).catch(e => console.warn('Failed to save match schedule:', e))
     setSchedule(updatedSchedule);
   };
 

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { getAppDoc, setAppDoc } from '@/lib/firebase'
 import { Settings, Plus, Trash2, Save } from "lucide-react";
 
 export interface FormField {
@@ -49,16 +50,15 @@ const FormConfiguration = () => {
   });
 
   useEffect(() => {
-    const savedConfig = localStorage.getItem('formConfiguration');
-    if (savedConfig) {
-      setConfig(JSON.parse(savedConfig));
+    const load = async () => {
+      const savedConfig = await getAppDoc('formConfiguration')
+      if (savedConfig) setConfig(savedConfig)
     }
+    load()
   }, []);
 
   const saveConfiguration = () => {
-    localStorage.setItem('formConfiguration', JSON.stringify(config));
-    // Trigger a storage event for other components to listen to
-    window.dispatchEvent(new Event('formConfigurationUpdated'));
+    setAppDoc('formConfiguration', config).catch(e => console.warn('Failed to save form config:', e))
     toast({
       title: "Configuration Saved",
       description: "Form configuration has been updated successfully.",
