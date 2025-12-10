@@ -253,6 +253,16 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
     saveSchedule(updatedSchedule);
   };
 
+  const clearSchedule = () => {
+    if (confirm('Are you sure you want to clear the entire match schedule? This cannot be undone.')) {
+      saveSchedule([]);
+      toast({
+        title: "Schedule Cleared",
+        description: "All matches have been removed from the schedule.",
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -397,6 +407,27 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
                       Import CSV Schedule
                     </Button>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Clear Schedule - Admin Only */}
+            {userRole === 'admin' && schedule.length > 0 && (
+              <Card className="border-red-200 bg-red-50">
+                <CardHeader>
+                  <CardTitle className="text-lg text-red-700">Danger Zone</CardTitle>
+                  <CardDescription>
+                    Remove all matches from the schedule at once
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button 
+                    onClick={clearSchedule}
+                    variant="destructive"
+                    className="w-full"
+                  >
+                    Clear Entire Schedule
+                  </Button>
                 </CardContent>
               </Card>
             )}
