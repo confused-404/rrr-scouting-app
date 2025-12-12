@@ -32,6 +32,20 @@ const LoginForm = ({ onLogin }: LoginFormProps) => {
       return;
     }
 
+    // If scouter, require Firstname and Last initial (e.g. "Alex D." or "Alex D")
+    if (loginType === 'scouter') {
+      const trimmed = username.trim();
+      const scouterRegex = /^[A-Za-z]+\s+[A-Za-z]\.?$/;
+      if (!scouterRegex.test(trimmed)) {
+        toast({
+          title: "Invalid Scouter Name",
+          description: "Please enter your first name and last initial (e.g. 'Alex D.' ).",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
     if (loginType === 'admin') {
       if (adminPassword !== ADMIN_PASSWORD) {
         toast({
