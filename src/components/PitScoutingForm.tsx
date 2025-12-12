@@ -1,5 +1,7 @@
 
 import { useState } from "react";
+import { useFormConfiguration } from '@/hooks/useFormConfiguration'
+import DynamicFormRenderer from './DynamicFormRenderer'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +28,10 @@ interface PitScoutData {
 
 const PitScoutingForm = () => {
   const { toast } = useToast();
-  const [formData, setFormData] = useState<PitScoutData>({
+  const config = useFormConfiguration();
+  const fields = config?.pitScouting || [];
+
+  const [values, setValues] = useState<Record<string, any>>({
     teamNumber: "",
     robotWeight: "",
     drivetrainType: "",
@@ -43,7 +48,7 @@ const PitScoutingForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.teamNumber) {
+    if (!values.teamNumber) {
       toast({
         title: "Missing Information",
         description: "Please fill in team number.",
@@ -54,7 +59,7 @@ const PitScoutingForm = () => {
     
     // Save to Firestore (stored as app doc `pitScoutingData` array)
     const newEntry = {
-      ...formData,
+      ...values,
       id: Date.now(),
       timestamp: new Date().toISOString()
     };
@@ -71,11 +76,11 @@ const PitScoutingForm = () => {
     
     toast({
       title: "Pit Scouting Data Saved!",
-      description: `Pit data for Team ${formData.teamNumber} has been recorded.`,
+      description: `Pit data for Team ${newEntry.teamNumber} has been recorded.`,
     });
     
     // Reset form
-    setFormData({
+    setValues({
       teamNumber: "",
       robotWeight: "",
       drivetrainType: "",
@@ -91,7 +96,7 @@ const PitScoutingForm = () => {
   };
 
   const handleReset = () => {
-    setFormData({
+    setValues({
       teamNumber: "",
       robotWeight: "",
       drivetrainType: "",
@@ -121,141 +126,11 @@ const PitScoutingForm = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="teamNumber">Team Number</Label>
-                <Input
-                  id="teamNumber"
-                  type="number"
-                  placeholder="1234"
-                  value={formData.teamNumber}
-                  onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="robotWeight">Robot Weight (lbs)</Label>
-                <Input
-                  id="robotWeight"
-                  placeholder="120"
-                  value={formData.robotWeight}
-                  onChange={(e) => setFormData({ ...formData, robotWeight: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="drivetrainType">Drivetrain Type</Label>
-                <select
-                  id="drivetrainType"
-                  value={formData.drivetrainType}
-                  onChange={(e) => setFormData({ ...formData, drivetrainType: e.target.value })}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  <option value="">Select drivetrain</option>
-                  <option value="tank">Tank Drive</option>
-                  <option value="mecanum">Mecanum Drive</option>
-                  <option value="swerve">Swerve Drive</option>
-                  <option value="west_coast">West Coast Drive</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="robotHeight">Robot Height (inches)</Label>
-                <Input
-                  id="robotHeight"
-                  placeholder="30"
-                  value={formData.robotHeight}
-                  onChange={(e) => setFormData({ ...formData, robotHeight: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="programmingLanguage">Programming Language</Label>
-                <select
-                  id="programmingLanguage"
-                  value={formData.programmingLanguage}
-                  onChange={(e) => setFormData({ ...formData, programmingLanguage: e.target.value })}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  <option value="">Select language</option>
-                  <option value="java">Java</option>
-                  <option value="cpp">C++</option>
-                  <option value="python">Python</option>
-                  <option value="labview">LabVIEW</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="overallRating">Overall Rating (1-10)</Label>
-                <Input
-                  id="overallRating"
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={formData.overallRating}
-                  onChange={(e) => setFormData({ ...formData, overallRating: parseInt(e.target.value) || 5 })}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="autoCapabilities">Autonomous Capabilities</Label>
-                <Textarea
-                  id="autoCapabilities"
-                  placeholder="Describe what the robot can do during autonomous period..."
-                  value={formData.autoCapabilities}
-                  onChange={(e) => setFormData({ ...formData, autoCapabilities: e.target.value })}
-                  rows={3}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="teleopCapabilities">Teleoperated Capabilities</Label>
-                <Textarea
-                  id="teleopCapabilities"
-                  placeholder="Describe what the robot can do during teleoperated period..."
-                  value={formData.teleopCapabilities}
-                  onChange={(e) => setFormData({ ...formData, teleopCapabilities: e.target.value })}
-                  rows={3}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="climbingMechanism">Climbing Mechanism</Label>
-                <Textarea
-                  id="climbingMechanism"
-                  placeholder="Describe the climbing mechanism and capabilities..."
-                  value={formData.climbingMechanism}
-                  onChange={(e) => setFormData({ ...formData, climbingMechanism: e.target.value })}
-                  rows={2}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="specialFeatures">Special Features</Label>
-                <Textarea
-                  id="specialFeatures"
-                  placeholder="Any unique or special features of the robot..."
-                  value={formData.specialFeatures}
-                  onChange={(e) => setFormData({ ...formData, specialFeatures: e.target.value })}
-                  rows={2}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="concerns">Concerns/Weaknesses</Label>
-                <Textarea
-                  id="concerns"
-                  placeholder="Any concerns, weaknesses, or potential issues observed..."
-                  value={formData.concerns}
-                  onChange={(e) => setFormData({ ...formData, concerns: e.target.value })}
-                  rows={2}
-                />
-              </div>
-            </div>
+            <DynamicFormRenderer
+              fields={fields}
+              values={values}
+              onChange={(fieldId, value) => setValues(prev => ({ ...prev, [fieldId]: value }))}
+            />
 
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <Button type="submit" className="flex-1 bg-orange-600 hover:bg-orange-700 w-full">

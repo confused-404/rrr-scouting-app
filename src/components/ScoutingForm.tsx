@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Save, RotateCcw, Plus, Minus, Database } from "lucide-react";
 import { addScoutingEntry, addMultipleScoutingEntries, setAppDoc } from '@/lib/firebase'
+import { useFormConfiguration } from '@/hooks/useFormConfiguration'
+import DynamicFormRenderer from './DynamicFormRenderer'
 // FieldPathDrawer disabled due to issues with drawing; placeholder shown instead
 // import FieldPathDrawer from "./FieldPathDrawer";
 
@@ -33,7 +35,10 @@ interface ScoutingData {
 
 const ScoutingForm = () => {
   const { toast } = useToast();
-  const [formData, setFormData] = useState<ScoutingData>({
+  const config = useFormConfiguration();
+  const fields = config?.matchScouting || [];
+
+  const [values, setValues] = useState<Record<string, any>>({
     teamNumber: "",
     matchNumber: "",
     alliance: "red",
@@ -50,7 +55,7 @@ const ScoutingForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.teamNumber || !formData.matchNumber) {
+    if (!values.teamNumber || !values.matchNumber) {
       toast({
         title: "Missing Information",
         description: "Please fill in team number and match number.",
@@ -59,27 +64,59 @@ const ScoutingForm = () => {
       return;
     }
     
-    // Save to Firestore
-    const newEntry = {
-      ...formData,
-      id: Date.now(),
-      timestamp: new Date().toISOString()
+    // Build normalized payload so schema changes in form fields don't break saved docs.
+    const teamNumber = values.teamNumber ?? values.team ?? values['team_number'] ?? '';
+    const matchNumber = values.matchNumber ?? values.match ?? values['match_number'] ?? '';
+
+    if (!teamNumber || !matchNumber) {
+      // double-check in case form fields are named differently
+      toast({
+        title: "Missing Information",
+        description: "Team number or match number could not be found in the form values.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const fieldsOnly: Record<string, any> = { ...values };
+    // remove metadata we keep at top-level
+    delete fieldsOnly.teamNumber;
+    delete fieldsOnly.matchNumber;
+    delete fieldsOnly.team;
+    delete fieldsOnly.match;
+    delete fieldsOnly.team_number;
+    delete fieldsOnly.match_number;
+
+    const payload = {
+      id: Date.now().toString(),
+      teamNumber: String(teamNumber),
+      matchNumber: String(matchNumber),
+      fields: fieldsOnly,
+      formConfigSnapshot: config?.matchScouting ?? null,
+      createdAt: new Date().toISOString(),
     };
+
     try {
-      console.log('Saving scouting entry to Firestore:', newEntry);
-      await addScoutingEntry(newEntry);
+      console.log('Saving normalized scouting entry to Firestore:', payload);
+      await addScoutingEntry(payload);
       console.log('Successfully saved scouting entry');
     } catch (error) {
       console.error('Failed to save scouting entry to Firestore:', error);
+      toast({
+        title: 'Save Failed',
+        description: 'Unable to save scouting entry. See console for details.',
+        variant: 'destructive'
+      });
+      return;
     }
-    
+
     toast({
       title: "Data Saved!",
-      description: `Scouting data for Team ${formData.teamNumber} in Match ${formData.matchNumber} has been recorded.`,
+      description: `Scouting data for Team ${payload.teamNumber} in Match ${payload.matchNumber} has been recorded.`,
     });
     
     // Reset form
-    setFormData({
+    setValues({
       teamNumber: "",
       matchNumber: "",
       alliance: "red",
@@ -95,7 +132,7 @@ const ScoutingForm = () => {
   };
 
   const handleReset = () => {
-    setFormData({
+    setValues({
       teamNumber: "",
       matchNumber: "",
       alliance: "red",
@@ -111,14 +148,14 @@ const ScoutingForm = () => {
   };
 
   const incrementValue = (field: keyof ScoutingData, max?: number) => {
-    setFormData(prev => ({
+    setValues(prev => ({
       ...prev,
       [field]: Math.min((prev[field] as number) + 1, max || 100)
     }));
   };
 
   const decrementValue = (field: keyof ScoutingData, min: number = 0) => {
-    setFormData(prev => ({
+    setValues(prev => ({
       ...prev,
       [field]: Math.max((prev[field] as number) - 1, min)
     }));
@@ -140,274 +177,11 @@ const ScoutingForm = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="teamNumber">Team Number</Label>
-                <Input
-                  id="teamNumber"
-                  type="number"
-                  placeholder="1234"
-                  value={formData.teamNumber}
-                  onChange={(e) => setFormData({ ...formData, teamNumber: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="matchNumber">Match Number</Label>
-                <Input
-                  id="matchNumber"
-                  type="number"
-                  placeholder="15"
-                  value={formData.matchNumber}
-                  onChange={(e) => setFormData({ ...formData, matchNumber: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="alliance">Alliance Color</Label>
-                <select
-                  id="alliance"
-                  value={formData.alliance}
-                  onChange={(e) => setFormData({ ...formData, alliance: e.target.value })}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  <option value="red">Red Alliance</option>
-                  <option value="blue">Blue Alliance</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-blue-600">Autonomous Period</h3>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="autoGamePieces">Game Pieces Scored</Label>
-                    <div className="flex items-center space-x-1 sm:space-x-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => decrementValue('autoGamePieces')}
-                        disabled={formData.autoGamePieces <= 0}
-                        className="h-8 w-8 sm:h-10 sm:w-10 p-0 flex-shrink-0"
-                      >
-                        <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
-                      </Button>
-                      <Input
-                        id="autoGamePieces"
-                        type="number"
-                        min="0"
-                        max="10"
-                        value={formData.autoGamePieces}
-                        onChange={(e) => setFormData({ ...formData, autoGamePieces: parseInt(e.target.value) || 0 })}
-                        className="text-center flex-1 min-w-0"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => incrementValue('autoGamePieces', 10)}
-                        disabled={formData.autoGamePieces >= 10}
-                        className="h-8 w-8 sm:h-10 sm:w-10 p-0 flex-shrink-0"
-                      >
-                        <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="autoMobility">Mobility</Label>
-                    <select
-                      id="autoMobility"
-                      value={formData.autoMobility}
-                      onChange={(e) => setFormData({ ...formData, autoMobility: e.target.value })}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    >
-                      <option value="yes">Yes - Left Community</option>
-                      <option value="no">No - Stayed in Community</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-green-600">Teleoperated Period</h3>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="teleopGamePieces">Game Pieces Scored</Label>
-                    <div className="flex items-center space-x-1 sm:space-x-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => decrementValue('teleopGamePieces')}
-                        disabled={formData.teleopGamePieces <= 0}
-                        className="h-8 w-8 sm:h-10 sm:w-10 p-0 flex-shrink-0"
-                      >
-                        <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
-                      </Button>
-                      <Input
-                        id="teleopGamePieces"
-                        type="number"
-                        min="0"
-                        max="50"
-                        value={formData.teleopGamePieces}
-                        onChange={(e) => setFormData({ ...formData, teleopGamePieces: parseInt(e.target.value) || 0 })}
-                        className="text-center flex-1 min-w-0"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => incrementValue('teleopGamePieces', 50)}
-                        disabled={formData.teleopGamePieces >= 50}
-                        className="h-8 w-8 sm:h-10 sm:w-10 p-0 flex-shrink-0"
-                      >
-                        <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="climbing">Climbing Attempt</Label>
-                    <select
-                      id="climbing"
-                      value={formData.climbing}
-                      onChange={(e) => setFormData({ ...formData, climbing: e.target.value })}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    >
-                      <option value="none">No Attempt</option>
-                      <option value="attempted">Attempted - Failed</option>
-                      <option value="success">Successful Climb</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-purple-600">Performance Ratings</h3>
-                  
-                  <div className="space-y-3">
-                    <Label htmlFor="defense">Defense Rating: {formData.defense}/10</Label>
-                    <div className="px-2">
-                      <input
-                        type="range"
-                        id="defense"
-                        min="1"
-                        max="10"
-                        value={formData.defense}
-                        onChange={(e) => setFormData({ ...formData, defense: parseInt(e.target.value) })}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                      />
-                      <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>Poor</span>
-                        <span>Average</span>
-                        <span>Excellent</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-1 sm:space-x-2 justify-center">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => decrementValue('defense', 1)}
-                        disabled={formData.defense <= 1}
-                        className="h-7 w-7 sm:h-8 sm:w-8 p-0 flex-shrink-0"
-                      >
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={formData.defense}
-                        onChange={(e) => setFormData({ ...formData, defense: parseInt(e.target.value) || 1 })}
-                        className="text-center w-12 sm:w-16 h-7 sm:h-8 text-sm"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => incrementValue('defense', 10)}
-                        disabled={formData.defense >= 10}
-                        className="h-7 w-7 sm:h-8 sm:w-8 p-0 flex-shrink-0"
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="reliability">Reliability Rating: {formData.reliability}/10</Label>
-                    <div className="px-2">
-                      <input
-                        type="range"
-                        id="reliability"
-                        min="1"
-                        max="10"
-                        value={formData.reliability}
-                        onChange={(e) => setFormData({ ...formData, reliability: parseInt(e.target.value) })}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                      />
-                      <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>Unreliable</span>
-                        <span>Consistent</span>
-                        <span>Very Reliable</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-1 sm:space-x-2 justify-center">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => decrementValue('reliability', 1)}
-                        disabled={formData.reliability <= 1}
-                        className="h-7 w-7 sm:h-8 sm:w-8 p-0 flex-shrink-0"
-                      >
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={formData.reliability}
-                        onChange={(e) => setFormData({ ...formData, reliability: parseInt(e.target.value) || 1 })}
-                        className="text-center w-12 sm:w-16 h-7 sm:h-8 text-sm"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => incrementValue('reliability', 10)}
-                        disabled={formData.reliability >= 10}
-                        className="h-7 w-7 sm:h-8 sm:w-8 p-0 flex-shrink-0"
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="comments">Additional Comments</Label>
-                  <Textarea
-                    id="comments"
-                    placeholder="Any additional observations about the robot's performance..."
-                    value={formData.comments}
-                    onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="p-4 text-sm text-muted-foreground">
-                  Autonomous path drawing is currently disabled.
-                </div>
-              </div>
-            </div>
+            <DynamicFormRenderer
+              fields={fields}
+              values={values}
+              onChange={(fieldId, value) => setValues(prev => ({ ...prev, [fieldId]: value }))}
+            />
 
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 w-full">

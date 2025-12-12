@@ -48,6 +48,8 @@ const FormConfiguration = () => {
         options: ['Rookie', 'Sophomore', 'Veteran', 'Elite'], required: false }
     ]
   });
+  // Local edited text for select options to avoid parsing while the user types commas
+  const [optionInputs, setOptionInputs] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const load = async () => {
@@ -56,6 +58,17 @@ const FormConfiguration = () => {
     }
     load()
   }, []);
+
+  // Keep a simple mapping of fieldId -> raw option string for editing comfort
+  useEffect(() => {
+    const map: Record<string, string> = {}
+    Object.values({ ...config.matchScouting, ...config.pitScouting }).forEach((f: any) => {
+      if (f?.type === 'select') {
+        map[f.id] = Array.isArray(f.options) ? f.options.join(', ') : (f.options || '').toString()
+      }
+    })
+    setOptionInputs(map)
+  }, [config.matchScouting, config.pitScouting])
 
   const saveConfiguration = () => {
     setAppDoc('formConfiguration', config).catch(e => console.warn('Failed to save form config:', e))
@@ -81,6 +94,24 @@ const FormConfiguration = () => {
       ]
     }));
   };
+
+  const updateFieldId = (oldId: string, newId: string) => {
+    if (!newId || oldId === newId) return
+    setConfig(prev => ({
+      ...prev,
+      matchScouting: prev.matchScouting.map(f => f.id === oldId ? { ...f, id: newId } : f),
+      pitScouting: prev.pitScouting.map(f => f.id === oldId ? { ...f, id: newId } : f),
+    }))
+
+    setOptionInputs(prev => {
+      const copy = { ...prev }
+      if (copy[oldId] !== undefined) {
+        copy[newId] = copy[oldId]
+        delete copy[oldId]
+      }
+      return copy
+    })
+  }
 
   const removeField = (fieldId: string) => {
     setConfig(prev => ({
@@ -142,6 +173,14 @@ const FormConfiguration = () => {
                         onChange={(e) => updateField(field.id, { label: e.target.value })}
                       />
                     </div>
+                    <div className="space-y-2">
+                      <Label>Field ID</Label>
+                      <Input
+                        value={field.id}
+                        onChange={(e) => updateFieldId(field.id, e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">Changing the ID will affect stored data keys. Use unique alphanumeric IDs.</p>
+                    </div>
                     
                     <div className="space-y-2">
                       <Label>Field Type</Label>
@@ -159,14 +198,15 @@ const FormConfiguration = () => {
 
                     {field.type === 'select' && (
                       <div className="space-y-2">
-                        <Label>Options (one per line)</Label>
+                        <Label>Options (comma-separated)</Label>
                         <Textarea
-                          value={field.options?.join('\n') || ''}
-                          onChange={(e) => updateField(field.id, { 
-                            options: e.target.value.split('\n').map(opt => opt.trim()).filter(Boolean)
+                          value={optionInputs[field.id] ?? field.options?.join(', ') ?? ''}
+                          onChange={(e) => setOptionInputs(prev => ({ ...prev, [field.id]: e.target.value }))}
+                          onBlur={(e) => updateField(field.id, {
+                            options: e.target.value.split(',').map(opt => opt.trim()).filter(Boolean)
                           })}
-                          placeholder="Option 1&#10;Option 2&#10;Option 3"
-                          rows={3}
+                          placeholder="Option 1, Option 2, Option 3"
+                          rows={2}
                         />
                       </div>
                     )}
