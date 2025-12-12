@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Save, RotateCcw, Plus, Minus, Database } from "lucide-react";
 import { addScoutingEntry, addMultipleScoutingEntries, setAppDoc } from '@/lib/firebase'
-import FieldPathDrawer from "./FieldPathDrawer";
+// FieldPathDrawer disabled due to issues with drawing; placeholder shown instead
+// import FieldPathDrawer from "./FieldPathDrawer";
 
 interface Point {
   x: number;
@@ -498,10 +499,9 @@ const ScoutingForm = () => {
               </div>
 
               <div>
-                <FieldPathDrawer
-                  onPathChange={(path) => setFormData({ ...formData, autoPath: path })}
-                  initialPath={formData.autoPath}
-                />
+                <div className="p-4 text-sm text-muted-foreground">
+                  Autonomous path drawing is currently disabled.
+                </div>
               </div>
             </div>
 
