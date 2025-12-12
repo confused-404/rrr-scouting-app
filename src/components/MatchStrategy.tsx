@@ -47,7 +47,7 @@ const MatchStrategy = () => {
   const [teams, setTeams] = useState<string[]>(['', '', '']);
   const [teamStats, setTeamStats] = useState<(TeamStats | null)[]>([null, null, null]);
   const [scoutingData, setScoutingData] = useState<ScoutingData[]>([]);
-  const [superScoutNotes, setSuperScoutNotes] = useState<{[key: string]: SuperScoutNote}>({});
+  const [superScoutNotes, setSuperScoutNotes] = useState<{[key: string]: SuperScoutNote[]}>({});
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [analysisResult, setAnalysisResult] = useState('');
 
@@ -214,9 +214,15 @@ const MatchStrategy = () => {
               <CardTitle className="flex items-center justify-between">
                 <span>Team {teams[index] || `${index + 1}`}</span>
                 {stats && superScoutNotes[stats.teamNumber] && (
-                  <Badge className={getPriorityColor(superScoutNotes[stats.teamNumber].picklistPriority)}>
-                    {superScoutNotes[stats.teamNumber].picklistPriority.toUpperCase()}
-                  </Badge>
+                  (() => {
+                    const notesArr = superScoutNotes[stats.teamNumber] || [];
+                    const latest = notesArr[notesArr.length - 1];
+                    return latest ? (
+                      <Badge className={getPriorityColor(latest.picklistPriority)}>
+                        {latest.picklistPriority.toUpperCase()}
+                      </Badge>
+                    ) : null
+                  })()
                 )}
               </CardTitle>
               {stats && (
@@ -267,12 +273,32 @@ const MatchStrategy = () => {
                   </div>
 
                   {superScoutNotes[stats.teamNumber] && (
-                    <div className="p-2 sm:p-3 bg-gray-50 rounded-lg">
-                      <div className="text-xs sm:text-sm font-medium mb-1">Notes:</div>
-                      <div className="text-xs sm:text-sm text-gray-700 break-words">
-                        {superScoutNotes[stats.teamNumber].strategicNotes}
-                      </div>
-                    </div>
+                    (() => {
+                      const notesArr = superScoutNotes[stats.teamNumber] || [];
+                      const latest = notesArr[notesArr.length - 1];
+                      return (
+                        <div className="p-2 sm:p-3 bg-gray-50 rounded-lg">
+                          <div className="text-xs sm:text-sm font-medium mb-1">Notes:</div>
+                          <div className="text-xs sm:text-sm text-gray-700 break-words">
+                            {latest ? latest.strategicNotes : 'No notes'}
+                          </div>
+                          {notesArr.length > 1 && (
+                            <details className="mt-2 text-sm">
+                              <summary className="cursor-pointer text-blue-600">View all notes ({notesArr.length})</summary>
+                              <ul className="mt-2 list-disc list-inside space-y-1">
+                                {notesArr.slice().reverse().map(n => (
+                                  <li key={n.id} className="text-xs text-gray-700">
+                                    <div className="font-medium">{new Date(n.timestamp).toLocaleString()}</div>
+                                    <div>{n.strategicNotes}</div>
+                                    <div className="text-[10px] text-muted-foreground">Priority: {n.picklistPriority}</div>
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          )}
+                        </div>
+                      )
+                    })()
                   )}
                 </div>
               ) : (

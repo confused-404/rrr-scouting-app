@@ -36,15 +36,17 @@ const SuperScoutForm = () => {
       return;
     }
     
-    // Save to Firestore
+    // Save to Firestore as a list of notes per team
     try {
       const existingNotes = (await getAppDoc('superScoutNotes')) || {}
-      existingNotes[formData.teamNumber] = {
+      const teamNotes = existingNotes[formData.teamNumber] || []
+      const newNote = {
         strategicNotes: formData.strategicNotes,
         picklistPriority: formData.picklistPriority,
         timestamp: new Date().toISOString(),
         id: Date.now()
       }
+      existingNotes[formData.teamNumber] = [...teamNotes, newNote]
       await setAppDoc('superScoutNotes', existingNotes)
     } catch (error) {
       console.warn('Failed to save strategic notes to Firestore:', error)

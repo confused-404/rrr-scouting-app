@@ -45,7 +45,7 @@ interface SuperScoutNote {
 const AdminDashboard = () => {
   const { toast } = useToast();
   const [scoutingData, setScoutingData] = useState<ScoutingData[]>([]);
-  const [superScoutNotes, setSuperScoutNotes] = useState<{[key: string]: SuperScoutNote}>({});
+  const [superScoutNotes, setSuperScoutNotes] = useState<{[key: string]: SuperScoutNote[]}>({});
 
   // Get all unique team numbers for team name fetching
   const allTeamNumbers = Array.from(new Set(scoutingData.map(entry => entry.teamNumber)));
@@ -122,19 +122,25 @@ const AdminDashboard = () => {
 
     const csvContent = [
       ["Team", "Team Name", "Matches", "Avg Auto", "Avg Teleop", "Defense", "Reliability", "Climb Rate", "Mobility Rate", "Strategic Notes", "Priority"].join(","),
-      ...teamStatsArray.map(team => [
-        team.teamNumber,
-        `"${teamNames.get(team.teamNumber) || getTeamNameWithCustom(team.teamNumber)}"`,
-        team.matches,
-        team.avgAutoPoints,
-        team.avgTeleopPoints,
-        team.avgDefense,
-        team.avgReliability,
-        team.climbRate + "%",
-        team.mobilityRate + "%",
-        `"${superScoutNotes[team.teamNumber]?.strategicNotes || 'No notes'}"`,
-        superScoutNotes[team.teamNumber]?.picklistPriority || 'Not rated'
-      ].join(","))
+      ...teamStatsArray.map(team => {
+        const notesArr = superScoutNotes[team.teamNumber] || [];
+        const latest = notesArr[notesArr.length - 1];
+        const joinedNotes = notesArr.length ? notesArr.map(n => n.strategicNotes.replace(/"/g, '""')).join(' | ') : 'No notes';
+        const priority = latest?.picklistPriority || 'Not rated';
+        return [
+          team.teamNumber,
+          `"${teamNames.get(team.teamNumber) || getTeamNameWithCustom(team.teamNumber)}"`,
+          team.matches,
+          team.avgAutoPoints,
+          team.avgTeleopPoints,
+          team.avgDefense,
+          team.avgReliability,
+          team.climbRate + "%",
+          team.mobilityRate + "%",
+          `"${joinedNotes}"`,
+          priority
+        ].join(",")
+      })
     ].join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv" });

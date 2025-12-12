@@ -17,6 +17,7 @@ interface ScoutingData {
   timestamp: string;
 }
 
+
 interface SuperScoutNote {
   strategicNotes: string;
   picklistPriority: string;
@@ -26,7 +27,7 @@ interface SuperScoutNote {
 
 interface OverviewCardsProps {
   scoutingData: ScoutingData[];
-  superScoutNotes: {[key: string]: SuperScoutNote};
+  superScoutNotes: {[key: string]: SuperScoutNote[]};
 }
 
 const OverviewCards = ({ scoutingData, superScoutNotes }: OverviewCardsProps) => {

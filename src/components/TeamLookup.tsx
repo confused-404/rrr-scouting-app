@@ -48,32 +48,33 @@ const TeamLookup = () => {
   const [searchTeam, setSearchTeam] = useState("");
   const [teamStats, setTeamStats] = useState<TeamStats | null>(null);
   const [scoutingData, setScoutingData] = useState<ScoutingData[]>([]);
-  const [superScoutNotes, setSuperScoutNotes] = useState<{[key: string]: SuperScoutNote}>({});
+  const [superScoutNotes, setSuperScoutNotes] = useState<{[key: string]: SuperScoutNote[]}>({});
 
   useEffect(() => {
-    let unsubEntries: any | null = null
-    let unsubNotes: any | null = null
+    let unsubEntries: any | null = null;
+    let unsubNotes: any | null = null;
 
     const load = async () => {
-      const data = await getAllScoutingEntries()
-      const notes = (await getAppDoc('superScoutNotes')) || {}
-      setScoutingData(data || [])
-      setSuperScoutNotes(notes || {})
+      const data = await getAllScoutingEntries();
+      const notes = (await getAppDoc('superScoutNotes')) || {};
+      setScoutingData(data || []);
+      setSuperScoutNotes(notes || {});
 
-      unsubEntries = subscribeScoutingEntries(rows => setScoutingData(rows || []))
-      unsubNotes = subscribeAppDoc('superScoutNotes', val => setSuperScoutNotes(val || {}))
-    }
+      unsubEntries = subscribeScoutingEntries(rows => setScoutingData(rows || []));
+      unsubNotes = subscribeAppDoc('superScoutNotes', val => setSuperScoutNotes(val || {}));
+    };
 
-    load()
+    load();
 
     return () => {
-      if (unsubEntries) unsubEntries()
-      if (unsubNotes) unsubNotes()
-    }
+      if (unsubEntries) unsubEntries();
+      if (unsubNotes) unsubNotes();
+    };
   }, []);
 
   const searchTeamData = () => {
-    if (!searchTeam.trim()) {
+    const teamKey = searchTeam.trim();
+    if (!teamKey) {
       toast({
         title: "Enter Team Number",
         description: "Please enter a team number to search.",
@@ -82,20 +83,33 @@ const TeamLookup = () => {
       return;
     }
 
-    const teamMatches = scoutingData.filter(match => match.teamNumber === searchTeam);
+    const teamMatches = scoutingData.filter(match => match.teamNumber === teamKey);
     
+    // If there are no scouting entries, still show the team view so strategic notes are visible.
     if (teamMatches.length === 0) {
-      setTeamStats(null);
       toast({
-        title: "No Data Found",
-        description: `No scouting data found for team ${searchTeam}.`,
-        variant: "destructive"
+        title: "No Scouting Entries",
+        description: `No scouting data found for team ${teamKey}, showing strategic notes if present.`,
+        variant: "default"
       });
+      const emptyStats: TeamStats = {
+        teamNumber: teamKey,
+        matches: 0,
+        avgAutoPoints: 0,
+        avgTeleopPoints: 0,
+        avgDefense: 0,
+        avgReliability: 0,
+        climbRate: 0,
+        mobilityRate: 0,
+        totalScore: 0,
+        recentMatches: []
+      };
+      setTeamStats(emptyStats);
       return;
     }
 
     const stats: TeamStats = {
-      teamNumber: searchTeam,
+      teamNumber: teamKey,
       matches: teamMatches.length,
       avgAutoPoints: teamMatches.reduce((sum, match) => sum + match.autoGamePieces, 0) / teamMatches.length,
       avgTeleopPoints: teamMatches.reduce((sum, match) => sum + match.teleopGamePieces, 0) / teamMatches.length,
@@ -160,11 +174,15 @@ const TeamLookup = () => {
               </CardDescription>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline">{teamStats.matches} matches scouted</Badge>
-                {superScoutNotes[teamStats.teamNumber] && (
-                  <Badge className={getPriorityColor(superScoutNotes[teamStats.teamNumber].picklistPriority)}>
-                    {superScoutNotes[teamStats.teamNumber].picklistPriority.toUpperCase()} Priority
-                  </Badge>
-                )}
+                {superScoutNotes[teamStats.teamNumber] && (() => {
+                  const notesArr = superScoutNotes[teamStats.teamNumber] || [];
+                  const latest = notesArr[notesArr.length - 1];
+                  return latest ? (
+                    <Badge className={getPriorityColor(latest.picklistPriority)}>
+                      {latest.picklistPriority.toUpperCase()} Priority
+                    </Badge>
+                  ) : null
+                })()}
               </div>
             </CardHeader>
             <CardContent>
@@ -221,18 +239,37 @@ const TeamLookup = () => {
           </Card>
 
           {/* Strategic Notes */}
-          {superScoutNotes[teamStats.teamNumber] && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Strategic Notes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <p className="text-gray-700">{superScoutNotes[teamStats.teamNumber].strategicNotes}</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {((() => {
+            const notesArr = superScoutNotes[teamStats.teamNumber] || [];
+            if (!notesArr.length) return null;
+            const latest = notesArr[notesArr.length - 1];
+            return (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Strategic Notes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="text-gray-700">{latest?.strategicNotes}</p>
+                    {notesArr.length > 1 && (
+                      <details className="mt-2 text-sm">
+                        <summary className="cursor-pointer text-blue-600">View all notes ({notesArr.length})</summary>
+                        <ul className="mt-2 list-disc list-inside space-y-1">
+                          {notesArr.slice().reverse().map(n => (
+                            <li key={n.id} className="text-xs text-gray-700">
+                              <div className="font-medium">{new Date(n.timestamp).toLocaleString()}</div>
+                              <div>{n.strategicNotes}</div>
+                              <div className="text-[10px] text-muted-foreground">Priority: {n.picklistPriority}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })())}
 
           {/* Recent Matches */}
           <Card>

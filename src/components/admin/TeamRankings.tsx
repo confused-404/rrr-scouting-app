@@ -27,7 +27,7 @@ interface SuperScoutNote {
 
 interface TeamRankingsProps {
   scoutingData: ScoutingData[];
-  superScoutNotes: {[key: string]: SuperScoutNote};
+  superScoutNotes: {[key: string]: SuperScoutNote[]};
   teamNames?: Map<string, string>;
 }
 
@@ -114,24 +114,46 @@ const TeamRankings = ({ scoutingData, superScoutNotes, teamNames }: TeamRankings
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {getPriorityBadge(superScoutNotes[team.teamNumber]?.picklistPriority)}
+                  {(() => {
+                    const notesArr = superScoutNotes[team.teamNumber] || [];
+                    const latest = notesArr[notesArr.length - 1];
+                    return getPriorityBadge(latest?.picklistPriority);
+                  })()}
                   <div className="text-left sm:text-right">
                     <div className="font-medium">{team.avgAutoPoints} / {team.avgTeleopPoints}</div>
                     <div className="text-sm text-muted-foreground">Auto / Teleop Avg</div>
                   </div>
                 </div>
               </div>
-              {superScoutNotes[team.teamNumber]?.strategicNotes && (
-                <div className="bg-yellow-50 p-3 rounded border-l-4 border-yellow-400">
-                  <div className="flex items-start space-x-2">
-                    <Star className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <div className="text-sm font-medium text-yellow-800">Strategic Notes:</div>
-                      <div className="text-sm text-yellow-700">{superScoutNotes[team.teamNumber].strategicNotes}</div>
+              {((() => {
+                const notesArr = superScoutNotes[team.teamNumber] || [];
+                const latest = notesArr[notesArr.length - 1];
+                return notesArr.length ? (
+                  <div className="bg-yellow-50 p-3 rounded border-l-4 border-yellow-400">
+                    <div className="flex items-start space-x-2">
+                      <Star className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <div className="text-sm font-medium text-yellow-800">Strategic Notes:</div>
+                        <div className="text-sm text-yellow-700">{latest?.strategicNotes}</div>
+                        {notesArr.length > 1 && (
+                          <details className="mt-2 text-sm">
+                            <summary className="cursor-pointer text-blue-600">View all notes ({notesArr.length})</summary>
+                            <ul className="mt-2 list-disc list-inside space-y-1">
+                              {notesArr.slice().reverse().map(n => (
+                                <li key={n.id} className="text-xs text-yellow-700">
+                                  <div className="font-medium">{new Date(n.timestamp).toLocaleString()}</div>
+                                  <div>{n.strategicNotes}</div>
+                                  <div className="text-[10px] text-muted-foreground">Priority: {n.picklistPriority}</div>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                ) : null
+              })())}
             </div>
           ))}
         </div>

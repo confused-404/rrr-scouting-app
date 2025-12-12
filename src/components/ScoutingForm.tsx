@@ -110,98 +110,6 @@ const ScoutingForm = () => {
     });
   };
 
-  const generateDummyData = async () => {
-    const teams = ['1114', '254', '118', '148', '1678', '2056', '973', '1323', '5940', '6328', '7492', '8033', '9999', '1234', '5678'];
-    const alliances = ['red', 'blue'];
-    const climbOptions = ['none', 'attempted', 'success'];
-    const mobilityOptions = ['yes', 'no'];
-    
-    const dummyEntries = [];
-    
-    for (let i = 0; i < 45; i++) {
-      const team = teams[Math.floor(Math.random() * teams.length)];
-      const match = (i % 15 + 1).toString();
-      const alliance = alliances[Math.floor(Math.random() * alliances.length)];
-      
-      // Generate realistic auto path
-      const pathLength = Math.floor(Math.random() * 5) + 2; // 2-6 points
-      const autoPath = [];
-      for (let j = 0; j < pathLength; j++) {
-        autoPath.push({
-          x: Math.random() * 648,
-          y: Math.random() * 324
-        });
-      }
-      
-      dummyEntries.push({
-        id: Date.now() + i,
-        teamNumber: team,
-        matchNumber: match,
-        alliance: alliance,
-        autoGamePieces: Math.floor(Math.random() * 6),
-        autoMobility: mobilityOptions[Math.floor(Math.random() * mobilityOptions.length)],
-        teleopGamePieces: Math.floor(Math.random() * 15) + 5,
-        climbing: climbOptions[Math.floor(Math.random() * climbOptions.length)],
-        defense: Math.floor(Math.random() * 6) + 5,
-        reliability: Math.floor(Math.random() * 4) + 7,
-        comments: [
-          "Great driver, very consistent",
-          "Strong defense capabilities",
-          "Fast autonomous routine",
-          "Reliable climber",
-          "Good alliance partner",
-          "Aggressive but controlled",
-          "Excellent game piece manipulation",
-          "Needs improvement on reliability"
-        ][Math.floor(Math.random() * 8)],
-        autoPath: autoPath,
-        timestamp: new Date(Date.now() - Math.random() * 86400000 * 7).toISOString()
-      });
-    }
-    
-    // Also add some strategic notes
-    const strategicNotes = {
-      '1114': {
-        strategicNotes: 'Excellent autonomous, very reliable, great for first pick',
-        picklistPriority: 'high',
-        timestamp: new Date().toISOString(),
-        id: Date.now()
-      },
-      '254': {
-        strategicNotes: 'Aggressive but sometimes unreliable, good defense',
-        picklistPriority: 'medium',
-        timestamp: new Date().toISOString(),
-        id: Date.now() + 1
-      },
-      '118': {
-        strategicNotes: 'Solid all-around robot, works well in any alliance',
-        picklistPriority: 'high',
-        timestamp: new Date().toISOString(),
-        id: Date.now() + 2
-      },
-      '973': {
-        strategicNotes: 'Unreliable autonomous, avoid for critical matches',
-        picklistPriority: 'avoid',
-        timestamp: new Date().toISOString(),
-        id: Date.now() + 3
-      }
-    };
-    
-    (async () => {
-      try {
-        await addMultipleScoutingEntries(dummyEntries);
-        await setAppDoc('superScoutNotes', strategicNotes);
-      } catch (error) {
-        console.warn('Failed to add demo data to Firestore:', error);
-      }
-    })()
-    
-    toast({
-      title: "Dummy Data Generated!",
-      description: `Added ${dummyEntries.length} scouting entries and strategic notes.`,
-    });
-  };
-
   const incrementValue = (field: keyof ScoutingData, max?: number) => {
     setFormData(prev => ({
       ...prev,
@@ -224,10 +132,6 @@ const ScoutingForm = () => {
             <span className="text-lg sm:text-xl">Match Scouting Form</span>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
               <Badge variant="outline" className="bg-blue-50 text-xs">Quick Entry</Badge>
-              <Button onClick={generateDummyData} variant="outline" size="sm" className="w-full sm:w-auto text-xs">
-                <Database className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                Add Demo Data
-              </Button>
             </div>
           </CardTitle>
           <CardDescription>
