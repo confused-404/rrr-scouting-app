@@ -79,7 +79,23 @@ const FormConfiguration = () => {
   }, [config.matchScouting, config.pitScouting])
 
   const saveConfiguration = () => {
-    setAppDoc('formConfiguration', config).catch(e => console.warn('Failed to save form config:', e))
+    // sanitize fields to avoid saving invalid ids (e.g. pure timestamps or empty strings)
+    const idPattern = /^[a-zA-Z_][a-zA-Z0-9_-]*$/;
+    const sanitizeArray = (arr: any[]) => arr.filter(item => item && typeof item.id === 'string' && idPattern.test(item.id));
+    const sanitizedConfig: FormConfiguration = {
+      matchScouting: sanitizeArray(config.matchScouting as any) as any,
+      pitScouting: sanitizeArray(config.pitScouting as any) as any,
+    };
+    const removedCount = (config.matchScouting.length + config.pitScouting.length) - (sanitizedConfig.matchScouting.length + sanitizedConfig.pitScouting.length);
+    if (removedCount > 0) {
+      console.warn('FormConfiguration: removed', removedCount, 'invalid fields before saving');
+      toast({
+        title: 'Invalid fields removed',
+        description: `${removedCount} invalid fields were removed before saving. Check field IDs.`,
+        variant: 'destructive'
+      });
+    }
+    setAppDoc('formConfiguration', sanitizedConfig).catch(e => console.warn('Failed to save form config:', e))
     toast({
       title: "Configuration Saved",
       description: "Form configuration has been updated successfully.",
@@ -105,6 +121,13 @@ const FormConfiguration = () => {
 
   const updateFieldId = (oldId: string, newId: string) => {
     if (!newId || oldId === newId) return
+    // Validate new ID before setting - enforce alphanumeric + -, _ and leading alpha/_
+    const isValid = /^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(newId.trim());
+    if (!isValid) {
+      toast({ title: 'Invalid Field ID', description: 'IDs must start with a letter or underscore and may only contain letters, numbers, - and _.', variant: 'destructive' });
+      setIdInputs(prev => ({ ...prev, [oldId]: oldId }));
+      return
+    }
     setConfig(prev => ({
       ...prev,
       matchScouting: prev.matchScouting.map(f => f.id === oldId ? { ...f, id: newId } : f),

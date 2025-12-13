@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,48 +8,50 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Save, RotateCcw, Plus, Minus, Database } from "lucide-react";
-import { addScoutingEntry, addMultipleScoutingEntries, setAppDoc } from '@/lib/firebase'
+import { addScoutingEntry } from '@/lib/firebase'
 import { useFormConfiguration } from '@/hooks/useFormConfiguration'
 import DynamicFormRenderer from './DynamicFormRenderer'
 // FieldPathDrawer disabled due to issues with drawing; placeholder shown instead
 // import FieldPathDrawer from "./FieldPathDrawer";
-
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface ScoutingData {
-  teamNumber: string;
-  matchNumber: string;
-  alliance: string;
-  autoGamePieces: number;
-  autoMobility: string;
-  teleopGamePieces: number;
-  climbing: string;
-  defense: number;
-  reliability: number;
-  comments: string;
-  autoPath: Point[];
-}
 
 const ScoutingForm = () => {
   const { toast } = useToast();
   const config = useFormConfiguration();
   const fields = config?.matchScouting || [];
 
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    // Initialize dynamic form values from the configured fields only once
+    if (initializedRef.current) return;
+    if (!fields || fields.length === 0) return;
+
+    const initial: Record<string, any> = {};
+    fields.forEach((f) => {
+      if (f.id === 'teamNumber' || f.id === 'matchNumber' || f.id === 'alliance') return;
+      switch (f.type) {
+        case 'number':
+          initial[f.id] = 0;
+          break;
+        case 'select':
+          initial[f.id] = f.options?.[0] ?? '';
+          break;
+        default:
+          initial[f.id] = '';
+      }
+    });
+    setValues(prev => {
+      const merged = { ...prev } as Record<string, any>;
+      Object.keys(initial).forEach(k => { if (!(k in merged)) merged[k] = initial[k] });
+      return merged;
+    });
+    initializedRef.current = true;
+  }, [fields]);
+
   const [values, setValues] = useState<Record<string, any>>({
     teamNumber: "",
     matchNumber: "",
     alliance: "red",
-    autoGamePieces: 0,
-    autoMobility: "no",
-    teleopGamePieces: 0,
-    climbing: "none",
-    defense: 5,
-    reliability: 5,
-    comments: "",
-    autoPath: []
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -87,12 +89,44 @@ const ScoutingForm = () => {
     delete fieldsOnly.team_number;
     delete fieldsOnly.match_number;
 
+    // Only persist fields that exist in the current form configuration.
+    // This prevents legacy/hardcoded keys from being saved into `fields`.
+    const configuredIds = new Set((config?.matchScouting ?? []).map((f: any) => f.id));
+    const filteredFields: Record<string, any> = {};
+    const unknownKeys: string[] = [];
+    Object.entries(fieldsOnly).forEach(([k, v]) => {
+      if (configuredIds.has(k)) filteredFields[k] = v;
+      else unknownKeys.push(k);
+    });
+    if (unknownKeys.length > 0) {
+      console.warn('ScoutingForm: dropping unknown fields before save:', unknownKeys);
+    }
+
+    // Sanitize the saved form config snapshot to avoid saving obviously invalid
+    // entries (for example, stray timestamp-like objects accidentally inserted
+    // into the app config).
+    const snapshot = config?.matchScouting ?? null;
+    const sanitizedSnapshot = snapshot
+      ? (snapshot as any[]).filter((f: any) => {
+          // keep entries that have a non-empty string id that is not just a long
+          // numeric timestamp
+          if (!f || typeof f.id !== 'string' || f.id.trim() === '') return false;
+          if (/^\d{10,}$/.test(f.id)) return false;
+          return true;
+        })
+      : null;
+
+    if (snapshot && sanitizedSnapshot && sanitizedSnapshot.length !== snapshot.length) {
+      console.warn('ScoutingForm: sanitized formConfigSnapshot before save; some items removed');
+      toast({ title: 'Configuration Snapshot Sanitized', description: 'Some invalid fields were removed from the saved snapshot.' });
+    }
+
     const payload = {
       id: Date.now().toString(),
       teamNumber: String(teamNumber),
       matchNumber: String(matchNumber),
-      fields: fieldsOnly,
-      formConfigSnapshot: config?.matchScouting ?? null,
+      fields: filteredFields,
+      formConfigSnapshot: sanitizedSnapshot,
       createdAt: new Date().toISOString(),
     };
 
@@ -115,50 +149,15 @@ const ScoutingForm = () => {
       description: `Scouting data for Team ${payload.teamNumber} in Match ${payload.matchNumber} has been recorded.`,
     });
     
-    // Reset form
-    setValues({
-      teamNumber: "",
-      matchNumber: "",
-      alliance: "red",
-      autoGamePieces: 0,
-      autoMobility: "no",
-      teleopGamePieces: 0,
-      climbing: "none",
-      defense: 5,
-      reliability: 5,
-      comments: "",
-      autoPath: []
-    });
+    // Reset form to only the top-level metadata. Dynamic fields are populated
+    // from `config.matchScouting` via the initialization effect / renderer.
+    setValues({ teamNumber: "", matchNumber: "", alliance: "red" });
   };
 
   const handleReset = () => {
-    setValues({
-      teamNumber: "",
-      matchNumber: "",
-      alliance: "red",
-      autoGamePieces: 0,
-      autoMobility: "no",
-      teleopGamePieces: 0,
-      climbing: "none",
-      defense: 5,
-      reliability: 5,
-      comments: "",
-      autoPath: []
-    });
-  };
-
-  const incrementValue = (field: keyof ScoutingData, max?: number) => {
-    setValues(prev => ({
-      ...prev,
-      [field]: Math.min((prev[field] as number) + 1, max || 100)
-    }));
-  };
-
-  const decrementValue = (field: keyof ScoutingData, min: number = 0) => {
-    setValues(prev => ({
-      ...prev,
-      [field]: Math.max((prev[field] as number) - 1, min)
-    }));
+    // Reset only top-level metadata. Dynamic fields will be controlled by the
+    // `DynamicFormRenderer` and populated from `config.matchScouting`.
+    setValues({ teamNumber: "", matchNumber: "", alliance: "red" });
   };
 
   return (
