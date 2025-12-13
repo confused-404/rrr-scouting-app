@@ -54,13 +54,19 @@ const AdminDashboard = () => {
   useEffect(() => {
     let unsubEntries: any | null = null
     let unsubNotes: any | null = null
+    let unsubConfig: any | null = null
+    let unsubPit: any | null = null
 
     const load = async () => {
       const data = await getAllScoutingEntries();
       const notes = (await getAppDoc('superScoutNotes')) || {};
+      const savedConfig = (await getAppDoc('formConfiguration')) || null;
+      const pitData = (await getAppDoc('pitScoutingData')) || [];
       console.log('AdminDashboard loaded from Firestore:', { dataCount: data?.length, notes });
       setScoutingData(data || []);
       setSuperScoutNotes(notes || {});
+      setPitScoutingData(pitData || []);
+      if (savedConfig && savedConfig.matchScouting) setFormConfig(savedConfig as any)
 
       unsubEntries = subscribeScoutingEntries((rows) => {
         console.log('AdminDashboard real-time update:', rows?.length);
@@ -70,6 +76,8 @@ const AdminDashboard = () => {
         console.log('AdminDashboard notes update:', val);
         setSuperScoutNotes(val || {});
       });
+      unsubConfig = subscribeAppDoc('formConfiguration', (val) => { if (val && val.matchScouting) setFormConfig(val) })
+      unsubPit = subscribeAppDoc('pitScoutingData', (val) => { setPitScoutingData(val || []) })
     }
 
     load();
@@ -77,71 +85,93 @@ const AdminDashboard = () => {
     return () => {
       if (unsubEntries) unsubEntries();
       if (unsubNotes) unsubNotes();
+      if (unsubConfig) unsubConfig();
+      if (unsubPit) unsubPit();
     }
   }, []);
 
+  const [formConfig, setFormConfig] = useState<any>(null);
+  const [pitScoutingData, setPitScoutingData] = useState<any[]>([]);
+
   const handleExportData = () => {
-    // Calculate team statistics for export
-    const teamStats = scoutingData.reduce((acc, entry) => {
+    // Build CSV with one row per submission (match or pit), using configured fields as columns
+    const matchFields = formConfig?.matchScouting ?? [];
+    const pitFields = formConfig?.pitScouting ?? [];
+
+    const matchFieldIds = matchFields.map((f:any) => f.id);
+    const pitFieldIds = pitFields.map((f:any) => f.id);
+
+    // Headers: FormType, Team, Team Name, Match, Created At, <match field labels...>, <pit field labels not duplicated>, Strategic Notes, Priority
+    const pitOnlyFields = pitFields.filter((pf:any) => !matchFieldIds.includes(pf.id));
+    const headerCols = [
+      'FormType', 'Team', 'Team Name', 'Match', 'Created At',
+      ...matchFields.map((f:any) => f.label),
+      ...pitOnlyFields.map((f:any) => f.label),
+      'Strategic Notes', 'Priority'
+    ];
+
+    const escape = (v: any) => {
+      if (v === null || v === undefined) return '';
+      const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+
+    const rows: string[] = [];
+
+    // Helper to get team-level notes/priority
+    const getNotesForTeam = (teamNumber: string) => {
+      const notesArr = superScoutNotes[teamNumber] || [];
+      const latest = notesArr[notesArr.length - 1];
+      const joinedNotes = notesArr.length ? notesArr.map((n:any) => n.strategicNotes).join(' | ') : '';
+      const priority = latest?.picklistPriority || '';
+      return { joinedNotes, priority };
+    }
+
+    // Match submissions (scoutingData)
+    scoutingData.forEach((entry: any) => {
       const team = entry.teamNumber;
-      if (!acc[team]) {
-        acc[team] = {
-          teamNumber: team,
-          matches: 0,
-          totalAutoPoints: 0,
-          totalTeleopPoints: 0,
-          avgDefense: 0,
-          avgReliability: 0,
-          climbSuccess: 0,
-          mobilitySuccess: 0
-        };
-      }
-      
-      acc[team].matches++;
-      acc[team].totalAutoPoints += entry.autoGamePieces;
-      acc[team].totalTeleopPoints += entry.teleopGamePieces;
-      acc[team].avgDefense += entry.defense;
-      acc[team].avgReliability += entry.reliability;
-      
-      if (entry.climbing === "success") acc[team].climbSuccess++;
-      if (entry.autoMobility === "yes") acc[team].mobilitySuccess++;
-      
-      return acc;
-    }, {} as any);
+      const formType = 'match';
+      const matchNum = entry.matchNumber ?? '';
+      const createdAt = entry.createdAt ?? entry.timestamp ?? '';
 
-    const teamStatsArray = Object.values(teamStats).map((team: any) => ({
-      ...team,
-      avgAutoPoints: (team.totalAutoPoints / team.matches).toFixed(1),
-      avgTeleopPoints: (team.totalTeleopPoints / team.matches).toFixed(1),
-      avgDefense: (team.avgDefense / team.matches).toFixed(1),
-      avgReliability: (team.avgReliability / team.matches).toFixed(1),
-      climbRate: ((team.climbSuccess / team.matches) * 100).toFixed(0),
-      mobilityRate: ((team.mobilitySuccess / team.matches) * 100).toFixed(0),
-      totalScore: team.totalAutoPoints + team.totalTeleopPoints
-    }));
+      const values: any[] = [];
+      // match fields
+      matchFields.forEach((f:any) => {
+        const v = (entry.fields && entry.fields[f.id]) ?? entry[f.id] ?? entry[f.id.replace(/\s+/g, '')] ?? '';
+        values.push(escape(v));
+      });
+      // pit-only fields blank for match rows
+      pitOnlyFields.forEach(() => values.push(''));
 
-    const csvContent = [
-      ["Team", "Team Name", "Matches", "Avg Auto", "Avg Teleop", "Defense", "Reliability", "Climb Rate", "Mobility Rate", "Strategic Notes", "Priority"].join(","),
-      ...teamStatsArray.map(team => {
-        const notesArr = superScoutNotes[team.teamNumber] || [];
-        const latest = notesArr[notesArr.length - 1];
-        const joinedNotes = notesArr.length ? notesArr.map(n => n.strategicNotes.replace(/"/g, '""')).join(' | ') : 'No notes';
-        const priority = latest?.picklistPriority || 'Not rated';
-        return [
-          team.teamNumber,
-          `"${teamNames.get(team.teamNumber) || getTeamNameWithCustom(team.teamNumber)}"`,
-          team.matches,
-          team.avgAutoPoints,
-          team.avgTeleopPoints,
-          team.avgDefense,
-          team.avgReliability,
-          team.climbRate + "%",
-          team.mobilityRate + "%",
-          `"${joinedNotes}"`,
-          priority
-        ].join(",")
-      })
-    ].join("\n");
+      const notes = getNotesForTeam(team);
+
+      const row = [formType, team, `"${teamNames.get(team) || getTeamNameWithCustom(team)}"`, matchNum, createdAt, ...values, escape(notes.joinedNotes), notes.priority].join(',');
+      rows.push(row);
+    });
+
+    // Pit submissions (pitScoutingData)
+    pitScoutingData.forEach((entry: any) => {
+      const team = entry.teamNumber;
+      const formType = 'pit';
+      const matchNum = '';
+      const createdAt = entry.timestamp ?? '';
+
+      const values: any[] = [];
+      // match fields blank for pit rows
+      matchFields.forEach(() => values.push(''));
+      // pit fields
+      pitOnlyFields.forEach((f:any) => {
+        const v = entry[f.id] ?? entry[f.id.replace(/\s+/g, '')] ?? '';
+        values.push(escape(v));
+      });
+
+      const notes = getNotesForTeam(team);
+
+      const row = [formType, team, `"${teamNames.get(team) || getTeamNameWithCustom(team)}"`, matchNum, createdAt, ...values, escape(notes.joinedNotes), notes.priority].join(',');
+      rows.push(row);
+    });
+
+    const csvContent = [headerCols.join(','), ...rows].join('\n');
 
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
