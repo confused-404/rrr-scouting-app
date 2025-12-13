@@ -29,46 +29,89 @@ interface CustomChartGeneratorProps {
 }
 
 import { getTeamNameWithCustom } from "@/lib/teamNames";
+import { useFormConfiguration } from '@/hooks/useFormConfiguration';
+import { getFieldValue, toNumber } from '@/lib/analyticsUtils';
 
 const CustomChartGenerator = ({ scoutingData, teamNames }: CustomChartGeneratorProps) => {
   const [chartType, setChartType] = useState<'bar' | 'line' | 'scatter'>('bar');
   const [xAxis, setXAxis] = useState<string>('teamNumber');
   const [yAxis, setYAxis] = useState<string>('autoGamePieces');
   const [chartData, setChartData] = useState<any[]>([]);
+  const formConfig = useFormConfiguration();
 
-  // Get available numeric and categorical fields
-  const numericFields = ['autoGamePieces', 'teleopGamePieces', 'defense', 'reliability', 'matchNumber'];
-  const categoricalFields = ['teamNumber', 'alliance', 'climbing', 'autoMobility'];
-  const allFields = [...numericFields, ...categoricalFields];
+  // Get available numeric and categorical fields from the matchScouting form configuration
+  const matchFields = formConfig?.matchScouting ?? [];
+  const numericFields = matchFields.filter(f => f.type === 'number').map(f => f.id);
+  const categoricalFields = matchFields.filter(f => f.type !== 'number').map(f => f.id);
+  const allFields = matchFields.map(f => f.id);
+
+  // mapping from id to label for display purposes
+  const fieldLabelMap = matchFields.reduce<Record<string, string>>((acc, f) => ({ ...acc, [f.id]: f.label }), {});
 
   useEffect(() => {
+    // If the form config changes and the selected axes are no longer present,
+    // update them safely to a valid field.
+    if (allFields.length && !allFields.includes(xAxis)) {
+      setXAxis(allFields[0]);
+    }
+    if (allFields.length && !numericFields.includes(yAxis)) {
+      // choose a numeric field first for the y-axis if available, otherwise clear
+      const preferredY = numericFields.length ? numericFields[0] : '';
+      setYAxis(preferredY);
+    }
     generateChartData();
-  }, [xAxis, yAxis, chartType, scoutingData]);
+  }, [xAxis, yAxis, chartType, scoutingData, formConfig]);
 
   const generateChartData = () => {
     if (!scoutingData.length) return;
 
+    // Scatter: one datapoint per scouting entry
+    if (chartType === 'scatter') {
+      const scatterData = scoutingData.map(item => {
+        const xRaw = getFieldValue(item, xAxis) ?? item[xAxis];
+        const yRaw = getFieldValue(item, yAxis) ?? item[yAxis];
+        const xVal = numericFields.includes(xAxis) ? toNumber(xRaw) : xRaw;
+        const yVal = numericFields.includes(yAxis) ? toNumber(yRaw) : yRaw;
+
+        return {
+          [xAxis]: xVal,
+          [yAxis]: yVal,
+          teamNumber: item.teamNumber,
+          teamName: item.teamNumber ? (teamNames?.get(item.teamNumber) || getTeamNameWithCustom(item.teamNumber)) : undefined
+        };
+      }).filter(d => d && d[yAxis] !== undefined && d[yAxis] !== null && d[yAxis] !== '' && !(Number.isNaN(d[yAxis]) && numericFields.includes(yAxis)));
+
+      setChartData(scatterData as any);
+      return;
+    }
+
     // Group data by x-axis field and aggregate y-axis values
     const grouped = scoutingData.reduce((acc, item) => {
-      const xValue = item[xAxis];
-      const yValue = parseFloat(item[yAxis]) || 0;
+      const xRaw = getFieldValue(item, xAxis) ?? item[xAxis];
+      const yRaw = getFieldValue(item, yAxis) ?? item[yAxis];
+      const xValue = numericFields.includes(xAxis) ? toNumber(xRaw) : String(xRaw ?? '');
+      const yValue = numericFields.includes(yAxis) ? (toNumber(yRaw) || 0) : (yRaw ?? '');
 
       if (!acc[xValue]) {
-        acc[xValue] = { [xAxis]: xValue, values: [], count: 0 };
+        acc[xValue] = { [xAxis]: xValue, values: [], count: 0, categories: {} };
       }
-      
-      acc[xValue].values.push(yValue);
+
+      if (numericFields.includes(yAxis)) {
+        acc[xValue].values.push(yValue);
+      } else {
+        acc[xValue].categories[yValue] = (acc[xValue].categories[yValue] || 0) + 1;
+      }
       acc[xValue].count++;
-      
+
       return acc;
     }, {} as any);
 
     // Calculate aggregated values
     const processedData = Object.values(grouped).map((group: any) => {
-      const sum = group.values.reduce((a: number, b: number) => a + b, 0);
-      const avg = sum / group.values.length;
-      const max = Math.max(...group.values);
-      const min = Math.min(...group.values);
+      const sum = (group.values || []).reduce((a: number, b: number) => a + b, 0);
+      const avg = group.values && group.values.length ? sum / group.values.length : 0;
+      const max = group.values && group.values.length ? Math.max(...group.values) : 0;
+      const min = group.values && group.values.length ? Math.min(...group.values) : 0;
 
       return {
         [xAxis]: group[xAxis],
@@ -78,8 +121,7 @@ const CustomChartGenerator = ({ scoutingData, teamNames }: CustomChartGeneratorP
         maximum: max,
         minimum: min,
         count: group.count,
-        // For scatter plots, use individual values
-        value: numericFields.includes(yAxis) ? avg : group.values[0]
+        value: numericFields.includes(yAxis) ? avg : Object.entries(group.categories || {}).map(([k, v]) => ({ category: k, count: v }))
       };
     });
 
@@ -87,7 +129,7 @@ const CustomChartGenerator = ({ scoutingData, teamNames }: CustomChartGeneratorP
   };
 
   const getYAxisDataKey = () => {
-    if (chartType === 'scatter') return 'value';
+    if (chartType === 'scatter') return yAxis;
     return numericFields.includes(yAxis) ? 'average' : 'count';
   };
 
@@ -107,16 +149,16 @@ const CustomChartGenerator = ({ scoutingData, teamNames }: CustomChartGeneratorP
           <ResponsiveContainer width="100%" height={400}>
             <BarChart {...commonProps}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={xAxis} />
-              <YAxis />
+              <XAxis dataKey={xAxis} type={numericFields.includes(xAxis) ? "number" : "category"} />
+              <YAxis type="number" />
               <Tooltip 
-                formatter={(value, name, props) => [value, `Average ${yAxis}`]}
+                formatter={(value, name, props) => [value, `${numericFields.includes(yAxis) ? 'Average ' : ''}${fieldLabelMap[yAxis] || yAxis}`]}
                 labelFormatter={(label, payload) => {
                   if (xAxis === 'teamNumber' && payload && payload[0]) {
                     const teamName = payload[0].payload.teamName;
                     return `Team ${label}${teamName ? ` - ${teamName}` : ''}`;
                   }
-                  return `${xAxis}: ${label}`;
+                  return `${fieldLabelMap[xAxis] || xAxis}: ${label}`;
                 }}
               />
               <Bar dataKey={getYAxisDataKey()} fill="#3b82f6" />
@@ -129,16 +171,16 @@ const CustomChartGenerator = ({ scoutingData, teamNames }: CustomChartGeneratorP
           <ResponsiveContainer width="100%" height={400}>
             <LineChart {...commonProps}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={xAxis} />
-              <YAxis />
+              <XAxis dataKey={xAxis} type={numericFields.includes(xAxis) ? "number" : "category"} />
+              <YAxis type="number" />
               <Tooltip 
-                formatter={(value, name, props) => [value, `Average ${yAxis}`]}
+                formatter={(value, name, props) => [value, `${numericFields.includes(yAxis) ? 'Average ' : ''}${fieldLabelMap[yAxis] || yAxis}`]}
                 labelFormatter={(label, payload) => {
                   if (xAxis === 'teamNumber' && payload && payload[0]) {
                     const teamName = payload[0].payload.teamName;
                     return `Team ${label}${teamName ? ` - ${teamName}` : ''}`;
                   }
-                  return `${xAxis}: ${label}`;
+                  return `${fieldLabelMap[xAxis] || xAxis}: ${label}`;
                 }}
               />
               <Line type="monotone" dataKey={getYAxisDataKey()} stroke="#3b82f6" strokeWidth={2} />
@@ -160,13 +202,13 @@ const CustomChartGenerator = ({ scoutingData, teamNames }: CustomChartGeneratorP
                 type="number"
               />
               <Tooltip 
-                formatter={(value, name, props) => [value, yAxis]}
+                formatter={(value, name, props) => [value, fieldLabelMap[yAxis] || yAxis]}
                 labelFormatter={(label, payload) => {
                   if (xAxis === 'teamNumber' && payload && payload[0]) {
                     const teamName = payload[0].payload.teamName;
                     return `Team ${label}${teamName ? ` - ${teamName}` : ''}`;
                   }
-                  return `${xAxis}: ${label}`;
+                  return `${fieldLabelMap[xAxis] || xAxis}: ${label}`;
                 }}
               />
               <Scatter dataKey={getYAxisDataKey()} fill="#3b82f6" />
@@ -213,7 +255,7 @@ const CustomChartGenerator = ({ scoutingData, teamNames }: CustomChartGeneratorP
                       <span>Line Chart</span>
                     </div>
                   </SelectItem>
-                  <SelectItem value="scatter">
+                  <SelectItem value="scatter" disabled={!(numericFields.includes(yAxis) && numericFields.includes(xAxis))}>
                     <div className="flex items-center space-x-2">
                       <ScatterIcon className="h-4 w-4" />
                       <span>Scatter Plot</span>
@@ -230,9 +272,9 @@ const CustomChartGenerator = ({ scoutingData, teamNames }: CustomChartGeneratorP
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {allFields.map(field => (
-                    <SelectItem key={field} value={field}>
-                      {field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                  {matchFields.map(field => (
+                    <SelectItem key={field.id} value={field.id}>
+                      {field.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -241,16 +283,22 @@ const CustomChartGenerator = ({ scoutingData, teamNames }: CustomChartGeneratorP
 
             <div className="space-y-2">
               <Label>Y-Axis</Label>
-              <Select value={yAxis} onValueChange={setYAxis}>
+              <Select value={yAxis} onValueChange={setYAxis} disabled={numericFields.length === 0}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {numericFields.map(field => (
-                    <SelectItem key={field} value={field}>
-                      {field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                  {numericFields.length > 0 ? (
+                    numericFields.map(fieldId => (
+                      <SelectItem key={fieldId} value={fieldId}>
+                        {fieldLabelMap[fieldId] || fieldId}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="" disabled>
+                      No numeric fields available
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
             </div>
