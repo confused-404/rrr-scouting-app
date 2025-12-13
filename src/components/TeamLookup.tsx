@@ -7,6 +7,8 @@ import { Search, TrendingUp, Shield, Zap, Target } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getTeamNameWithCustom } from "@/lib/teamNames";
 import { getAllScoutingEntries, getAppDoc, subscribeScoutingEntries, subscribeAppDoc } from '@/lib/firebase'
+import { useFormConfiguration } from '@/hooks/useFormConfiguration'
+import { computeMatchScore, mapMatchFieldIds, getFieldValue, toNumber } from '@/lib/analyticsUtils'
 
 interface ScoutingData {
   id: number;
@@ -49,6 +51,8 @@ const TeamLookup = () => {
   const [teamStats, setTeamStats] = useState<TeamStats | null>(null);
   const [scoutingData, setScoutingData] = useState<ScoutingData[]>([]);
   const [superScoutNotes, setSuperScoutNotes] = useState<{[key: string]: SuperScoutNote[]}>({});
+  const config = useFormConfiguration();
+  const matchFields = config?.matchScouting ?? [];
 
   useEffect(() => {
     let unsubEntries: any | null = null;
@@ -111,13 +115,13 @@ const TeamLookup = () => {
     const stats: TeamStats = {
       teamNumber: teamKey,
       matches: teamMatches.length,
-      avgAutoPoints: teamMatches.reduce((sum, match) => sum + match.autoGamePieces, 0) / teamMatches.length,
-      avgTeleopPoints: teamMatches.reduce((sum, match) => sum + match.teleopGamePieces, 0) / teamMatches.length,
-      avgDefense: teamMatches.reduce((sum, match) => sum + match.defense, 0) / teamMatches.length,
-      avgReliability: teamMatches.reduce((sum, match) => sum + match.reliability, 0) / teamMatches.length,
-      climbRate: (teamMatches.filter(match => match.climbing === "success").length / teamMatches.length) * 100,
-      mobilityRate: (teamMatches.filter(match => match.autoMobility === "yes").length / teamMatches.length) * 100,
-      totalScore: teamMatches.reduce((sum, match) => sum + match.autoGamePieces + match.teleopGamePieces, 0),
+      avgAutoPoints: teamMatches.reduce((sum, match) => sum + (computeMatchScore(match, matchFields).autoPoints || 0), 0) / teamMatches.length,
+      avgTeleopPoints: teamMatches.reduce((sum, match) => sum + (computeMatchScore(match, matchFields).teleopPoints || 0), 0) / teamMatches.length,
+      avgDefense: teamMatches.reduce((sum, match) => sum + (toNumber(getFieldValue(match, mapMatchFieldIds(matchFields).defenseId) ?? match.defense) || 0), 0) / teamMatches.length,
+      avgReliability: teamMatches.reduce((sum, match) => sum + (toNumber(getFieldValue(match, mapMatchFieldIds(matchFields).reliabilityId) ?? match.reliability) || 0), 0) / teamMatches.length,
+      climbRate: (teamMatches.filter(match => String(getFieldValue(match, mapMatchFieldIds(matchFields).climbingId) ?? match.climbing) === "success").length / teamMatches.length) * 100,
+      mobilityRate: (teamMatches.filter(match => String(getFieldValue(match, mapMatchFieldIds(matchFields).autoMobilityId) ?? match.autoMobility) === "yes").length / teamMatches.length) * 100,
+      totalScore: teamMatches.reduce((sum, match) => sum + (computeMatchScore(match, matchFields).total || 0), 0),
       recentMatches: teamMatches.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 5)
     };
 
@@ -290,9 +294,10 @@ const TeamLookup = () => {
                       </div>
                     </div>
                     <div className="flex items-center space-x-4 text-sm">
-                      <div>Auto: <span className="font-semibold">{match.autoGamePieces}</span></div>
-                      <div>Teleop: <span className="font-semibold">{match.teleopGamePieces}</span></div>
-                      <div>Climb: <span className="font-semibold">{match.climbing}</span></div>
+                      <div>Auto: <span className="font-semibold">{computeMatchScore(match, matchFields).autoPoints}</span></div>
+                      <div>Teleop: <span className="font-semibold">{computeMatchScore(match, matchFields).teleopPoints}</span></div>
+                      <div>Total: <span className="font-semibold">{computeMatchScore(match, matchFields).total}</span></div>
+                      <div>Climb: <span className="font-semibold">{String(getFieldValue(match, mapMatchFieldIds(matchFields).climbingId) ?? match.climbing)}</span></div>
                     </div>
                   </div>
                 ))}
