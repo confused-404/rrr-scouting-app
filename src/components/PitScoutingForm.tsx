@@ -57,9 +57,8 @@ const PitScoutingForm = () => {
       return;
     }
     
-    // Save to Firestore (stored as app doc `pitScoutingData` array)
-    const newEntry = {
-      ...values,
+    const newEntry: PitScoutData & { id: number; timestamp: string } = {
+      ...values as PitScoutData,
       id: Date.now(),
       timestamp: new Date().toISOString()
     };

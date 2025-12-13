@@ -50,6 +50,8 @@ const FormConfiguration = () => {
   });
   // Local edited text for select options to avoid parsing while the user types commas
   const [optionInputs, setOptionInputs] = useState<Record<string, string>>({});
+  // Local edited text for field IDs to avoid remounting while typing
+  const [idInputs, setIdInputs] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const load = async () => {
@@ -68,6 +70,12 @@ const FormConfiguration = () => {
       }
     })
     setOptionInputs(map)
+    // also populate idInputs so editing IDs doesn't immediately remount components
+    const ids: Record<string, string> = {}
+    Object.values({ ...config.matchScouting, ...config.pitScouting }).forEach((f: any) => {
+      ids[f.id] = f.id
+    })
+    setIdInputs(ids)
   }, [config.matchScouting, config.pitScouting])
 
   const saveConfiguration = () => {
@@ -111,7 +119,50 @@ const FormConfiguration = () => {
       }
       return copy
     })
+    setIdInputs(prev => {
+      const copy = { ...prev }
+      if (copy[oldId] !== undefined) {
+        copy[newId] = newId
+        delete copy[oldId]
+      }
+      return copy
+    })
   }
+
+  // Drag-and-drop state & helpers for reordering fields
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+
+  const reorderFields = (fromIndex: number, toIndex: number) => {
+    const key = activeTab === 'match' ? 'matchScouting' : 'pitScouting'
+    setConfig(prev => {
+      const arr = [...(prev as any)[key]]
+      if (fromIndex < 0 || fromIndex >= arr.length) return prev
+      const [moved] = arr.splice(fromIndex, 1)
+      arr.splice(toIndex, 0, moved)
+      return { ...prev, [key]: arr }
+    })
+  }
+
+  const handleDragStart = (e: React.DragEvent, index: number, id: string) => {
+    e.dataTransfer.setData('text/plain', String(index))
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggingId(id)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDrop = (e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    const from = Number(e.dataTransfer.getData('text/plain'))
+    const to = index
+    if (!Number.isNaN(from) && from !== to) reorderFields(from, to)
+    setDraggingId(null)
+  }
+
+  const handleDragEnd = () => setDraggingId(null)
 
   const removeField = (fieldId: string) => {
     setConfig(prev => ({
@@ -164,9 +215,17 @@ const FormConfiguration = () => {
 
             <div className="space-y-4">
               {currentFields.map((field, index) => (
-                <Card key={field.id} className="p-4">
+                <Card
+                  key={field.id}
+                  className={`p-4 ${draggingId === field.id ? 'opacity-60' : ''}`}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index, field.id)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, index)}
+                  onDragEnd={handleDragEnd}
+                >
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                    <div className="space-y-2">
+                      <div className="space-y-2">
                       <Label>Field Label</Label>
                       <Input
                         value={field.label}
@@ -176,8 +235,9 @@ const FormConfiguration = () => {
                     <div className="space-y-2">
                       <Label>Field ID</Label>
                       <Input
-                        value={field.id}
-                        onChange={(e) => updateFieldId(field.id, e.target.value)}
+                        value={idInputs[field.id] ?? field.id}
+                        onChange={(e) => setIdInputs(prev => ({ ...prev, [field.id]: e.target.value }))}
+                        onBlur={() => updateFieldId(field.id, idInputs[field.id] ?? field.id)}
                       />
                       <p className="text-xs text-muted-foreground">Changing the ID will affect stored data keys. Use unique alphanumeric IDs.</p>
                     </div>
