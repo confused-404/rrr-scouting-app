@@ -14,7 +14,7 @@ interface SuperScoutData {
   teamNumber: string;
   strategicNotes: string;
   picklistPriority: string;
-}
+} // boom
 
 const SuperScoutForm = () => {
   const { toast } = useToast();
