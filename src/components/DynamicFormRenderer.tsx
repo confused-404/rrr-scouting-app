@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Plus, Minus } from "lucide-react";
 
 interface DynamicFormRendererProps {
   fields: FormField[];
@@ -27,13 +29,37 @@ const DynamicFormRenderer = ({ fields, values, onChange }: DynamicFormRendererPr
         );
       
       case 'number':
+        const numeric = value === '' || value === null || value === undefined ? 0 : Number(value);
         return (
-          <Input
-            type="number"
-            value={value}
-            onChange={(e) => onChange(field.id, e.target.value)}
-            required={field.required}
-          />
+          <div className="flex items-center space-x-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onChange(field.id, Math.max( (Number.isNaN(numeric) ? 0 : numeric) - 1, 0))}
+              aria-label={`Decrease ${field.label}`}
+            >
+              <Minus className="h-3 w-3" />
+            </Button>
+
+            <Input
+              type="number"
+              value={numeric}
+              onChange={(e) => onChange(field.id, e.target.value === '' ? '' : Number(e.target.value))}
+              required={field.required}
+              className="w-24 text-center"
+            />
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onChange(field.id, (Number.isNaN(numeric) ? 0 : numeric) + 1)}
+              aria-label={`Increase ${field.label}`}
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+          </div>
         );
       
       case 'textarea':
