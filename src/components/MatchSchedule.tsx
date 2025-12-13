@@ -52,10 +52,14 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
 
   // Get all unique team numbers from the schedule for team name fetching
   const allTeamNumbers = Array.from(new Set(
-    schedule.flatMap(match => [...match.redAlliance, ...match.blueAlliance])
+    schedule.flatMap(match =>
+      [...match.redAlliance, ...match.blueAlliance]
+        .map(getBaseTeamNumber)
+    )
   )).filter(Boolean);
-  
-  const { teamNames } = useTeamNames(allTeamNumbers);
+
+
+  const { teamNames, loading: teamNamesLoading } = useTeamNames(allTeamNumbers);
 
   useEffect(() => {
     let unsubScouting: any | null = null
@@ -83,11 +87,70 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
     setSchedule(updatedSchedule);
   };
 
+  function getBaseTeamNumber(team: string) {
+    const match = team.match(/^\d+/);
+    return match ? match[0] : team;
+  }
+
+  const exportTeamsCsv = () => {
+    if (teamNamesLoading) {
+      toast({
+        title: "Team names still loading",
+        description: "Please wait until team names finish loading.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const uniqueTeams = Array.from(new Set(
+      schedule.flatMap(m => [...m.redAlliance, ...m.blueAlliance])
+    )).filter(Boolean);
+
+    const rows = uniqueTeams
+      .map((fullTeamNumber) => {
+        const baseTeamNumber = getBaseTeamNumber(fullTeamNumber);
+        const teamName =
+          teamNames.get(baseTeamNumber) ??
+          getTeamNameWithCustom(baseTeamNumber) ??
+          "";
+
+        return {
+          teamName,
+          teamNumber: fullTeamNumber, // KEEP suffix in CSV
+        };
+      })
+      .sort((a, b) =>
+        Number(getBaseTeamNumber(a.teamNumber)) -
+        Number(getBaseTeamNumber(b.teamNumber))
+      );
+
+    const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+
+    const csv = [
+      ["team name", "team number"].map(esc).join(","),
+      ...rows.map(r => [r.teamName, r.teamNumber].map(esc).join(",")),
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "teams.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "CSV Exported",
+      description: `Exported ${rows.length} teams.`,
+    });
+  };
+
   const getLastMatch = (teamNumber: string): MatchData | null => {
     const teamMatches = scoutingData
       .filter(match => match.teamNumber === teamNumber)
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    
+
     return teamMatches.length > 0 ? teamMatches[0] : null;
   };
 
@@ -125,7 +188,7 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
 
   const isUserAssignedToMatch = (matchNumber: string) => {
     const assignments = getScoutingAssignments(matchNumber);
-    return assignments.some(assignment => 
+    return assignments.some(assignment =>
       assignment.scouts.includes(username)
     );
   };
@@ -138,9 +201,9 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
   };
 
   const addMatch = () => {
-    if (!newMatch.matchNumber || !newMatch.time || 
-        !newMatch.red1 || !newMatch.red2 || !newMatch.red3 ||
-        !newMatch.blue1 || !newMatch.blue2 || !newMatch.blue3) {
+    if (!newMatch.matchNumber || !newMatch.time ||
+      !newMatch.red1 || !newMatch.red2 || !newMatch.red3 ||
+      !newMatch.blue1 || !newMatch.blue2 || !newMatch.blue3) {
       toast({
         title: "Missing Information",
         description: "Please fill in all match details.",
@@ -157,10 +220,10 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
       blueAlliance: [newMatch.blue1, newMatch.blue2, newMatch.blue3]
     };
 
-    const updatedSchedule = [...schedule, match].sort((a, b) => 
+    const updatedSchedule = [...schedule, match].sort((a, b) =>
       parseInt(a.matchNumber) - parseInt(b.matchNumber)
     );
-    
+
     saveSchedule(updatedSchedule);
     setNewMatch({
       matchNumber: '',
@@ -178,7 +241,7 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
   const deleteMatch = (matchId: string) => {
     const updatedSchedule = schedule.filter(match => match.id !== matchId);
     saveSchedule(updatedSchedule);
-    
+
     toast({
       title: "Match Deleted",
       description: "Match has been removed from the schedule.",
@@ -206,7 +269,7 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
         }
 
         const [matchNum, time, red1, red2, red3, blue1, blue2, blue3] = parts;
-        
+
         newMatches.push({
           id: `import-${Date.now()}-${index}`,
           matchNumber: matchNum,
@@ -216,10 +279,10 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
         });
       });
 
-      const updatedSchedule = [...schedule, ...newMatches].sort((a, b) => 
+      const updatedSchedule = [...schedule, ...newMatches].sort((a, b) =>
         parseInt(a.matchNumber) - parseInt(b.matchNumber)
       );
-      
+
       saveSchedule(updatedSchedule);
       setImportData('');
 
@@ -246,10 +309,10 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
     }));
 
     // If clearExisting is true, replace the entire schedule, otherwise append
-    const updatedSchedule = clearExisting 
+    const updatedSchedule = clearExisting
       ? newMatches.sort((a, b) => parseInt(a.matchNumber) - parseInt(b.matchNumber))
       : [...schedule, ...newMatches].sort((a, b) => parseInt(a.matchNumber) - parseInt(b.matchNumber));
-    
+
     saveSchedule(updatedSchedule);
   };
 
@@ -275,6 +338,14 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
                 <CardDescription>View upcoming matches with team last match data and scout assignments</CardDescription>
               </div>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportTeamsCsv}
+              disabled={schedule.length === 0 || teamNamesLoading}
+            >
+              Export Teams CSV
+            </Button>
             {userRole === 'scouter' && (
               <Button
                 variant={showMyAssignments ? "default" : "outline"}
@@ -282,8 +353,8 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
                 onClick={() => setShowMyAssignments(!showMyAssignments)}
               >
                 <Users className="h-4 w-4 mr-2" />
-                {showMyAssignments 
-                  ? `Show All (${getFilteredSchedule().length} assigned)` 
+                {showMyAssignments
+                  ? `Show All (${getFilteredSchedule().length} assigned)`
                   : "My Assignments"
                 }
               </Button>
@@ -301,84 +372,84 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
                     <span>Add New Match</span>
                   </CardTitle>
                 </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="matchNumber">Match Number</Label>
-                    <Input
-                      id="matchNumber"
-                      value={newMatch.matchNumber}
-                      onChange={(e) => setNewMatch(prev => ({ ...prev, matchNumber: e.target.value }))}
-                      placeholder="1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="time">Time</Label>
-                    <Input
-                      id="time"
-                      type="time"
-                      value={newMatch.time}
-                      onChange={(e) => setNewMatch(prev => ({ ...prev, time: e.target.value }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
-                  <div className="space-y-3">
-                    <Label className="flex items-center space-x-2 text-red-600">
-                      <div className="w-3 h-3 bg-red-600 rounded"></div>
-                      <span>Red Alliance</span>
-                    </Label>
-                    <div className="grid grid-cols-3 gap-2">
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="matchNumber">Match Number</Label>
                       <Input
-                        placeholder="Team 1"
-                        value={newMatch.red1}
-                        onChange={(e) => setNewMatch(prev => ({ ...prev, red1: e.target.value }))}
+                        id="matchNumber"
+                        value={newMatch.matchNumber}
+                        onChange={(e) => setNewMatch(prev => ({ ...prev, matchNumber: e.target.value }))}
+                        placeholder="1"
                       />
+                    </div>
+                    <div>
+                      <Label htmlFor="time">Time</Label>
                       <Input
-                        placeholder="Team 2"
-                        value={newMatch.red2}
-                        onChange={(e) => setNewMatch(prev => ({ ...prev, red2: e.target.value }))}
-                      />
-                      <Input
-                        placeholder="Team 3"
-                        value={newMatch.red3}
-                        onChange={(e) => setNewMatch(prev => ({ ...prev, red3: e.target.value }))}
+                        id="time"
+                        type="time"
+                        value={newMatch.time}
+                        onChange={(e) => setNewMatch(prev => ({ ...prev, time: e.target.value }))}
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-3">
-                    <Label className="flex items-center space-x-2 text-blue-600">
-                      <div className="w-3 h-3 bg-blue-600 rounded"></div>
-                      <span>Blue Alliance</span>
-                    </Label>
-                    <div className="grid grid-cols-3 gap-2">
-                      <Input
-                        placeholder="Team 1"
-                        value={newMatch.blue1}
-                        onChange={(e) => setNewMatch(prev => ({ ...prev, blue1: e.target.value }))}
-                      />
-                      <Input
-                        placeholder="Team 2"
-                        value={newMatch.blue2}
-                        onChange={(e) => setNewMatch(prev => ({ ...prev, blue2: e.target.value }))}
-                      />
-                      <Input
-                        placeholder="Team 3"
-                        value={newMatch.blue3}
-                        onChange={(e) => setNewMatch(prev => ({ ...prev, blue3: e.target.value }))}
-                      />
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+                    <div className="space-y-3">
+                      <Label className="flex items-center space-x-2 text-red-600">
+                        <div className="w-3 h-3 bg-red-600 rounded"></div>
+                        <span>Red Alliance</span>
+                      </Label>
+                      <div className="grid grid-cols-3 gap-2">
+                        <Input
+                          placeholder="Team 1"
+                          value={newMatch.red1}
+                          onChange={(e) => setNewMatch(prev => ({ ...prev, red1: e.target.value }))}
+                        />
+                        <Input
+                          placeholder="Team 2"
+                          value={newMatch.red2}
+                          onChange={(e) => setNewMatch(prev => ({ ...prev, red2: e.target.value }))}
+                        />
+                        <Input
+                          placeholder="Team 3"
+                          value={newMatch.red3}
+                          onChange={(e) => setNewMatch(prev => ({ ...prev, red3: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label className="flex items-center space-x-2 text-blue-600">
+                        <div className="w-3 h-3 bg-blue-600 rounded"></div>
+                        <span>Blue Alliance</span>
+                      </Label>
+                      <div className="grid grid-cols-3 gap-2">
+                        <Input
+                          placeholder="Team 1"
+                          value={newMatch.blue1}
+                          onChange={(e) => setNewMatch(prev => ({ ...prev, blue1: e.target.value }))}
+                        />
+                        <Input
+                          placeholder="Team 2"
+                          value={newMatch.blue2}
+                          onChange={(e) => setNewMatch(prev => ({ ...prev, blue2: e.target.value }))}
+                        />
+                        <Input
+                          placeholder="Team 3"
+                          value={newMatch.blue3}
+                          onChange={(e) => setNewMatch(prev => ({ ...prev, blue3: e.target.value }))}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <Button onClick={addMatch} className="w-full mt-4">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Match to Schedule
-                </Button>
-              </CardContent>
-            </Card>
+                  <Button onClick={addMatch} className="w-full mt-4">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Match to Schedule
+                  </Button>
+                </CardContent>
+              </Card>
             )}
 
             {/* Import from TBA - Admin Only */}
@@ -421,7 +492,7 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button 
+                  <Button
                     onClick={clearSchedule}
                     variant="destructive"
                     className="w-full"
@@ -437,7 +508,7 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
               {getFilteredSchedule().map((match) => {
                 const isMyMatch = isUserAssignedToMatch(match.matchNumber);
                 return (
-                  <Card 
+                  <Card
                     key={match.id}
                     className={`${isMyMatch && userRole === 'scouter' ? 'border-l-4 border-l-blue-500 bg-blue-50' : ''}`}
                   >
@@ -517,23 +588,21 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
                               {getScoutingAssignments(match.matchNumber).map((assignment, index) => {
                                 const isMyAssignment = assignment.scouts.includes(username);
                                 return (
-                                  <div 
-                                    key={index} 
-                                    className={`p-2 rounded border text-sm ${
-                                      isMyAssignment && userRole === 'scouter' 
-                                        ? 'bg-yellow-100 border-yellow-300 ring-2 ring-yellow-400' 
-                                        : assignment.position.startsWith('red')
-                                          ? 'bg-red-50 border-red-200'
-                                          : 'bg-blue-50 border-blue-200'
-                                    }`}
+                                  <div
+                                    key={index}
+                                    className={`p-2 rounded border text-sm ${isMyAssignment && userRole === 'scouter'
+                                      ? 'bg-yellow-100 border-yellow-300 ring-2 ring-yellow-400'
+                                      : assignment.position.startsWith('red')
+                                        ? 'bg-red-50 border-red-200'
+                                        : 'bg-blue-50 border-blue-200'
+                                      }`}
                                   >
                                     <div className="flex items-center justify-between mb-1">
-                                      <Badge 
-                                        className={`text-xs ${
-                                          assignment.position.startsWith('red') 
-                                            ? 'bg-red-100 text-red-800' 
-                                            : 'bg-blue-100 text-blue-800'
-                                        }`}
+                                      <Badge
+                                        className={`text-xs ${assignment.position.startsWith('red')
+                                          ? 'bg-red-100 text-red-800'
+                                          : 'bg-blue-100 text-blue-800'
+                                          }`}
                                       >
                                         {getPositionLabel(assignment.position)}
                                       </Badge>
@@ -543,11 +612,11 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
                                     </div>
                                     <div className="font-medium text-xs">{assignment.teamName}</div>
                                     <div className="text-xs text-gray-600 mt-1">
-                                      {assignment.scouts.map(scout => 
-                                        scout === username && userRole === 'scouter' 
+                                      {assignment.scouts.map(scout =>
+                                        scout === username && userRole === 'scouter'
                                           ? <span key={scout} className="font-bold text-blue-700">{scout}</span>
                                           : scout
-                                      ).reduce((prev, curr, index) => 
+                                      ).reduce((prev, curr, index) =>
                                         index === 0 ? [curr] : [...prev, ', ', curr], []
                                       )}
                                     </div>
@@ -568,13 +637,13 @@ const MatchSchedule = ({ userRole = 'scouter', username = '' }: MatchSchedulePro
                   <CardContent className="text-center py-8">
                     <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-400" />
                     <p className="text-gray-500 mb-2">
-                      {showMyAssignments && userRole === 'scouter' 
+                      {showMyAssignments && userRole === 'scouter'
                         ? `No matches assigned to ${username}`
                         : "No matches scheduled yet"
                       }
                     </p>
                     <p className="text-sm text-gray-400">
-                      {showMyAssignments && userRole === 'scouter' 
+                      {showMyAssignments && userRole === 'scouter'
                         ? 'Check with your admin or switch to "Show All"'
                         : userRole === 'admin' ? 'Add your first match above to get started' : 'Ask your admin to add matches'
                       }
