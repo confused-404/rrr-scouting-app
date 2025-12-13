@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { getAppDoc, setAppDoc, subscribeAppDoc } from '@/lib/firebase'
 import { Plus, X, Save, RotateCcw, Edit, ArrowUp, ArrowDown } from "lucide-react";
+import { useRef } from 'react';
 
 interface ScoutingData {
   id: number;
@@ -40,8 +41,10 @@ import { getTeamNameWithCustom } from "@/lib/teamNames";
 const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) => {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
-  const [customPicklist, setCustomPicklist] = useState<PicklistTeam[]>([]);
+  const [picklists, setPicklists] = useState<Record<string, { id: string; name: string; teams: PicklistTeam[]; createdAt?: string; updatedAt?: string }>>({});
+  const [selectedPicklistId, setSelectedPicklistId] = useState<string | null>(null);
   const [newTeam, setNewTeam] = useState("");
+  const [newPicklistName, setNewPicklistName] = useState("");
 
 
   // Calculate team statistics
@@ -83,22 +86,61 @@ const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) =>
     totalScore: team.totalAutoPoints + team.totalTeleopPoints
   })).sort((a, b) => b.totalScore - a.totalScore);
 
-  const savePicklist = () => {
-    setAppDoc('customPicklist', customPicklist).catch(e => console.warn('Failed saving picklist:', e))
+  const savePicklists = () => {
+    setAppDoc('customPicklists', picklists).catch(e => console.warn('Failed saving picklists:', e))
     toast({
       title: "Picklist Saved",
       description: "Your custom picklist has been saved.",
     });
   };
 
-  const resetToAuto = () => {
+  // Autosave when picklists change (debounced)
+  const autosaveTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    // Clear any pending timer
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current as any);
+      autosaveTimerRef.current = null;
+    }
+
+    // Skip saving if no picklists present
+    if (!picklists || Object.keys(picklists).length === 0) return;
+
+    // Debounce write
+    autosaveTimerRef.current = window.setTimeout(() => {
+      setAppDoc('customPicklists', picklists).catch(e => console.warn('Failed autosaving picklists:', e));
+      autosaveTimerRef.current = null;
+    }, 1000);
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current as any);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [picklists]);
+
+  // Flush on unmount
+  useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current as any);
+        autosaveTimerRef.current = null;
+      }
+      // Save synchronously on unmount
+      if (Object.keys(picklists).length) setAppDoc('customPicklists', picklists).catch(() => {});
+    };
+  }, []);
+
+  const resetToAuto = (picklistId?: string) => {
     const autoPicklist: PicklistTeam[] = teamStatsArray.slice(0, 20).map((team, index) => ({
       teamNumber: team.teamNumber,
       tier: Math.floor(index / 5) + 1,
       notes: `Auto: ${team.avgAutoPoints}, Teleop: ${team.avgTeleopPoints}, Climb: ${team.climbRate}%`,
       isManual: false
     }));
-    setCustomPicklist(autoPicklist);
+    if (!picklistId) picklistId = selectedPicklistId as string;
+    if (!picklistId) return;
+    setPicklists(prev => ({ ...prev, [picklistId!]: { ...(prev[picklistId!] || { id: picklistId!, name: prev[picklistId!]?.name || 'Default' }), teams: autoPicklist, updatedAt: new Date().toISOString() } }));
     toast({
       title: "Picklist Reset",
       description: "Picklist has been reset to auto-generated rankings.",
@@ -116,7 +158,12 @@ const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) =>
     }
     
     // Check if team already exists
-    if (customPicklist.some(team => team.teamNumber === newTeam.trim())) {
+    const currentPicklist = selectedPicklistId ? picklists[selectedPicklistId] : null;
+    if (!currentPicklist) {
+      toast({ title: 'No Picklist Selected', description: 'Please select or create a picklist first.', variant: 'destructive' });
+      return;
+    }
+    if (currentPicklist.teams.some(team => team.teamNumber === newTeam.trim())) {
       toast({
         title: "Team Already Exists",
         description: `Team ${newTeam} is already in the picklist.`,
@@ -132,7 +179,10 @@ const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) =>
       isManual: true
     };
     
-    setCustomPicklist([newPicklistTeam, ...customPicklist]);
+    setPicklists(prev => ({
+      ...prev,
+      [selectedPicklistId!]: { ...(prev[selectedPicklistId!] || { id: selectedPicklistId!, name: prev[selectedPicklistId!]?.name || 'Default' }), teams: [newPicklistTeam, ...(prev[selectedPicklistId!]?.teams || [])], updatedAt: new Date().toISOString() }
+    }));
     setNewTeam("");
     
     toast({
@@ -142,7 +192,11 @@ const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) =>
   };
 
   const removeTeam = (teamNumber: string) => {
-    setCustomPicklist(customPicklist.filter(team => team.teamNumber !== teamNumber));
+    if (!selectedPicklistId) return;
+    setPicklists(prev => ({
+      ...prev,
+      [selectedPicklistId]: { ...(prev[selectedPicklistId] || { id: selectedPicklistId, name: prev[selectedPicklistId]?.name || 'Default' }), teams: (prev[selectedPicklistId]?.teams || []).filter(team => team.teamNumber !== teamNumber), updatedAt: new Date().toISOString() }
+    }));
     toast({
       title: "Team Removed",
       description: `Team ${teamNumber} has been removed from the picklist.`,
@@ -150,41 +204,58 @@ const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) =>
   };
 
   const moveTeam = (teamNumber: string, direction: 'up' | 'down') => {
-    const index = customPicklist.findIndex(team => team.teamNumber === teamNumber);
+    if (!selectedPicklistId) return;
+    const cur = picklists[selectedPicklistId]?.teams || [];
+    const index = cur.findIndex(team => team.teamNumber === teamNumber);
     if (index === -1) return;
-    
     const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= customPicklist.length) return;
-    
-    const newPicklist = [...customPicklist];
+    if (newIndex < 0 || newIndex >= cur.length) return;
+    const newPicklist = [...cur];
     [newPicklist[index], newPicklist[newIndex]] = [newPicklist[newIndex], newPicklist[index]];
-    setCustomPicklist(newPicklist);
+    setPicklists(prev => ({ ...prev, [selectedPicklistId]: { ...(prev[selectedPicklistId] || { id: selectedPicklistId, name: prev[selectedPicklistId]?.name || 'Default' }), teams: newPicklist, updatedAt: new Date().toISOString() } }));
   };
 
   const updateTeamNotes = (teamNumber: string, notes: string) => {
-    setCustomPicklist(customPicklist.map(team => 
-      team.teamNumber === teamNumber ? { ...team, notes } : team
-    ));
+    if (!selectedPicklistId) return;
+    setPicklists(prev => ({ ...prev, [selectedPicklistId]: { ...(prev[selectedPicklistId] || { id: selectedPicklistId, name: prev[selectedPicklistId]?.name || 'Default' }), teams: (prev[selectedPicklistId]?.teams || []).map(team => team.teamNumber === teamNumber ? { ...team, notes } : team), updatedAt: new Date().toISOString() } }));
   };
 
   // Initialize customPicklist with auto-generated data if empty
   useEffect(() => {
     let unsub: any | null = null
     const load = async () => {
-      const saved = await getAppDoc('customPicklist')
-      if (saved) {
-        setCustomPicklist(saved)
-      } else if (teamStatsArray.length > 0) {
-      const autoPicklist: PicklistTeam[] = teamStatsArray.slice(0, 15).map((team, index) => ({
-        teamNumber: team.teamNumber,
-        tier: Math.floor(index / 5) + 1,
-        notes: `Auto: ${team.avgAutoPoints}, Teleop: ${team.avgTeleopPoints}, Climb: ${team.climbRate}%`,
-        isManual: false
-      }));
-      setCustomPicklist(autoPicklist);
-    }
-      unsub = subscribeAppDoc('customPicklist', (val) => {
-        if (val) setCustomPicklist(val)
+      // Try modern storage first
+      const saved = await getAppDoc('customPicklists')
+      if (saved && Object.keys(saved || {}).length) {
+        setPicklists(saved as any)
+        const ids = Object.keys(saved);
+        setSelectedPicklistId(prev => prev || ids[0] || null);
+      } else {
+        // Back-compat: try legacy single picklist
+        const legacy = await getAppDoc('customPicklist')
+        if (legacy && legacy.length) {
+          const defaultPicklistId = 'default';
+          setPicklists({ [defaultPicklistId]: { id: defaultPicklistId, name: 'Default', teams: legacy, createdAt: new Date().toISOString() } });
+          setSelectedPicklistId(defaultPicklistId);
+        } else if (teamStatsArray.length > 0) {
+          const autoPicklist: PicklistTeam[] = teamStatsArray.slice(0, 15).map((team, index) => ({
+            teamNumber: team.teamNumber,
+            tier: Math.floor(index / 5) + 1,
+            notes: `Auto: ${team.avgAutoPoints}, Teleop: ${team.avgTeleopPoints}, Climb: ${team.climbRate}%`,
+            isManual: false
+          }));
+          const defaultId = 'default';
+          setPicklists({ [defaultId]: { id: defaultId, name: 'Default', teams: autoPicklist, createdAt: new Date().toISOString() } });
+          setSelectedPicklistId(defaultId);
+        }
+      }
+
+      unsub = subscribeAppDoc('customPicklists', (val) => {
+        if (val) {
+          setPicklists(val as any);
+          const ids = Object.keys(val);
+          setSelectedPicklistId(prev => prev || ids[0] || null);
+        }
       })
     }
 
@@ -193,7 +264,7 @@ const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) =>
     return () => { if (unsub) unsub() }
   }, [scoutingData.length]); // Use scoutingData.length as dependency instead
 
-  const displayPicklist = customPicklist;
+  const displayPicklist = selectedPicklistId ? (picklists[selectedPicklistId]?.teams || []) : [];
 
   return (
     <div className="space-y-6">
@@ -207,23 +278,69 @@ const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) =>
               </CardDescription>
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsEditing(!isEditing)}
-                className="w-full sm:w-auto text-sm"
-              >
-                <Edit className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                {isEditing ? "View Mode" : "Edit Mode"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedPicklistId || ''}
+                  onChange={(e) => setSelectedPicklistId(e.target.value || null)}
+                  className="border rounded px-2 py-1 text-sm"
+                >
+                  {Object.values(picklists).map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <Input placeholder="New picklist name" value={newPicklistName} onChange={(e) => setNewPicklistName(e.target.value)} className="w-40 text-sm" />
+                <Button onClick={() => {
+                  const name = newPicklistName.trim() || `Picklist ${Object.keys(picklists).length + 1}`;
+                  const id = name.toLowerCase().replace(/[^a-z0-9-_]/g, '-') + `-${Date.now()}`;
+                  const autoPicklist: PicklistTeam[] = teamStatsArray.slice(0, 15).map((team, index) => ({
+                    teamNumber: team.teamNumber,
+                    tier: Math.floor(index / 5) + 1,
+                    notes: `Auto: ${team.avgAutoPoints}, Teleop: ${team.avgTeleopPoints}, Climb: ${team.climbRate}%`,
+                    isManual: false
+                  }));
+                  setPicklists(prev => ({ ...prev, [id]: { id, name, teams: autoPicklist, createdAt: new Date().toISOString() } }));
+                  setSelectedPicklistId(id);
+                  setNewPicklistName('');
+                }} className="text-sm">Add Picklist</Button>
+                <Button variant="outline" onClick={() => setIsEditing(!isEditing)} className="w-full sm:w-auto text-sm">
+                  <Edit className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                  {isEditing ? "View Mode" : "Edit Mode"}
+                </Button>
+              </div>
               {isEditing && (
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={resetToAuto} className="flex-1 sm:flex-none text-sm">
                     <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                     Reset
                   </Button>
-                  <Button onClick={savePicklist} className="flex-1 sm:flex-none text-sm">
+                  <Button onClick={() => {
+                    // Save all picklists
+                    savePicklists();
+                  }} className="flex-1 sm:flex-none text-sm">
                     <Save className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                     Save
+                  </Button>
+                  <Button variant="destructive" onClick={() => {
+                    if (!selectedPicklistId) return;
+                    if (!confirm(`Delete picklist "${picklists[selectedPicklistId].name}"? This action cannot be undone.`)) return;
+                    setPicklists(prev => {
+                      const copy = { ...prev };
+                      delete copy[selectedPicklistId];
+                      const remainingIds = Object.keys(copy);
+                      // pick first remaining or null
+                      setSelectedPicklistId(remainingIds[0] || null);
+                      return copy;
+                    });
+                  }} className="flex-1 sm:flex-none text-sm">
+                    Delete
+                  </Button>
+                  <Button variant="outline" onClick={() => {
+                    if (!selectedPicklistId) return;
+                    const newName = prompt('Enter new picklist name', picklists[selectedPicklistId].name);
+                    if (!newName) return;
+                    setPicklists(prev => ({ ...prev, [selectedPicklistId]: { ...(prev[selectedPicklistId] || { id: selectedPicklistId, name: newName }), name: newName, updatedAt: new Date().toISOString() } }));
+                  }} className="flex-1 sm:flex-none text-sm">
+                    Rename
                   </Button>
                 </div>
               )}
@@ -283,7 +400,7 @@ const AlliancePicklist = ({ scoutingData, teamNames }: AlliancePicklistProps) =>
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => moveTeam(team.teamNumber, 'down')}
-                                disabled={index === customPicklist.length - 1}
+                                disabled={index === displayPicklist.length - 1}
                                 className="h-6 w-6 p-0"
                               >
                                 <ArrowDown className="h-3 w-3" />
