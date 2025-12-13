@@ -22,7 +22,7 @@ const SuperScoutForm = () => {
     teamNumber: "",
     strategicNotes: "",
     picklistPriority: "medium"
-  });
+  }); // second boom
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
