@@ -1,11 +1,26 @@
 import { useState } from 'react';
-import { Edit2, Eye } from 'lucide-react';
+import { Edit2, Eye, LogOut } from 'lucide-react';
 import { AdminMode } from './components/AdminMode';
 import { UserMode } from './components/UserMode';
+import { Login } from './components/Login';
+import { useAuth } from './contexts/AuthContext';
 import './App.css';
 
 function App() {
   const [mode, setMode] = useState<'admin' | 'user'>('user');
+  const { currentUser, logout } = useAuth();
+
+  if (!currentUser) {
+    return <Login />;
+  }
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -13,7 +28,10 @@ function App() {
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-semibold text-gray-900">Form Builder</h1>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
+              <span className="text-sm text-gray-600 mr-2">
+                {currentUser.email}
+              </span>
               <button
                 onClick={() => setMode('admin')}
                 className={`px-4 py-2 rounded-md flex items-center gap-2 ${
@@ -35,6 +53,13 @@ function App() {
               >
                 <Eye size={16} />
                 User
+              </button>
+              <button
+                onClick={handleLogout}
+                className="px-4 py-2 rounded-md flex items-center gap-2 bg-red-600 text-white hover:bg-red-700"
+              >
+                <LogOut size={16} />
+                Logout
               </button>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Layout } from 'lucide-react';
-import type { FormField as FormFieldType } from '../types/form.types';
+import { type FormField as FormFieldType } from '../types/form.types';
 import { FormField } from './FormField';
 import { formApi } from '../services/api';
 
@@ -9,20 +9,25 @@ export const UserMode: React.FC = () => {
   const [responses, setResponses] = useState<Record<string, any>>({});
   const [currentFormId, setCurrentFormId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fetchingForm, setFetchingForm] = useState(true);
 
   useEffect(() => {
     loadForm();
   }, []);
 
   const loadForm = async () => {
+    setFetchingForm(true);
     try {
       const forms = await formApi.getForms();
+      console.log('Loaded forms:', forms); // Debug log
       if (forms.length > 0) {
         setFormFields(forms[0].fields);
         setCurrentFormId(forms[0].id);
       }
     } catch (error) {
       console.error('Error loading form:', error);
+    } finally {
+      setFetchingForm(false);
     }
   };
 
@@ -48,6 +53,16 @@ export const UserMode: React.FC = () => {
       setLoading(false);
     }
   };
+
+  if (fetchingForm) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="text-center py-12 text-gray-500">
+          <p>Loading form...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (formFields.length === 0) {
     return (

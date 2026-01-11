@@ -2,80 +2,118 @@ import { formModel } from '../models/formModel.js';
 
 export const formController = {
   // Get all forms
-  getForms: (req, res) => {
-    const forms = formModel.getAllForms();
-    res.json(forms);
+  getForms: async (req, res) => {
+    try {
+      // console.log('Getting all forms...');
+      const forms = await formModel.getAllForms();
+      // console.log('Forms retrieved:', forms.length);
+      // console.log('Forms data:', JSON.stringify(forms, null, 2));
+      res.json(forms);
+    } catch (error) {
+      // console.error('Error in getForms:', error);
+      res.status(500).json({ message: error.message });
+    }
   },
 
   // Get single form
-  getForm: (req, res) => {
-    const form = formModel.getFormById(req.params.id);
-    if (!form) {
-      return res.status(404).json({ message: 'Form not found' });
+  getForm: async (req, res) => {
+    try {
+      const form = await formModel.getFormById(req.params.id);
+      if (!form) {
+        return res.status(404).json({ message: 'Form not found' });
+      }
+      res.json(form);
+    } catch (error) {
+      // console.error('Error in getForm:', error);
+      res.status(500).json({ message: error.message });
     }
-    res.json(form);
   },
 
   // Create form
-  createForm: (req, res) => {
-    const { fields } = req.body;
-    
-    if (!fields || !Array.isArray(fields)) {
-      return res.status(400).json({ message: 'Fields array is required' });
-    }
+  createForm: async (req, res) => {
+    try {
+      const { fields } = req.body;
+      
+      if (!fields || !Array.isArray(fields)) {
+        return res.status(400).json({ message: 'Fields array is required' });
+      }
 
-    const newForm = formModel.createForm({ fields });
-    res.status(201).json(newForm);
+      const newForm = await formModel.createForm({ fields });
+      res.status(201).json(newForm);
+    } catch (error) {
+      // console.error('Error in createForm:', error);
+      res.status(500).json({ message: error.message });
+    }
   },
 
   // Update form
-  updateForm: (req, res) => {
-    const { fields } = req.body;
-    
-    if (!fields || !Array.isArray(fields)) {
-      return res.status(400).json({ message: 'Fields array is required' });
-    }
+  updateForm: async (req, res) => {
+    try {
+      const { fields } = req.body;
+      
+      if (!fields || !Array.isArray(fields)) {
+        return res.status(400).json({ message: 'Fields array is required' });
+      }
 
-    const updatedForm = formModel.updateForm(req.params.id, { fields });
-    
-    if (!updatedForm) {
-      return res.status(404).json({ message: 'Form not found' });
-    }
+      const updatedForm = await formModel.updateForm(req.params.id, { fields });
+      
+      if (!updatedForm) {
+        return res.status(404).json({ message: 'Form not found' });
+      }
 
-    res.json(updatedForm);
+      res.json(updatedForm);
+    } catch (error) {
+      // console.error('Error in updateForm:', error);
+      res.status(500).json({ message: error.message });
+    }
   },
 
   // Delete form
-  deleteForm: (req, res) => {
-    const deleted = formModel.deleteForm(req.params.id);
-    
-    if (!deleted) {
-      return res.status(404).json({ message: 'Form not found' });
-    }
+  deleteForm: async (req, res) => {
+    try {
+      const deleted = await formModel.deleteForm(req.params.id);
+      
+      if (!deleted) {
+        return res.status(404).json({ message: 'Form not found' });
+      }
 
-    res.json({ message: 'Form deleted successfully' });
+      res.json({ message: 'Form deleted successfully' });
+    } catch (error) {
+      // console.error('Error in deleteForm:', error);
+      res.status(500).json({ message: error.message });
+    }
   },
 
   // Get submissions for a form
-  getSubmissions: (req, res) => {
-    const submissions = formModel.getSubmissions(req.params.id);
-    res.json(submissions);
+  getSubmissions: async (req, res) => {
+    try {
+      const submissions = await formModel.getSubmissions(req.params.id);
+      res.json(submissions);
+    } catch (error) {
+      // console.error('Error in getSubmissions:', error);
+      res.status(500).json({ message: error.message });
+    }
   },
 
   // Create submission
-  createSubmission: (req, res) => {
-    const { formId, data } = req.body;
-    
-    if (!formId || !data) {
-      return res.status(400).json({ message: 'Form ID and data are required' });
-    }
+  createSubmission: async (req, res) => {
+    try {
+      const { formId, data } = req.body;
+      
+      if (!formId || !data) {
+        return res.status(400).json({ message: 'Form ID and data are required' });
+      }
 
-    const form = formModel.getFormById(formId);
-    if (!form) {
-      return res.status(404).json({ message: 'Form not found' });
-    }
+      const form = await formModel.getFormById(formId);
+      if (!form) {
+        return res.status(404).json({ message: 'Form not found' });
+      }
 
-    const newSubmission = formModel.createSubmission({ formId, data });
-    res.status(201).json(newSubmission);
+      const newSubmission = await formModel.createSubmission({ formId, data });
+      res.status(201).json(newSubmission);
+    } catch (error) {
+      // console.error('Error in createSubmission:', error);
+      res.status(500).json({ message: error.message });
+    }
   }
 };

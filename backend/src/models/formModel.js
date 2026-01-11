@@ -1,29 +1,46 @@
 import { db } from '../config/firebase.js';
+import admin from 'firebase-admin';
 
 const FORMS_COLLECTION = 'forms';
 const SUBMISSIONS_COLLECTION = 'submissions';
+
+// Helper function to convert Firestore timestamp
+const convertTimestamp = (timestamp) => {
+  if (!timestamp) return new Date().toISOString();
+  if (timestamp._seconds) {
+    return new Date(timestamp._seconds * 1000).toISOString();
+  }
+  if (timestamp.toDate) {
+    return timestamp.toDate().toISOString();
+  }
+  return new Date().toISOString();
+};
 
 export const formModel = {
   // Form CRUD operations
   getAllForms: async () => {
     const snapshot = await db.collection(FORMS_COLLECTION).get();
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate().toISOString(),
-      updatedAt: doc.data().updatedAt?.toDate().toISOString(),
-    }));
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: convertTimestamp(data.createdAt),
+        updatedAt: convertTimestamp(data.updatedAt),
+      };
+    });
   },
   
   getFormById: async (id) => {
     const doc = await db.collection(FORMS_COLLECTION).doc(id).get();
     if (!doc.exists) return null;
     
+    const data = doc.data();
     return {
       id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate().toISOString(),
-      updatedAt: doc.data().updatedAt?.toDate().toISOString(),
+      ...data,
+      createdAt: convertTimestamp(data.createdAt),
+      updatedAt: convertTimestamp(data.updatedAt),
     };
   },
   
@@ -35,11 +52,12 @@ export const formModel = {
     });
     
     const doc = await docRef.get();
+    const data = doc.data();
     return {
       id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate().toISOString(),
-      updatedAt: doc.data().updatedAt?.toDate().toISOString(),
+      ...data,
+      createdAt: convertTimestamp(data.createdAt),
+      updatedAt: convertTimestamp(data.updatedAt),
     };
   },
   
@@ -55,11 +73,12 @@ export const formModel = {
     });
     
     const updated = await docRef.get();
+    const data = updated.data();
     return {
       id: updated.id,
-      ...updated.data(),
-      createdAt: updated.data().createdAt?.toDate().toISOString(),
-      updatedAt: updated.data().updatedAt?.toDate().toISOString(),
+      ...data,
+      createdAt: convertTimestamp(data.createdAt),
+      updatedAt: convertTimestamp(data.updatedAt),
     };
   },
   
@@ -74,11 +93,14 @@ export const formModel = {
       .where('formId', '==', formId)
       .get();
     
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      timestamp: doc.data().timestamp?.toDate().toISOString(),
-    }));
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        timestamp: convertTimestamp(data.timestamp),
+      };
+    });
   },
   
   createSubmission: async (submissionData) => {
@@ -88,22 +110,23 @@ export const formModel = {
     });
     
     const doc = await docRef.get();
+    const data = doc.data();
     return {
       id: doc.id,
-      ...doc.data(),
-      timestamp: doc.data().timestamp?.toDate().toISOString(),
+      ...data,
+      timestamp: convertTimestamp(data.timestamp),
     };
   },
   
   getAllSubmissions: async () => {
     const snapshot = await db.collection(SUBMISSIONS_COLLECTION).get();
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      timestamp: doc.data().timestamp?.toDate().toISOString(),
-    }));
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        timestamp: convertTimestamp(data.timestamp),
+      };
+    });
   }
 };
-
-// Need to import admin at the top
-import admin from 'firebase-admin';

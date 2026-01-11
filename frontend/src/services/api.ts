@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { auth } from '../config/firebase';
 import type { Form, FormField, Submission } from '../types/form.types';
 
 const API_BASE_URL = '/api';
@@ -10,8 +11,29 @@ const api = axios.create({
   },
 });
 
+// Add auth token to requests
+api.interceptors.request.use(async (config) => {
+  const user = auth.currentUser;
+  if (user) {
+    const token = await user.getIdToken();
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export const authApi = {
+  signup: async (email: string, password: string) => {
+    const response = await api.post('/auth/signup', { email, password });
+    return response.data;
+  },
+  
+  getCurrentUser: async () => {
+    const response = await api.get('/auth/me');
+    return response.data;
+  },
+};
+
 export const formApi = {
-  // Form operations
   getForms: async (): Promise<Form[]> => {
     const response = await api.get('/forms');
     return response.data;
@@ -36,7 +58,6 @@ export const formApi = {
     await api.delete(`/forms/${id}`);
   },
 
-  // Submission operations
   getSubmissions: async (formId: string): Promise<Submission[]> => {
     const response = await api.get(`/forms/${formId}/submissions`);
     return response.data;
