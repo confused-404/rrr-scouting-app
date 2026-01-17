@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { auth } from '../config/firebase';
 import type { Form, FormField, Submission } from '../types/form.types';
+import type { Competition } from '../types/competition.types';
 
 const API_BASE_URL = '/api';
 
@@ -33,9 +34,60 @@ export const authApi = {
   },
 };
 
+export const competitionApi = {
+  getAll: async (): Promise<Competition[]> => {
+    const response = await api.get('/competitions');
+    return response.data;
+  },
+
+  getActive: async (): Promise<Competition[]> => {
+    const response = await api.get('/competitions/active');
+    return response.data;
+  },
+
+  getById: async (id: string): Promise<Competition> => {
+    const response = await api.get(`/competitions/${id}`);
+    return response.data;
+  },
+
+  create: async (competition: Partial<Competition>): Promise<Competition> => {
+    const response = await api.post('/competitions', competition);
+    return response.data;
+  },
+
+  update: async (id: string, competition: Partial<Competition>): Promise<Competition> => {
+    const response = await api.put(`/competitions/${id}`, competition);
+    return response.data;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/competitions/${id}`);
+  },
+
+  addForm: async (competitionId: string, formId: string): Promise<Competition> => {
+    const response = await api.post(`/competitions/${competitionId}/forms/add`, { formId });
+    return response.data;
+  },
+
+  removeForm: async (competitionId: string, formId: string): Promise<Competition> => {
+    const response = await api.post(`/competitions/${competitionId}/forms/remove`, { formId });
+    return response.data;
+  },
+
+  setActiveForm: async (competitionId: string, formId: string | null): Promise<Competition> => {
+    const response = await api.post(`/competitions/${competitionId}/forms/set-active`, { formId });
+    return response.data;
+  },
+};
+
 export const formApi = {
   getForms: async (): Promise<Form[]> => {
     const response = await api.get('/forms');
+    return response.data;
+  },
+
+  getFormsByCompetition: async (competitionId: string): Promise<Form[]> => {
+    const response = await api.get(`/forms/competition/${competitionId}`);
     return response.data;
   },
 
@@ -44,8 +96,8 @@ export const formApi = {
     return response.data;
   },
 
-  createForm: async (fields: FormField[]): Promise<Form> => {
-    const response = await api.post('/forms', { fields });
+  createForm: async (competitionId: string, fields: FormField[]): Promise<Form> => {
+    const response = await api.post('/forms', { competitionId, fields });
     return response.data;
   },
 
@@ -63,8 +115,13 @@ export const formApi = {
     return response.data;
   },
 
-  createSubmission: async (formId: string, data: Record<string, any>): Promise<Submission> => {
-    const response = await api.post('/forms/submissions', { formId, data });
+  getSubmissionsByCompetition: async (competitionId: string): Promise<Submission[]> => {
+    const response = await api.get(`/forms/competition/${competitionId}/submissions`);
+    return response.data;
+  },
+
+  createSubmission: async (formId: string, competitionId: string, data: Record<string, any>): Promise<Submission> => {
+    const response = await api.post('/forms/submissions', { formId, competitionId, data });
     return response.data;
   },
 };

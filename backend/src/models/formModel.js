@@ -30,6 +30,22 @@ export const formModel = {
       };
     });
   },
+
+  getFormsByCompetition: async (competitionId) => {
+    const snapshot = await db.collection(FORMS_COLLECTION)
+      .where('competitionId', '==', competitionId)
+      .get();
+    
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: convertTimestamp(data.createdAt),
+        updatedAt: convertTimestamp(data.updatedAt),
+      };
+    });
+  },
   
   getFormById: async (id) => {
     const doc = await db.collection(FORMS_COLLECTION).doc(id).get();
@@ -47,6 +63,7 @@ export const formModel = {
   createForm: async (formData) => {
     const docRef = await db.collection(FORMS_COLLECTION).add({
       ...formData,
+      isActive: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -91,6 +108,21 @@ export const formModel = {
   getSubmissions: async (formId) => {
     const snapshot = await db.collection(SUBMISSIONS_COLLECTION)
       .where('formId', '==', formId)
+      .get();
+    
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        timestamp: convertTimestamp(data.timestamp),
+      };
+    });
+  },
+
+  getSubmissionsByCompetition: async (competitionId) => {
+    const snapshot = await db.collection(SUBMISSIONS_COLLECTION)
+      .where('competitionId', '==', competitionId)
       .get();
     
     return snapshot.docs.map(doc => {

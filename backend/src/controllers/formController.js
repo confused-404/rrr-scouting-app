@@ -7,10 +7,20 @@ export const formController = {
       // console.log('Getting all forms...');
       const forms = await formModel.getAllForms();
       // console.log('Forms retrieved:', forms.length);
-      // console.log('Forms data:', JSON.stringify(forms, null, 2));
       res.json(forms);
     } catch (error) {
-      // console.error('Error in getForms:', error);
+      console.error('Error in getForms:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  // Get forms by competition
+  getFormsByCompetition: async (req, res) => {
+    try {
+      const forms = await formModel.getFormsByCompetition(req.params.competitionId);
+      res.json(forms);
+    } catch (error) {
+      console.error('Error in getFormsByCompetition:', error);
       res.status(500).json({ message: error.message });
     }
   },
@@ -24,7 +34,7 @@ export const formController = {
       }
       res.json(form);
     } catch (error) {
-      // console.error('Error in getForm:', error);
+      console.error('Error in getForm:', error);
       res.status(500).json({ message: error.message });
     }
   },
@@ -32,16 +42,20 @@ export const formController = {
   // Create form
   createForm: async (req, res) => {
     try {
-      const { fields } = req.body;
+      const { fields, competitionId } = req.body;
       
       if (!fields || !Array.isArray(fields)) {
         return res.status(400).json({ message: 'Fields array is required' });
       }
 
-      const newForm = await formModel.createForm({ fields });
+      if (!competitionId) {
+        return res.status(400).json({ message: 'Competition ID is required' });
+      }
+
+      const newForm = await formModel.createForm({ fields, competitionId });
       res.status(201).json(newForm);
     } catch (error) {
-      // console.error('Error in createForm:', error);
+      console.error('Error in createForm:', error);
       res.status(500).json({ message: error.message });
     }
   },
@@ -63,7 +77,7 @@ export const formController = {
 
       res.json(updatedForm);
     } catch (error) {
-      // console.error('Error in updateForm:', error);
+      console.error('Error in updateForm:', error);
       res.status(500).json({ message: error.message });
     }
   },
@@ -79,7 +93,7 @@ export const formController = {
 
       res.json({ message: 'Form deleted successfully' });
     } catch (error) {
-      // console.error('Error in deleteForm:', error);
+      console.error('Error in deleteForm:', error);
       res.status(500).json({ message: error.message });
     }
   },
@@ -90,7 +104,18 @@ export const formController = {
       const submissions = await formModel.getSubmissions(req.params.id);
       res.json(submissions);
     } catch (error) {
-      // console.error('Error in getSubmissions:', error);
+      console.error('Error in getSubmissions:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  // Get submissions by competition
+  getSubmissionsByCompetition: async (req, res) => {
+    try {
+      const submissions = await formModel.getSubmissionsByCompetition(req.params.competitionId);
+      res.json(submissions);
+    } catch (error) {
+      console.error('Error in getSubmissionsByCompetition:', error);
       res.status(500).json({ message: error.message });
     }
   },
@@ -98,10 +123,14 @@ export const formController = {
   // Create submission
   createSubmission: async (req, res) => {
     try {
-      const { formId, data } = req.body;
+      const { formId, competitionId, data } = req.body;
       
       if (!formId || !data) {
         return res.status(400).json({ message: 'Form ID and data are required' });
+      }
+
+      if (!competitionId) {
+        return res.status(400).json({ message: 'Competition ID is required' });
       }
 
       const form = await formModel.getFormById(formId);
@@ -109,10 +138,10 @@ export const formController = {
         return res.status(404).json({ message: 'Form not found' });
       }
 
-      const newSubmission = await formModel.createSubmission({ formId, data });
+      const newSubmission = await formModel.createSubmission({ formId, competitionId, data });
       res.status(201).json(newSubmission);
     } catch (error) {
-      // console.error('Error in createSubmission:', error);
+      console.error('Error in createSubmission:', error);
       res.status(500).json({ message: error.message });
     }
   }
