@@ -63,6 +63,21 @@ export const competitionApi = {
   delete: async (id: string): Promise<void> => {
     await api.delete(`/competitions/${id}`);
   },
+
+  addForm: async (competitionId: string, formId: string): Promise<Competition> => {
+    const response = await api.post(`/competitions/${competitionId}/forms/add`, { formId });
+    return response.data;
+  },
+
+  removeForm: async (competitionId: string, formId: string): Promise<Competition> => {
+    const response = await api.post(`/competitions/${competitionId}/forms/remove`, { formId });
+    return response.data;
+  },
+
+  setActiveForm: async (competitionId: string, formId: string | null): Promise<Competition> => {
+    const response = await api.post(`/competitions/${competitionId}/forms/set-active`, { formId });
+    return response.data;
+  },
 };
 
 export const formApi = {

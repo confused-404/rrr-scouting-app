@@ -101,4 +101,97 @@ export const competitionController = {
       res.status(500).json({ message: error.message });
     }
   },
+
+  // Add form ID to competition
+  addFormId: async (req, res) => {
+    try {
+      const { formId } = req.body;
+      const competitionId = req.params.id;
+
+      if (!formId) {
+        return res.status(400).json({ message: 'formId is required' });
+      }
+
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      if (!competition) {
+        return res.status(404).json({ message: 'Competition not found' });
+      }
+
+      // Check if formId already exists
+      if (competition.formIds.includes(formId)) {
+        return res.status(400).json({ message: 'Form ID already exists in this competition' });
+      }
+
+      // Add formId to the array
+      const updatedFormIds = [...competition.formIds, formId];
+      const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
+        formIds: updatedFormIds,
+      });
+
+      res.json(updatedCompetition);
+    } catch (error) {
+      console.error('Error in addFormId:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  // Remove form ID from competition
+  removeFormId: async (req, res) => {
+    try {
+      const { formId } = req.body;
+      const competitionId = req.params.id;
+
+      if (!formId) {
+        return res.status(400).json({ message: 'formId is required' });
+      }
+
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      if (!competition) {
+        return res.status(404).json({ message: 'Competition not found' });
+      }
+
+      // Remove formId from the array
+      const updatedFormIds = competition.formIds.filter(id => id !== formId);
+      
+      // If the removed formId was active, clear activeFormId
+      let updateData = { formIds: updatedFormIds };
+      if (competition.activeFormId === formId) {
+        updateData.activeFormId = null;
+      }
+
+      const updatedCompetition = await competitionModel.updateCompetition(competitionId, updateData);
+
+      res.json(updatedCompetition);
+    } catch (error) {
+      console.error('Error in removeFormId:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  // Set active form ID for competition
+  setActiveFormId: async (req, res) => {
+    try {
+      const { formId } = req.body;
+      const competitionId = req.params.id;
+
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      if (!competition) {
+        return res.status(404).json({ message: 'Competition not found' });
+      }
+
+      // If formId is provided, verify it exists in the formIds array
+      if (formId && !competition.formIds.includes(formId)) {
+        return res.status(400).json({ message: 'Form ID does not exist in this competition' });
+      }
+
+      const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
+        activeFormId: formId || null,
+      });
+
+      res.json(updatedCompetition);
+    } catch (error) {
+      console.error('Error in setActiveFormId:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
 };

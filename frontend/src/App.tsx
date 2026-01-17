@@ -145,7 +145,7 @@ function App() {
         {mode === 'competitions' ? (
           <CompetitionManager />
         ) : mode === 'admin' ? (
-          <AdminMode selectedCompetition={selectedCompetition} />
+          <AdminMode selectedCompetition={selectedCompetition} onRefreshCompetitions={loadCompetitions} />
         ) : (
           <UserMode selectedCompetition={selectedCompetition} />
         )}

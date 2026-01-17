@@ -7,6 +7,7 @@ export type Competition = {
   status: CompetitionStatus;
   startDate: string;
   endDate: string;
+  formIds: string[];
   activeFormId?: string;
   createdAt: string;
 };
