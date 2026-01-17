@@ -11,6 +11,10 @@ const convertTimestamp = (timestamp) => {
   if (timestamp.toDate) {
     return timestamp.toDate().toISOString();
   }
+  // If it's already a string, return it
+  if (typeof timestamp === 'string') {
+    return timestamp;
+  }
   return new Date().toISOString();
 };
 
@@ -22,12 +26,16 @@ export const competitionModel = {
     
     return snapshot.docs.map(doc => {
       const data = doc.data();
+      // console.log('Raw competition data:', data); // Debug log
       return {
         id: doc.id,
-        ...data,
+        name: data.name,
+        season: data.season,
+        status: data.status,
         startDate: convertTimestamp(data.startDate),
         endDate: convertTimestamp(data.endDate),
         createdAt: convertTimestamp(data.createdAt),
+        activeFormId: data.activeFormId,
       };
     });
   },
@@ -41,10 +49,13 @@ export const competitionModel = {
       const data = doc.data();
       return {
         id: doc.id,
-        ...data,
+        name: data.name,
+        season: data.season,
+        status: data.status,
         startDate: convertTimestamp(data.startDate),
         endDate: convertTimestamp(data.endDate),
         createdAt: convertTimestamp(data.createdAt),
+        activeFormId: data.activeFormId,
       };
     });
   },
@@ -56,16 +67,23 @@ export const competitionModel = {
     const data = doc.data();
     return {
       id: doc.id,
-      ...data,
+      name: data.name,
+      season: data.season,
+      status: data.status,
       startDate: convertTimestamp(data.startDate),
       endDate: convertTimestamp(data.endDate),
       createdAt: convertTimestamp(data.createdAt),
+      activeFormId: data.activeFormId,
     };
   },
 
   createCompetition: async (competitionData) => {
     const docRef = await db.collection(COMPETITIONS_COLLECTION).add({
-      ...competitionData,
+      name: competitionData.name,
+      season: competitionData.season,
+      status: competitionData.status,
+      startDate: competitionData.startDate, // Store as string
+      endDate: competitionData.endDate, // Store as string
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     
@@ -73,10 +91,13 @@ export const competitionModel = {
     const data = doc.data();
     return {
       id: doc.id,
-      ...data,
+      name: data.name,
+      season: data.season,
+      status: data.status,
       startDate: convertTimestamp(data.startDate),
       endDate: convertTimestamp(data.endDate),
       createdAt: convertTimestamp(data.createdAt),
+      activeFormId: data.activeFormId,
     };
   },
 
@@ -86,7 +107,18 @@ export const competitionModel = {
     
     if (!doc.exists) return null;
     
-    await docRef.update(competitionData);
+    // Build update object with only provided fields
+    const updateData = {};
+    if (competitionData.name !== undefined) updateData.name = competitionData.name;
+    if (competitionData.season !== undefined) updateData.season = competitionData.season;
+    if (competitionData.status !== undefined) updateData.status = competitionData.status;
+    if (competitionData.startDate !== undefined) updateData.startDate = competitionData.startDate;
+    if (competitionData.endDate !== undefined) updateData.endDate = competitionData.endDate;
+    if (competitionData.activeFormId !== undefined) updateData.activeFormId = competitionData.activeFormId;
+    
+    // console.log('Updating competition with:', updateData); // Debug log
+    
+    await docRef.update(updateData);
     
     return competitionModel.getCompetitionById(id);
   },

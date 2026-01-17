@@ -1,6 +1,6 @@
 export type CompetitionStatus = 'draft' | 'active' | 'completed' | 'archived';
 
-export interface Competition {
+export type Competition = {
   id: string;
   name: string;
   season: string;
@@ -9,4 +9,4 @@ export interface Competition {
   endDate: string;
   activeFormId?: string;
   createdAt: string;
-}
+};

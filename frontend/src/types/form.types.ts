@@ -10,7 +10,9 @@ export type FormField = {
 
 export type Form = {
   id: string;
+  competitionId: string;
   fields: FormField[];
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -18,6 +20,7 @@ export type Form = {
 export type Submission = {
   id: string;
   formId: string;
+  competitionId: string;
   timestamp: string;
   data: Record<string, any>;
 };

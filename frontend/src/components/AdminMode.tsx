@@ -1,25 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Layout } from 'lucide-react';
 import type { FormField as FormFieldType, Submission } from '../types/form.types';
+import type { Competition } from '../types/competition.types';
 import { formApi } from '../services/api';
 
-export const AdminMode: React.FC = () => {
+interface AdminModeProps {
+  selectedCompetition: Competition | null;
+}
+
+export const AdminMode: React.FC<AdminModeProps> = ({ selectedCompetition }) => {
   const [formFields, setFormFields] = useState<FormFieldType[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [currentFormId, setCurrentFormId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadForm();
-  }, []);
+    if (selectedCompetition) {
+      loadForm();
+    }
+  }, [selectedCompetition]);
 
   const loadForm = async () => {
+    if (!selectedCompetition) return;
+
     try {
-      const forms = await formApi.getForms();
+      const forms = await formApi.getFormsByCompetition(selectedCompetition.id);
       if (forms.length > 0) {
         setFormFields(forms[0].fields);
         setCurrentFormId(forms[0].id);
         loadSubmissions(forms[0].id);
+      } else {
+        setFormFields([]);
+        setCurrentFormId(null);
+        setSubmissions([]);
       }
     } catch (error) {
       console.error('Error loading form:', error);
@@ -36,12 +49,17 @@ export const AdminMode: React.FC = () => {
   };
 
   const saveForm = async () => {
+    if (!selectedCompetition) {
+      alert('Please select a competition first');
+      return;
+    }
+
     setLoading(true);
     try {
       if (currentFormId) {
         await formApi.updateForm(currentFormId, formFields);
       } else {
-        const newForm = await formApi.createForm(formFields);
+        const newForm = await formApi.createForm(selectedCompetition.id, formFields);
         setCurrentFormId(newForm.id);
       }
       alert('Form saved successfully!');
@@ -109,8 +127,23 @@ export const AdminMode: React.FC = () => {
     }));
   };
 
+  if (!selectedCompetition) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm p-12 text-center text-gray-500">
+        <Layout size={48} className="mx-auto mb-4 opacity-50" />
+        <p>Please select a competition to manage its form</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <p className="text-sm text-blue-800">
+          <strong>Managing form for:</strong> {selectedCompetition.name} ({selectedCompetition.season})
+        </p>
+      </div>
+
       <div className="bg-white rounded-lg shadow-sm p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">Add Form Fields</h2>

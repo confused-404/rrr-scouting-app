@@ -4,9 +4,9 @@ export const formController = {
   // Get all forms
   getForms: async (req, res) => {
     try {
-      console.log('Getting all forms...');
+      // console.log('Getting all forms...');
       const forms = await formModel.getAllForms();
-      console.log('Forms retrieved:', forms.length);
+      // console.log('Forms retrieved:', forms.length);
       res.json(forms);
     } catch (error) {
       console.error('Error in getForms:', error);
