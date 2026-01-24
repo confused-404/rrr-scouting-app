@@ -3,12 +3,32 @@ import { auth } from '../config/firebase';
 import type { Form, FormField, Submission } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 
-const API_BASE_URL = '/api';
+// Use environment variable for API URL, fallback to current domain in production
+const getApiUrl = (): string => {
+  const envUrl = (import.meta as any).env?.VITE_API_URL;
+  if (envUrl) {
+    return envUrl;
+  }
+  
+  // For development, use relative /api path
+  // For production, construct from current domain
+  if ((import.meta as any).env?.DEV) {
+    return '/api';
+  }
+  
+  return `${window.location.protocol}//${window.location.host}/api`;
+};
+
+const API_BASE_URL = getApiUrl();
+
+// Get API key from environment (should match backend API_KEY)
+const API_KEY = (import.meta as any).env?.VITE_API_KEY || 'dev-key-for-local-testing';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
+    'X-API-Key': API_KEY,
   },
 });
 

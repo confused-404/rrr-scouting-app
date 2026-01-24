@@ -1,17 +1,18 @@
 import admin from 'firebase-admin';
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Always load service account from environment variable
+if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+  throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY environment variable is required');
+}
 
-// Load service account key
-const serviceAccount = JSON.parse(
-  readFileSync(join(__dirname, '../../serviceAccountKey.json'), 'utf8')
-);
+let serviceAccount;
+try {
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+} catch (error) {
+  console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY from environment:', error);
+  throw new Error('Invalid Firebase service account key in environment variables');
+}
 
-// Initialize Firebase Admin
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
   projectId: process.env.FIREBASE_PROJECT_ID
