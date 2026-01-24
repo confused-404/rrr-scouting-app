@@ -1,52 +1,40 @@
-// API Key validation middleware for service-to-service authentication
 export const validateApiKey = (req, res, next) => {
-  const apiKey = req.headers['x-api-key'];
-  
-  // Allow health checks without auth
-  if (req.path === '/health') {
+  // Skip API key validation for OPTIONS requests (CORS preflight)
+  if (req.method === 'OPTIONS') {
     return next();
   }
 
-  if (!apiKey) {
-    return res.status(401).json({ 
-      error: 'Missing API key. Include X-API-Key header.' 
-    });
+  const apiKey = req.headers['x-api-key'];
+  const expectedKey = process.env.API_KEY || 'dev-key-for-local-testing';
+  
+  if (!apiKey || apiKey !== expectedKey) {
+    return res.status(401).json({ message: 'Invalid or missing API key' });
   }
-
-  if (apiKey !== process.env.API_KEY) {
-    return res.status(403).json({ 
-      error: 'Invalid API key.' 
-    });
-  }
-
+  
   next();
 };
 
-// Rate limiting helper
-const requestCounts = new Map();
-
-export const rateLimit = (maxRequests = 100, windowMs = 60000) => {
+export const rateLimit = (maxRequests, windowMs) => {
+  const requests = new Map();
+  
   return (req, res, next) => {
-    const ip = req.ip || req.connection.remoteAddress;
-    const now = Date.now();
-    
-    if (!requestCounts.has(ip)) {
-      requestCounts.set(ip, []);
+    // Skip rate limiting for OPTIONS requests
+    if (req.method === 'OPTIONS') {
+      return next();
     }
 
-    const timestamps = requestCounts.get(ip);
+    const key = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    const now = Date.now();
+    const userRequests = requests.get(key) || [];
     
-    // Remove old requests outside the window
-    const recentRequests = timestamps.filter(time => now - time < windowMs);
+    const recentRequests = userRequests.filter(time => now - time < windowMs);
     
     if (recentRequests.length >= maxRequests) {
-      return res.status(429).json({ 
-        error: 'Too many requests. Please try again later.' 
-      });
+      return res.status(429).json({ message: 'Too many requests' });
     }
-
+    
     recentRequests.push(now);
-    requestCounts.set(ip, recentRequests);
+    requests.set(key, recentRequests);
     
     next();
   };
