@@ -11,7 +11,7 @@ dotenv.config();
 
 const app = express();
 
-// CORS configuration
+// CORS configuration - MUST be before other middleware
 const corsOptions = {
   origin: [
     'http://localhost:3000',
@@ -21,12 +21,20 @@ const corsOptions = {
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  optionsSuccessStatus: 200
 };
 
-// Middleware
 app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly
+app.options('*', cors(corsOptions));
+
 app.use(express.json());
+
+// Apply rate limiting AFTER CORS
 app.use(rateLimit(100, 60000));
+
+// Apply API key validation AFTER CORS
 app.use(validateApiKey);
 
 // Health check endpoint
@@ -46,5 +54,5 @@ app.use('/api/forms', formRoutes);
 // Error handling
 app.use(errorHandler);
 
-// Export the app (NOT the server) for Vercel
+// Export the app for Vercel
 export default app;
