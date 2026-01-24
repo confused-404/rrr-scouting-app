@@ -5,45 +5,27 @@ import formRoutes from '../src/routes/formRoutes.js';
 import authRoutes from '../src/routes/authRoutes.js';
 import competitionRoutes from '../src/routes/competitionRoutes.js';
 import { errorHandler } from '../src/middleware/errorHandler.js';
-import { validateApiKey, rateLimit } from '../src/middleware/apiAuth.js';
 
 dotenv.config();
 
 const app = express();
 
-// CORS configuration - MUST be before other middleware
-const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'https://rrr-scouting.vercel.app',
-  ],
+// CORS - FIRST middleware
+app.use(cors({
+  origin: '*', // Allow all origins temporarily to test
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
-  optionsSuccessStatus: 200
-};
+}));
 
-app.use(cors(corsOptions));
-
-// Handle preflight requests explicitly
-app.options('*', cors(corsOptions));
+// Explicitly handle OPTIONS
+app.options('*', cors());
 
 app.use(express.json());
 
-// Apply rate limiting AFTER CORS
-app.use(rateLimit(100, 60000));
-
-// Apply API key validation AFTER CORS
-app.use(validateApiKey);
-
-// Health check endpoint
+// Health check
 app.get('/', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'API is running' });
-});
-
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+  res.json({ status: 'ok', message: 'API running' });
 });
 
 // Routes
@@ -54,5 +36,4 @@ app.use('/api/forms', formRoutes);
 // Error handling
 app.use(errorHandler);
 
-// Export the app for Vercel
 export default app;
