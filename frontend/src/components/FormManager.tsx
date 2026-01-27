@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Layout } from 'lucide-react';
-import type { FormField as FormFieldType, Form } from '../types/form.types';
+import type { FormField as FormFieldType } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { formApi, competitionApi } from '../services/api';
 
