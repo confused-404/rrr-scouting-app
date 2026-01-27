@@ -1,4 +1,3 @@
-import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import formRoutes from '../src/routes/formRoutes.js';
@@ -6,8 +5,6 @@ import authRoutes from '../src/routes/authRoutes.js';
 import competitionRoutes from '../src/routes/competitionRoutes.js';
 import { errorHandler } from '../src/middleware/errorHandler.js';
 import { validateApiKey, rateLimit } from '../src/middleware/apiAuth.js';
-
-dotenv.config();
 
 const app = express();
 
