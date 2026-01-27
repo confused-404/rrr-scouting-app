@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Edit2, Eye, LogOut, Calendar, Settings } from 'lucide-react';
+import { Edit2, Eye, LogOut, Calendar } from 'lucide-react';
 import { AdminMode } from './components/AdminMode';
 import { UserMode } from './components/UserMode';
 import { Login } from './components/Login';
-import { CompetitionManager } from './components/CompetitionManager';
 import { useAuth } from './contexts/AuthContext';
 import type { Competition } from './types/competition.types';
 import { competitionApi } from './services/api';
 import './App.css';
 
-type AppMode = 'admin' | 'user' | 'competitions';
+type AppMode = 'admin' | 'user';
 
 function App() {
   const [mode, setMode] = useState<AppMode>('user');
@@ -23,9 +22,9 @@ function App() {
     }
   }, [currentUser]);
 
-  // Reload competitions when switching to admin or user mode
+  // Reload competitions when switching to user mode
   useEffect(() => {
-    if (currentUser && (mode === 'admin' || mode === 'user')) {
+    if (currentUser && mode === 'user') {
       loadCompetitions();
     }
   }, [mode]);
@@ -67,7 +66,7 @@ function App() {
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-semibold text-gray-900">Form Builder</h1>
+            <h1 className="text-2xl font-semibold text-gray-900">Scouting App</h1>
             <div className="flex gap-2 items-center">
               <span className="text-sm text-gray-600 mr-2">
                 {currentUser.email}
@@ -92,18 +91,7 @@ function App() {
                 }`}
               >
                 <Eye size={16} />
-                User
-              </button>
-              <button
-                onClick={() => setMode('competitions')}
-                className={`px-4 py-2 rounded-md flex items-center gap-2 ${
-                  mode === 'competitions'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                <Settings size={16} />
-                Competitions
+                Scout
               </button>
               <button
                 onClick={handleLogout}
@@ -115,7 +103,7 @@ function App() {
             </div>
           </div>
 
-          {mode !== 'competitions' && (
+          {mode === 'user' && (
             <div className="flex items-center gap-2">
               <Calendar size={16} className="text-gray-500" />
               <select
@@ -126,7 +114,7 @@ function App() {
                 }}
                 className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {competitions.length === 0 ? (
+                {!competitions || competitions.length === 0 ? (
                   <option value="">No active competitions</option>
                 ) : (
                   competitions.map((comp) => (
@@ -142,10 +130,8 @@ function App() {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-8">
-        {mode === 'competitions' ? (
-          <CompetitionManager />
-        ) : mode === 'admin' ? (
-          <AdminMode selectedCompetition={selectedCompetition} onRefreshCompetitions={loadCompetitions} />
+        {mode === 'admin' ? (
+          <AdminMode />
         ) : (
           <UserMode selectedCompetition={selectedCompetition} />
         )}
