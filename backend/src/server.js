@@ -1,3 +1,4 @@
+import './loadEnv.js';
 import app from '../api/index.js';
 
 const PORT = process.env.PORT || 3001;

@@ -1,6 +1,6 @@
+import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import formRoutes from '../src/routes/formRoutes.js';
 import authRoutes from '../src/routes/authRoutes.js';
 import competitionRoutes from '../src/routes/competitionRoutes.js';
