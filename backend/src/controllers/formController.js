@@ -42,8 +42,8 @@ export const formController = {
   // Create form
   createForm: async (req, res) => {
     try {
-      const { fields, competitionId } = req.body;
-      
+      const { fields, competitionId, name } = req.body;
+
       if (!fields || !Array.isArray(fields)) {
         return res.status(400).json({ message: 'Fields array is required' });
       }
@@ -52,7 +52,21 @@ export const formController = {
         return res.status(400).json({ message: 'Competition ID is required' });
       }
 
-      const newForm = await formModel.createForm({ fields, competitionId });
+      const newForm = await formModel.createForm({
+        fields,
+        competitionId,
+        name: name || 'Untitled Form'
+      });
+
+      // Add the form ID to the competition's formIds array
+      const { competitionModel } = await import('../models/competitionModel.js');
+      const competition = await competitionModel.getCompetitionById(competitionId);
+
+      if (competition) {
+        const updatedFormIds = [...(competition.formIds || []), newForm.id];
+        await competitionModel.updateCompetition(competitionId, { formIds: updatedFormIds });
+      }
+
       res.status(201).json(newForm);
     } catch (error) {
       console.error('Error in createForm:', error);
@@ -63,14 +77,19 @@ export const formController = {
   // Update form
   updateForm: async (req, res) => {
     try {
-      const { fields } = req.body;
-      
+      const { fields, name } = req.body; // Add name
+
       if (!fields || !Array.isArray(fields)) {
         return res.status(400).json({ message: 'Fields array is required' });
       }
 
-      const updatedForm = await formModel.updateForm(req.params.id, { fields });
-      
+      const updateData = { fields };
+      if (name !== undefined) {
+        updateData.name = name;
+      }
+
+      const updatedForm = await formModel.updateForm(req.params.id, updateData);
+
       if (!updatedForm) {
         return res.status(404).json({ message: 'Form not found' });
       }
@@ -85,10 +104,31 @@ export const formController = {
   // Delete form
   deleteForm: async (req, res) => {
     try {
+      const form = await formModel.getFormById(req.params.id);
+      if (!form) {
+        return res.status(404).json({ message: 'Form not found' });
+      }
+
       const deleted = await formModel.deleteForm(req.params.id);
-      
+
       if (!deleted) {
         return res.status(404).json({ message: 'Form not found' });
+      }
+
+      // Remove the form ID from the competition's formIds array
+      const { competitionModel } = await import('../models/competitionModel.js');
+      const competition = await competitionModel.getCompetitionById(form.competitionId);
+
+      if (competition) {
+        const updatedFormIds = (competition.formIds || []).filter(id => id !== req.params.id);
+        const updateData = { formIds: updatedFormIds };
+
+        // If this was the active form, clear it
+        if (competition.activeFormId === req.params.id) {
+          updateData.activeFormId = null;
+        }
+
+        await competitionModel.updateCompetition(form.competitionId, updateData);
       }
 
       res.json({ message: 'Form deleted successfully' });
@@ -124,7 +164,7 @@ export const formController = {
   createSubmission: async (req, res) => {
     try {
       const { formId, competitionId, data } = req.body;
-      
+
       if (!formId || !data) {
         return res.status(400).json({ message: 'Form ID and data are required' });
       }
