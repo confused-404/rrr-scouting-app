@@ -9,13 +9,13 @@ const getApiUrl = (): string => {
   if (envUrl) {
     return envUrl;
   }
-  
+
   // For development, use relative /api path
   // For production, construct from current domain
   if ((import.meta as any).env?.DEV) {
     return '/api';
   }
-  
+
   return `${window.location.protocol}//${window.location.host}/api`;
 };
 
@@ -47,7 +47,7 @@ export const authApi = {
     const response = await api.post('/auth/signup', { email, password });
     return response.data;
   },
-  
+
   getCurrentUser: async () => {
     const response = await api.get('/auth/me');
     return response.data;
@@ -116,13 +116,13 @@ export const formApi = {
     return response.data;
   },
 
-  createForm: async (competitionId: string, fields: FormField[]): Promise<Form> => {
-    const response = await api.post('/forms', { competitionId, fields });
+  createForm: async (competitionId: string, fields: FormField[], name?: string): Promise<Form> => {
+    const response = await api.post('/forms', { competitionId, fields, name });
     return response.data;
   },
 
-  updateForm: async (id: string, fields: FormField[]): Promise<Form> => {
-    const response = await api.put(`/forms/${id}`, { fields });
+  updateForm: async (id: string, fields: FormField[], name?: string): Promise<Form> => {
+    const response = await api.put(`/forms/${id}`, { fields, name });
     return response.data;
   },
 

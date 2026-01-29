@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Layout, Plus, Edit2, Star } from 'lucide-react';
+import { Trash2, Layout, Plus, Edit2, Star, Check, X } from 'lucide-react';
 import type { FormField as FormFieldType, Form } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { formApi, competitionApi } from '../services/api';
@@ -10,8 +10,17 @@ export const FormManager: React.FC = () => {
     const [forms, setForms] = useState<Form[]>([]);
     const [selectedForm, setSelectedForm] = useState<Form | null>(null);
     const [formFields, setFormFields] = useState<FormFieldType[]>([]);
+    const [formName, setFormName] = useState('');
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    // For inline name editing
+    const [editingFormId, setEditingFormId] = useState<string | null>(null);
+    const [editingFormName, setEditingFormName] = useState('');
+
+    // For creation
+    const [showCreateDialog, setShowCreateDialog] = useState(false);
+    const [newFormName, setNewFormName] = useState('');
 
     useEffect(() => {
         loadCompetitions();
@@ -43,6 +52,7 @@ export const FormManager: React.FC = () => {
             setForms(data);
             setSelectedForm(null);
             setIsEditing(false);
+            setEditingFormId(null);
         } catch (error) {
             console.error('Error loading forms:', error);
         }
@@ -54,14 +64,21 @@ export const FormManager: React.FC = () => {
             return;
         }
 
+        if (!newFormName.trim()) {
+            alert('Please enter a form name');
+            return;
+        }
+
         setLoading(true);
         try {
-            const newForm = await formApi.createForm(selectedCompetition.id, []);
+            const newForm = await formApi.createForm(selectedCompetition.id, [], newFormName);
             await loadForms();
             setSelectedForm(newForm);
             setFormFields([]);
+            setFormName(newForm.name);
             setIsEditing(true);
-            alert('New form created! Add fields below.');
+            setShowCreateDialog(false);
+            setNewFormName('');
         } catch (error) {
             console.error('Error creating form:', error);
             alert('Error creating form');
@@ -75,6 +92,7 @@ export const FormManager: React.FC = () => {
         if (form) {
             setSelectedForm(form);
             setFormFields([...form.fields]);
+            setFormName(form.name);
             setIsEditing(true);
         }
     };
@@ -84,7 +102,7 @@ export const FormManager: React.FC = () => {
 
         setLoading(true);
         try {
-            await formApi.updateForm(selectedForm.id, formFields);
+            await formApi.updateForm(selectedForm.id, formFields, formName);
             await loadForms();
             alert('Form saved successfully!');
         } catch (error) {
@@ -108,6 +126,7 @@ export const FormManager: React.FC = () => {
             await loadForms();
             setSelectedForm(null);
             setFormFields([]);
+            setFormName('');
             setIsEditing(false);
             alert('Form deleted successfully!');
         } catch (error) {
@@ -129,10 +148,42 @@ export const FormManager: React.FC = () => {
             if (updatedComp) {
                 setSelectedCompetition(updatedComp);
             }
-            alert('Active form updated!');
         } catch (error) {
             console.error('Error setting active form:', error);
             alert('Error setting active form');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const startEditingFormName = (form: Form) => {
+        setEditingFormId(form.id);
+        setEditingFormName(form.name || ''); // ensure never undefined
+    };
+
+    const cancelEditingFormName = () => {
+        setEditingFormId(null);
+        setEditingFormName('');
+    };
+
+    const saveFormName = async (formId: string) => {
+        if (!editingFormName.trim()) {
+            alert('Form name cannot be empty');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const form = forms.find(f => f.id === formId);
+            if (form) {
+                await formApi.updateForm(formId, form.fields, editingFormName);
+                await loadForms();
+                setEditingFormId(null);
+                setEditingFormName('');
+            }
+        } catch (error) {
+            console.error('Error updating form name:', error);
+            alert('Error updating form name');
         } finally {
             setLoading(false);
         }
@@ -217,13 +268,46 @@ export const FormManager: React.FC = () => {
                 </select>
             </div>
 
+            {/* Create Form Dialog */}
+            {showCreateDialog && (
+                <div className="bg-white rounded-lg shadow-sm p-6">
+                    <h3 className="text-lg font-semibold mb-4">Create New Form</h3>
+                    <input
+                        type="text"
+                        value={newFormName}
+                        onChange={(e) => setNewFormName(e.target.value)}
+                        placeholder="Enter form name"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                        autoFocus
+                    />
+                    <div className="flex gap-2">
+                        <button
+                            onClick={handleCreateForm}
+                            disabled={loading || !newFormName.trim()}
+                            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+                        >
+                            Create
+                        </button>
+                        <button
+                            onClick={() => {
+                                setShowCreateDialog(false);
+                                setNewFormName('');
+                            }}
+                            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Form Selection & Creation */}
-            {selectedCompetition && (
+            {selectedCompetition && !showCreateDialog && (
                 <div className="bg-white rounded-lg shadow-sm p-4">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold">Forms</h3>
                         <button
-                            onClick={handleCreateForm}
+                            onClick={() => setShowCreateDialog(true)}
                             disabled={loading}
                             className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-2 disabled:opacity-50"
                         >
@@ -238,27 +322,62 @@ export const FormManager: React.FC = () => {
                         <div className="space-y-2">
                             {forms.map((form) => (
                                 <div key={form.id} className="flex items-center gap-2 p-3 border border-gray-200 rounded-md hover:bg-gray-50">
-                                    <button
-                                        onClick={() => handleSelectForm(form.id)}
-                                        className="flex-1 text-left flex items-center gap-2"
-                                    >
-                                        <Edit2 size={16} className="text-gray-500" />
-                                        <span>
-                                            Form (Created: {new Date(form.createdAt).toLocaleDateString()})
-                                            {form.fields.length > 0 && ` - ${form.fields.length} fields`}
-                                        </span>
-                                    </button>
+                                    {editingFormId === form.id ? (
+                                        <>
+                                            <input
+                                                type="text"
+                                                value={editingFormName}
+                                                onChange={(e) => setEditingFormName(e.target.value)}
+                                                className="flex-1 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                autoFocus
+                                            />
+                                            <button
+                                                onClick={() => saveFormName(form.id)}
+                                                className="p-2 text-green-600 hover:bg-green-50 rounded"
+                                                title="Save"
+                                            >
+                                                <Check size={18} />
+                                            </button>
+                                            <button
+                                                onClick={cancelEditingFormName}
+                                                className="p-2 text-red-600 hover:bg-red-50 rounded"
+                                                title="Cancel"
+                                            >
+                                                <X size={18} />
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button
+                                                onClick={() => handleSelectForm(form.id)}
+                                                className="flex-1 text-left flex items-center gap-2"
+                                            >
+                                                <span className="font-medium">{form.name}</span>
+                                                <span className="text-sm text-gray-500">
+                                                    ({form.fields.length} field{form.fields.length !== 1 ? 's' : ''})
+                                                </span>
+                                            </button>
 
-                                    <button
-                                        onClick={() => handleSetActiveForm(selectedCompetition.activeFormId === form.id ? null : form.id)}
-                                        className={`p-2 rounded ${selectedCompetition.activeFormId === form.id
-                                                ? 'bg-yellow-100 text-yellow-600'
-                                                : 'text-gray-400 hover:text-yellow-600'
-                                            }`}
-                                        title={selectedCompetition.activeFormId === form.id ? 'Active form' : 'Set as active'}
-                                    >
-                                        <Star size={18} fill={selectedCompetition.activeFormId === form.id ? 'currentColor' : 'none'} />
-                                    </button>
+                                            <button
+                                                onClick={() => startEditingFormName(form)}
+                                                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                                title="Edit name"
+                                            >
+                                                <Edit2 size={16} />
+                                            </button>
+
+                                            <button
+                                                onClick={() => handleSetActiveForm(selectedCompetition.activeFormId === form.id ? null : form.id)}
+                                                className={`p-2 rounded ${selectedCompetition.activeFormId === form.id
+                                                    ? 'bg-yellow-100 text-yellow-600'
+                                                    : 'text-gray-400 hover:text-yellow-600'
+                                                    }`}
+                                                title={selectedCompetition.activeFormId === form.id ? 'Active form' : 'Set as active'}
+                                            >
+                                                <Star size={18} fill={selectedCompetition.activeFormId === form.id ? 'currentColor' : 'none'} />
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -271,7 +390,18 @@ export const FormManager: React.FC = () => {
                 <>
                     <div className="bg-white rounded-lg shadow-sm p-6">
                         <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-xl font-semibold">Edit Form</h2>
+                            <div className="flex-1">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Form Name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formName}
+                                    onChange={(e) => setFormName(e.target.value)}
+                                    className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Enter form name"
+                                />
+                            </div>
                             <div className="flex gap-2">
                                 <button
                                     onClick={handleDeleteForm}

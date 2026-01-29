@@ -11,6 +11,7 @@ export type FormField = {
 export type Form = {
   id: string;
   competitionId: string;
+  name: string;
   fields: FormField[];
   isActive: boolean;
   createdAt: string;
