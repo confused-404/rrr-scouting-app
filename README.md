@@ -33,15 +33,6 @@ cd backend && cp .env.example .env
 cd frontend && cp .env.example .env.local
 ```
 
-## Deployment
-
-This app is configured for separate deployment to Vercel:
-- Backend as serverless functions
-- Frontend as static SPA
-- Secure API key authentication between them
-
-**See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.**
-
 ## Project Structure
 
 ```
@@ -54,14 +45,5 @@ This app is configured for separate deployment to Vercel:
 │   ├── src/
 │   ├── vercel.json
 │   └── .env.example
-└── DEPLOYMENT.md     # Deployment guide
+
 ```
-
-## Features
-
-- Firebase Authentication
-- Firestore Database
-- Role-based access (Admin/User)
-- Form management
-- Competition management
-- Production-ready security (API key auth, CORS, rate limiting)
