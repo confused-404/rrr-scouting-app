@@ -1,6 +1,6 @@
 import express from 'express';
 import { competitionController } from '../controllers/competitionController.js';
-import { verifyToken } from '../middleware/auth.js';
+import { verifyToken } from '../middleware/userAuth.js';
 
 const router = express.Router();
 

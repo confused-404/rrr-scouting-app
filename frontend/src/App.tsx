@@ -14,7 +14,9 @@ function App() {
   const [mode, setMode] = useState<AppMode>('user');
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [selectedCompetition, setSelectedCompetition] = useState<Competition | null>(null);
-  const { currentUser, logout } = useAuth();
+  
+  // isAdmin is now pulled from our updated AuthContext
+  const { currentUser, logout, isAdmin } = useAuth();
 
   useEffect(() => {
     if (currentUser) {
@@ -22,20 +24,25 @@ function App() {
     }
   }, [currentUser]);
 
+  // Security check: if a user is not an admin but somehow set mode to admin, kick them back to user mode
+  useEffect(() => {
+    if (!isAdmin && mode === 'admin') {
+      setMode('user');
+    }
+  }, [mode, isAdmin]);
+
   // Reload competitions when switching to user mode
   useEffect(() => {
     if (currentUser && mode === 'user') {
       loadCompetitions();
     }
-  }, [mode]);
+  }, [mode, currentUser]);
 
   const loadCompetitions = async () => {
     try {
       const data = await competitionApi.getActive();
-      console.log('Active competitions:', data);
       setCompetitions(data);
       
-      // If no competition is selected, or selected one is no longer in the list, select the first one
       if (data.length > 0) {
         const stillExists = selectedCompetition && data.find(c => c.id === selectedCompetition.id);
         if (!stillExists) {
@@ -49,10 +56,6 @@ function App() {
     }
   };
 
-  if (!currentUser) {
-    return <Login />;
-  }
-
   const handleLogout = async () => {
     try {
       await logout();
@@ -60,6 +63,10 @@ function App() {
       console.error('Logout error:', error);
     }
   };
+
+  if (!currentUser) {
+    return <Login />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -69,19 +76,23 @@ function App() {
             <h1 className="text-2xl font-semibold text-gray-900">Scouting App</h1>
             <div className="flex gap-2 items-center">
               <span className="text-sm text-gray-600 mr-2">
-                {currentUser.email}
+                {currentUser.email} {isAdmin && <span className="text-xs font-bold text-blue-600 ml-1">(ADMIN)</span>}
               </span>
-              <button
-                onClick={() => setMode('admin')}
-                className={`px-4 py-2 rounded-md flex items-center gap-2 ${
-                  mode === 'admin'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                <Edit2 size={16} />
-                Admin
-              </button>
+              
+              {isAdmin && (
+                <button
+                  onClick={() => setMode('admin')}
+                  className={`px-4 py-2 rounded-md flex items-center gap-2 ${
+                    mode === 'admin'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  <Edit2 size={16} />
+                  Admin
+                </button>
+              )}
+
               <button
                 onClick={() => setMode('user')}
                 className={`px-4 py-2 rounded-md flex items-center gap-2 ${
@@ -93,6 +104,7 @@ function App() {
                 <Eye size={16} />
                 Scout
               </button>
+              
               <button
                 onClick={handleLogout}
                 className="px-4 py-2 rounded-md flex items-center gap-2 bg-red-600 text-white hover:bg-red-700"
@@ -130,7 +142,7 @@ function App() {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-8">
-        {mode === 'admin' ? (
+        {mode === 'admin' && isAdmin ? (
           <AdminMode />
         ) : (
           <UserMode selectedCompetition={selectedCompetition} />
