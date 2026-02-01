@@ -11,6 +11,7 @@ export const verifyToken = async (req, res, next) => {
     const token = authHeader.split('Bearer ')[1];
     const decodedToken = await auth.verifyIdToken(token);
     
+    // The decodedToken contains any Custom Claims (like { admin: true })
     req.user = decodedToken;
     next();
   } catch (error) {
@@ -19,20 +20,16 @@ export const verifyToken = async (req, res, next) => {
   }
 };
 
-// Optional middleware for routes that work both authenticated and not
-export const optionalAuth = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split('Bearer ')[1];
-      const decodedToken = await auth.verifyIdToken(token);
-      req.user = decodedToken;
-    }
-    
+// NEW: Check for admin status
+export const isAdmin = (req, res, next) => {
+  // verifyToken must run BEFORE this to populate req.user
+  if (req.user && req.user.admin === true) {
     next();
-  } catch (error) {
-    // If token is invalid, just continue without user
-    next();
+  } else {
+    res.status(403).json({ message: 'Forbidden: Admin access required' });
   }
+};
+
+export const optionalAuth = async (req, res, next) => {
+  // ... your existing optionalAuth code ...
 };

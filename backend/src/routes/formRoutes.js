@@ -1,6 +1,6 @@
 import express from 'express';
 import { formController } from '../controllers/formController.js';
-import { verifyToken, optionalAuth } from '../middleware/auth.js';
+import { verifyToken, optionalAuth } from '../middleware/userAuth.js';
 
 const router = express.Router();
 
