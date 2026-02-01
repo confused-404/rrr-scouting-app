@@ -1,7 +1,6 @@
-import { db } from '../config/firebase.js';
-import { auth } from '../config/firebase.js';
+import { auth, db } from '../config/firebase.js';
 
-// Logic for creating a new user
+// Create a new user and initialize their profile in Firestore
 export const signup = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -10,9 +9,17 @@ export const signup = async (req, res) => {
       return res.status(400).json({ message: 'Email and password required' });
     }
     
+    // 1. Create user in Firebase Auth
     const userRecord = await auth.createUser({
       email,
       password,
+    });
+
+    // 2. Create user document in Firestore (default role is 'user')
+    await db.collection('users').doc(userRecord.uid).set({
+      email: userRecord.email,
+      role: 'user',
+      createdAt: new Date().toISOString()
     });
     
     res.status(201).json({
@@ -25,41 +32,52 @@ export const signup = async (req, res) => {
   }
 };
 
-// Logic for verifying a token
+// Verify token and return user data
 export const getMe = async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ message: 'No token provided' });
-    }
-    
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    
+    // req.user is populated by the verifyToken middleware
     res.json({
-      uid: decodedToken.uid,
-      email: decodedToken.email,
+      uid: req.user.uid,
+      email: req.user.email,
+      admin: !!req.user.admin // boolean check for the admin claim
     });
   } catch (error) {
     res.status(401).json({ message: 'Invalid token' });
   }
 };
 
+// Promote a user to Admin using Custom Claims API
+export const makeAdmin = async (req, res) => {
+  try {
+    const { uid } = req.body;
+
+    if (!uid) {
+      return res.status(400).json({ message: 'User UID required' });
+    }
+
+    // 1. Set Custom Claim on the Auth token (For Route Security)
+    await auth.setCustomUserClaims(uid, { admin: true });
+
+    // 2. Update Firestore (For Database Queries/Listing)
+    await db.collection('users').doc(uid).update({
+      role: 'admin'
+    });
+
+    res.json({ message: `User ${uid} successfully promoted to Admin.` });
+  } catch (error) {
+    console.error('Error setting custom claims:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Query Firestore for all users with the 'admin' role
 export const getAdminEmails = async (req, res) => {
   try {
-    // Query Firestore for users where the role is 'admin'
     const adminsSnapshot = await db.collection('users')
       .where('role', '==', 'admin')
       .get();
 
-    if (adminsSnapshot.empty) {
-      return res.status(200).json([]);
-    }
-
-    // Extract just the emails
     const adminEmails = adminsSnapshot.docs.map(doc => doc.data().email);
-
     res.status(200).json(adminEmails);
   } catch (error) {
     console.error('Error fetching admin emails:', error);

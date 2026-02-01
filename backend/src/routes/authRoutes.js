@@ -1,7 +1,10 @@
 import express from 'express';
-// Import your controller functions
-import { signup, getMe, getAdminEmails } from '../controllers/authController.js';
-// Import your middleware
+import { 
+  signup, 
+  getMe, 
+  makeAdmin, 
+  getAdminEmails 
+} from '../controllers/authController.js';
 import { verifyToken, isAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -12,15 +15,17 @@ const router = express.Router();
 router.post('/signup', signup);
 
 /**
- * PROTECTED ROUTES (Any logged-in user)
+ * PROTECTED ROUTES (Requires Login)
  */
-// verifyToken checks if the user is logged in and attaches them to req.user
 router.get('/me', verifyToken, getMe);
 
 /**
- * ADMIN ROUTES (Logged-in AND has admin claim)
+ * ADMIN ONLY ROUTES (Requires Login + Admin Claim)
  */
-// verifyToken checks identity, then isAdmin checks the specific 'admin' claim
+// Use Custom Claims API to promote a user
+router.post('/make-admin', verifyToken, isAdmin, makeAdmin);
+
+// Fetch list of admin emails from Firestore
 router.get('/admins', verifyToken, isAdmin, getAdminEmails);
 
 export default router;
