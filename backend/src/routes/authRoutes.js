@@ -6,7 +6,7 @@ import {
   getAdminEmails,
   initializeFirstAdmin 
 } from '../controllers/authController.js';
-import { verifyToken, isAdmin } from '../middleware/authMiddleware.js';
+import { verifyToken, isAdmin } from '../middleware/userAuth.js';
 
 const router = express.Router();
 
