@@ -3,29 +3,24 @@ import {
   signup, 
   getMe, 
   makeAdmin, 
-  getAdminEmails 
+  getAdminEmails,
+  initializeFirstAdmin 
 } from '../controllers/authController.js';
 import { verifyToken, isAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-/**
- * PUBLIC ROUTES
- */
+// BOOTSTRAP: Call this once to create your first admin and the 'users' collection
+router.post('/initialize-admin', initializeFirstAdmin);
+
+// PUBLIC
 router.post('/signup', signup);
 
-/**
- * PROTECTED ROUTES (Requires Login)
- */
+// AUTHENTICATED
 router.get('/me', verifyToken, getMe);
 
-/**
- * ADMIN ONLY ROUTES (Requires Login + Admin Claim)
- */
-// Use Custom Claims API to promote a user
+// ADMIN ONLY
 router.post('/make-admin', verifyToken, isAdmin, makeAdmin);
-
-// Fetch list of admin emails from Firestore
 router.get('/admins', verifyToken, isAdmin, getAdminEmails);
 
 export default router;
