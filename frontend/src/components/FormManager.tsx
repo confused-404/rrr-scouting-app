@@ -1,3 +1,4 @@
+// FormManager.tsx
 import React, { useState, useEffect } from 'react';
 import { Trash2, Layout, Plus, Edit2, Star, Check, X } from 'lucide-react';
 import type { FormField as FormFieldType, Form } from '../types/form.types';
@@ -24,12 +25,14 @@ export const FormManager: React.FC = () => {
 
     useEffect(() => {
         loadCompetitions();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
         if (selectedCompetition) {
             loadForms();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedCompetition]);
 
     const loadCompetitions = async () => {
@@ -88,7 +91,7 @@ export const FormManager: React.FC = () => {
     };
 
     const handleSelectForm = (formId: string) => {
-        const form = forms.find(f => f.id === formId);
+        const form = forms.find((f) => f.id === formId);
         if (form) {
             setSelectedForm(form);
             setFormFields([...form.fields]);
@@ -144,7 +147,7 @@ export const FormManager: React.FC = () => {
         try {
             await competitionApi.setActiveForm(selectedCompetition.id, formId);
             await loadCompetitions();
-            const updatedComp = competitions.find(c => c.id === selectedCompetition.id);
+            const updatedComp = competitions.find((c) => c.id === selectedCompetition.id);
             if (updatedComp) {
                 setSelectedCompetition(updatedComp);
             }
@@ -158,7 +161,7 @@ export const FormManager: React.FC = () => {
 
     const startEditingFormName = (form: Form) => {
         setEditingFormId(form.id);
-        setEditingFormName(form.name || ''); // ensure never undefined
+        setEditingFormName(form.name || '');
     };
 
     const cancelEditingFormName = () => {
@@ -174,7 +177,7 @@ export const FormManager: React.FC = () => {
 
         setLoading(true);
         try {
-            const form = forms.find(f => f.id === formId);
+            const form = forms.find((f) => f.id === formId);
             if (form) {
                 await formApi.updateForm(formId, form.fields, editingFormName);
                 await loadForms();
@@ -190,72 +193,87 @@ export const FormManager: React.FC = () => {
     };
 
     const addField = (type: FormFieldType['type']) => {
-        const newField: FormFieldType = {
+        const base: FormFieldType = {
             id: Date.now(),
             type,
             label: '',
             required: false,
-            options: type === 'select' || type === 'radio' ? ['Option 1'] : []
         };
-        setFormFields([...formFields, newField]);
+
+        if (type === 'multiple_choice' || type === 'multiple_select') {
+            setFormFields([...formFields, { ...base, options: ['Option 1'] }]);
+            return;
+        }
+
+        if (type === 'number') {
+            setFormFields([...formFields, { ...base, unit: '' }]);
+            return;
+        }
+
+        if (type === 'ranking') {
+            setFormFields([...formFields, { ...base, min: 1, max: 10 }]);
+            return;
+        }
+
+        setFormFields([...formFields, base]);
     };
 
+
     const updateField = (id: number, updates: Partial<FormFieldType>) => {
-        setFormFields(formFields.map(field =>
-            field.id === id ? { ...field, ...updates } : field
-        ));
+        setFormFields(formFields.map((field) => (field.id === id ? { ...field, ...updates } : field)));
     };
 
     const deleteField = (id: number) => {
-        setFormFields(formFields.filter(field => field.id !== id));
+        setFormFields(formFields.filter((field) => field.id !== id));
     };
 
     const addOption = (fieldId: number) => {
-        setFormFields(formFields.map(field => {
-            if (field.id === fieldId && field.options) {
-                return {
-                    ...field,
-                    options: [...field.options, `Option ${field.options.length + 1}`]
-                };
-            }
-            return field;
-        }));
+        setFormFields(
+            formFields.map((field) => {
+                if (field.id === fieldId) {
+                    const existing = field.options ?? [];
+                    return { ...field, options: [...existing, `Option ${existing.length + 1}`] };
+                }
+                return field;
+            })
+        );
     };
 
     const updateOption = (fieldId: number, optionIndex: number, value: string) => {
-        setFormFields(formFields.map(field => {
-            if (field.id === fieldId && field.options) {
-                const newOptions = [...field.options];
-                newOptions[optionIndex] = value;
-                return { ...field, options: newOptions };
-            }
-            return field;
-        }));
+        setFormFields(
+            formFields.map((field) => {
+                if (field.id === fieldId) {
+                    const existing = field.options ?? [];
+                    const next = [...existing];
+                    next[optionIndex] = value;
+                    return { ...field, options: next };
+                }
+                return field;
+            })
+        );
     };
 
     const deleteOption = (fieldId: number, optionIndex: number) => {
-        setFormFields(formFields.map(field => {
-            if (field.id === fieldId && field.options) {
-                return {
-                    ...field,
-                    options: field.options.filter((_, i) => i !== optionIndex)
-                };
-            }
-            return field;
-        }));
+        setFormFields(
+            formFields.map((field) => {
+                if (field.id === fieldId) {
+                    const existing = field.options ?? [];
+                    return { ...field, options: existing.filter((_, i) => i !== optionIndex) };
+                }
+                return field;
+            })
+        );
     };
 
     return (
         <div className="space-y-6">
             {/* Competition Selection */}
             <div className="bg-white rounded-lg shadow-sm p-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Competition
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Competition</label>
                 <select
                     value={selectedCompetition?.id || ''}
                     onChange={(e) => {
-                        const comp = competitions.find(c => c.id === e.target.value);
+                        const comp = competitions.find((c) => c.id === e.target.value);
                         setSelectedCompetition(comp || null);
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -321,7 +339,10 @@ export const FormManager: React.FC = () => {
                     ) : (
                         <div className="space-y-2">
                             {forms.map((form) => (
-                                <div key={form.id} className="flex items-center gap-2 p-3 border border-gray-200 rounded-md hover:bg-gray-50">
+                                <div
+                                    key={form.id}
+                                    className="flex items-center gap-2 p-3 border border-gray-200 rounded-md hover:bg-gray-50"
+                                >
                                     {editingFormId === form.id ? (
                                         <>
                                             <input
@@ -367,7 +388,11 @@ export const FormManager: React.FC = () => {
                                             </button>
 
                                             <button
-                                                onClick={() => handleSetActiveForm(selectedCompetition.activeFormId === form.id ? null : form.id)}
+                                                onClick={() =>
+                                                    handleSetActiveForm(
+                                                        selectedCompetition.activeFormId === form.id ? null : form.id
+                                                    )
+                                                }
                                                 className={`p-2 rounded ${selectedCompetition.activeFormId === form.id
                                                     ? 'bg-yellow-100 text-yellow-600'
                                                     : 'text-gray-400 hover:text-yellow-600'
@@ -391,9 +416,7 @@ export const FormManager: React.FC = () => {
                     <div className="bg-white rounded-lg shadow-sm p-6">
                         <div className="flex justify-between items-center mb-4">
                             <div className="flex-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Form Name
-                                </label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Form Name</label>
                                 <input
                                     type="text"
                                     value={formName}
@@ -428,28 +451,29 @@ export const FormManager: React.FC = () => {
                                 + Text
                             </button>
                             <button
-                                onClick={() => addField('textarea')}
+                                onClick={() => addField('number')}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                             >
-                                + Long Text
+                                + Number
                             </button>
                             <button
-                                onClick={() => addField('select')}
+                                onClick={() => addField('ranking')}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                             >
-                                + Dropdown
+                                + Ranking
+                            </button>
+
+                            <button
+                                onClick={() => addField('multiple_choice')}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                            >
+                                + Multiple Choice
                             </button>
                             <button
-                                onClick={() => addField('radio')}
+                                onClick={() => addField('multiple_select')}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                             >
-                                + Radio
-                            </button>
-                            <button
-                                onClick={() => addField('checkbox')}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                            >
-                                + Checkbox
+                                + Multiple Select
                             </button>
                         </div>
                     </div>
@@ -473,17 +497,56 @@ export const FormManager: React.FC = () => {
                                                 className="text-lg font-medium w-full border-b-2 border-gray-200 focus:border-blue-600 outline-none pb-1"
                                             />
                                         </div>
-                                        <button
-                                            onClick={() => deleteField(field.id)}
-                                            className="ml-4 text-red-600 hover:text-red-700"
-                                        >
+                                        <button onClick={() => deleteField(field.id)} className="ml-4 text-red-600 hover:text-red-700">
                                             <Trash2 size={20} />
                                         </button>
                                     </div>
 
-                                    {(field.type === 'select' || field.type === 'radio') && (
+                                    {/* Unit input for number */}
+                                    {field.type === 'number' && (
+                                        <div className="mb-4 max-w-xs">
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Unit (optional)</label>
+                                            <input
+                                                type="text"
+                                                value={field.unit ?? ''}
+                                                onChange={(e) => updateField(field.id, { unit: e.target.value })}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                placeholder="e.g., lbs, kg, seconds"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {field.type === 'ranking' && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 max-w-md">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Min</label>
+                                                <input
+                                                    type="number"
+                                                    value={field.min ?? 1}
+                                                    onChange={(e) => updateField(field.id, { min: Number(e.target.value) })}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Max</label>
+                                                <input
+                                                    type="number"
+                                                    value={field.max ?? 10}
+                                                    onChange={(e) => updateField(field.id, { max: Number(e.target.value) })}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                            <p className="sm:col-span-2 text-xs text-gray-500">
+                                                Users will pick an integer from Min to Max.
+                                            </p>
+                                        </div>
+                                    )}
+
+
+                                    {/* Options editor */}
+                                    {(field.type === 'multiple_choice' || field.type === 'multiple_select') && (
                                         <div className="space-y-2 mb-4">
-                                            {field.options?.map((option, i) => (
+                                            {(field.options ?? []).map((option, i) => (
                                                 <div key={i} className="flex items-center gap-2">
                                                     <input
                                                         type="text"
@@ -492,20 +555,14 @@ export const FormManager: React.FC = () => {
                                                         className="flex-1 px-3 py-1 border border-gray-300 rounded"
                                                         placeholder={`Option ${i + 1}`}
                                                     />
-                                                    {field.options && field.options.length > 1 && (
-                                                        <button
-                                                            onClick={() => deleteOption(field.id, i)}
-                                                            className="text-red-600 hover:text-red-700"
-                                                        >
+                                                    {(field.options ?? []).length > 1 && (
+                                                        <button onClick={() => deleteOption(field.id, i)} className="text-red-600 hover:text-red-700">
                                                             <Trash2 size={16} />
                                                         </button>
                                                     )}
                                                 </div>
                                             ))}
-                                            <button
-                                                onClick={() => addOption(field.id)}
-                                                className="text-blue-600 hover:text-blue-700 text-sm"
-                                            >
+                                            <button onClick={() => addOption(field.id)} className="text-blue-600 hover:text-blue-700 text-sm">
                                                 + Add option
                                             </button>
                                         </div>
