@@ -1,3 +1,4 @@
+// FormField.tsx
 import React from 'react';
 import type { FormField as FormFieldType } from '../types/form.types';
 
@@ -13,7 +14,7 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange }) 
       return (
         <input
           type="text"
-          value={value || ''}
+          value={value ?? ''}
           onChange={(e) => onChange(e.target.value)}
           required={field.required}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -21,39 +22,64 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange }) 
         />
       );
 
-    case 'textarea':
+    case 'number':
       return (
-        <textarea
-          value={value || ''}
-          onChange={(e) => onChange(e.target.value)}
-          required={field.required}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          rows={4}
-          placeholder="Your answer"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={value ?? ''}
+            onChange={(e) => {
+              const raw = e.target.value;
+              onChange(raw === '' ? '' : Number(raw));
+            }}
+            required={field.required}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="0"
+          />
+          {field.unit ? <span className="text-sm text-gray-600 whitespace-nowrap">{field.unit}</span> : null}
+        </div>
       );
 
-    case 'select':
-      return (
-        <select
-          value={value || ''}
-          onChange={(e) => onChange(e.target.value)}
-          required={field.required}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Select an option</option>
-          {field.options?.map((option, i) => (
-            <option key={i} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      );
+    case 'ranking': {
+      const min = Number.isFinite(field.min) ? Number(field.min) : 1;
+      const max = Number.isFinite(field.max) ? Number(field.max) : 10;
+      const lo = Math.min(min, max);
+      const hi = Math.max(min, max);
 
-    case 'radio':
+      const current =
+        value === undefined || value === null || value === ''
+          ? lo
+          : Number(value);
+
       return (
         <div className="space-y-2">
-          {field.options?.map((option, i) => (
+          <div className="flex items-center justify-between text-sm text-gray-600">
+            <span>{lo}</span>
+            <span className="font-medium text-gray-900">{current}</span>
+            <span>{hi}</span>
+          </div>
+
+          <input
+            type="range"
+            min={lo}
+            max={hi}
+            step={1}
+            value={current}
+            onChange={(e) => { onChange(Number(e.target.value)); }}
+            className="w-full"
+            aria-label={field.label}
+          />
+
+          <div className="text-xs text-gray-500">Selected: {current}</div>
+        </div>
+      );
+    }
+
+    case 'multiple_choice': {
+      const options = field.options ?? [];
+      return (
+        <div className="space-y-2">
+          {options.map((option, i) => (
             <label key={i} className="flex items-center space-x-2">
               <input
                 type="radio"
@@ -69,22 +95,38 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange }) 
           ))}
         </div>
       );
+    }
 
-    case 'checkbox':
+    case 'multiple_select': {
+      const options = field.options ?? [];
+      const selected: string[] = Array.isArray(value) ? value : [];
       return (
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={value === true}
-            onChange={(e) => onChange(e.target.checked)}
-            required={field.required}
-            className="text-blue-600"
-          />
-          <span>Yes</span>
-        </label>
+        <div className="space-y-2">
+          {options.map((option, i) => {
+            const checked = selected.includes(option);
+            return (
+              <label key={i} className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => {
+                    const next = e.target.checked
+                      ? Array.from(new Set([...selected, option]))
+                      : selected.filter((v) => v !== option);
+                    onChange(next);
+                  }}
+                  className="text-blue-600"
+                />
+                <span>{option}</span>
+              </label>
+            );
+          })}
+        </div>
       );
+    }
 
     default:
       return null;
   }
 };
+export default FormField;

@@ -1,4 +1,9 @@
-export type FormFieldType = 'text' | 'textarea' | 'select' | 'radio' | 'checkbox';
+export type FormFieldType =
+  | 'number'
+  | 'ranking'
+  | 'text'
+  | 'multiple_choice'
+  | 'multiple_select';
 
 export type FormField = {
   id: number;
@@ -6,6 +11,11 @@ export type FormField = {
   label: string;
   required: boolean;
   options?: string[];
+  unit?: string;
+
+  // ranking-specific
+  min?: number;
+  max?: number;
 };
 
 export type Form = {
