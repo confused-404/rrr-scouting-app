@@ -1,5 +1,7 @@
 # rrr scouting app
 
+# MY VIBE CODING EXPERIMENT
+
 **Node.js version**: 20.19.6
 
 ## Development
