@@ -14,6 +14,7 @@ function App() {
   const [mode, setMode] = useState<AppMode>('user');
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [selectedCompetition, setSelectedCompetition] = useState<Competition | null>(null);
+  const [userModeKey, setUserModeKey] = useState(0);
   
   // isAdmin is now pulled from our updated AuthContext
   const { currentUser, logout, isAdmin } = useAuth();
@@ -35,18 +36,25 @@ function App() {
   useEffect(() => {
     if (currentUser && mode === 'user') {
       loadCompetitions();
+      setUserModeKey(prev => prev + 1);
     }
   }, [mode, currentUser]);
 
   const loadCompetitions = async () => {
     try {
       const data = await competitionApi.getActive();
+
       setCompetitions(data);
       
       if (data.length > 0) {
         const stillExists = selectedCompetition && data.find(c => c.id === selectedCompetition.id);
         if (!stillExists) {
           setSelectedCompetition(data[0]);
+        } else {
+            const updated = data.find(c => c.id === selectedCompetition.id);
+            if (updated) {
+                setSelectedCompetition(updated);
+            }
         }
       } else {
         setSelectedCompetition(null);
@@ -145,7 +153,7 @@ function App() {
         {mode === 'admin' && isAdmin ? (
           <AdminMode />
         ) : (
-          <UserMode selectedCompetition={selectedCompetition} />
+          <UserMode key={userModeKey} selectedCompetition={selectedCompetition} />
         )}
       </div>
     </div>
