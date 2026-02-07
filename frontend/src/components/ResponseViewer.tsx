@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type { Competition } from '../types/competition.types';
 import type { Submission, Form, FormField } from '../types/form.types';
 import { competitionApi, formApi } from '../services/api';
-import { Filter, X, BarChart3, Database, Download, ChevronRight } from 'lucide-react';
+import { Filter, X, BarChart3, Download} from 'lucide-react';
 
 type FilterOp = 'contains' | 'equals' | 'gt' | 'lt';
 
