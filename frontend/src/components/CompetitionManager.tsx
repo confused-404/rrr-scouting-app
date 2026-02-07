@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Edit2, Calendar, CheckSquare, Plus, X, Save, AlertTriangle } from 'lucide-react';
+import { Trash2, Edit2, CheckSquare, Plus, X, Save, AlertTriangle } from 'lucide-react';
 import type { Competition, CompetitionStatus } from '../types/competition.types';
 import { competitionApi } from '../services/api';
 
