@@ -38,14 +38,16 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
       const forms = await formApi.getFormsByCompetition(selectedCompetition.id);
 
       if (forms.length > 0) {
-        const fields = forms[0].fields;
-        setFormFields(fields);
-        setCurrentFormId(forms[0].id);
+        const activeForm = forms.find(f => f.id === selectedCompetition.activeFormId);
+        const formToUse = activeForm || forms[0];
+
+        setFormFields(formToUse.fields);
+        setCurrentFormId(formToUse.id);
 
         setResponses((prev) => {
           const next = { ...prev };
 
-          for (const f of fields) {
+          for (const f of formToUse.fields) {
             if (f.type === 'ranking') {
               const key = String(f.id);
               const existing = next[key];
