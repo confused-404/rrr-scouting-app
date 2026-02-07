@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Calendar, CheckSquare } from 'lucide-react';
+import { Trash2, Edit2, Calendar, CheckSquare, Plus } from 'lucide-react';
 import type { Competition, CompetitionStatus } from '../types/competition.types';
 import { competitionApi } from '../services/api';
 
@@ -9,33 +9,18 @@ interface CompetitionManagerProps {
 
 export const CompetitionManager: React.FC<CompetitionManagerProps> = ({ onSelect }) => {
     const [competitions, setCompetitions] = useState<Competition[]>([]);
-    const [showForm, setShowForm] = useState(false);
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [formData, setFormData] = useState({
-        name: '',
-        season: new Date().getFullYear().toString(),
-        status: 'draft' as CompetitionStatus,
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0],
-    });
 
-    useEffect(() => { loadCompetitions(); }, []);
+    useEffect(() => {
+        loadCompetitions();
+    }, []);
 
     const loadCompetitions = async () => {
         try {
             const data = await competitionApi.getAll();
             setCompetitions(data);
-        } catch (error) { console.error('Error loading competitions:', error); }
-    };
-
-    const resetForm = () => {
-        setShowForm(false);
-        setEditingId(null);
-        setFormData({
-            name: '', season: new Date().getFullYear().toString(), status: 'draft',
-            startDate: new Date().toISOString().split('T')[0],
-            endDate: new Date().toISOString().split('T')[0],
-        });
+        } catch (error) {
+            console.error('Error loading competitions:', error);
+        }
     };
 
     const getStatusColor = (status: CompetitionStatus) => {
@@ -51,11 +36,9 @@ export const CompetitionManager: React.FC<CompetitionManagerProps> = ({ onSelect
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Manage Competitions</h2>
-                <button
-                    onClick={() => { resetForm(); setShowForm(!showForm); }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2"
-                >
-                    <Plus size={20} /> New Competition
+                <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2">
+                    <Plus size={20} />
+                    New Competition
                 </button>
             </div>
 
@@ -67,7 +50,7 @@ export const CompetitionManager: React.FC<CompetitionManagerProps> = ({ onSelect
                     </div>
                 ) : (
                     competitions.map((competition) => (
-                        <div key={competition.id} className="bg-white rounded-lg shadow-sm p-6 border border-transparent hover:border-emerald-200 transition-all">
+                        <div key={competition.id} className="bg-white rounded-lg shadow-sm p-6 border border-transparent hover:border-emerald-200 transition-colors">
                             <div className="flex items-start justify-between">
                                 <div className="flex-1">
                                     <div className="flex items-center gap-3 mb-2">
@@ -76,18 +59,25 @@ export const CompetitionManager: React.FC<CompetitionManagerProps> = ({ onSelect
                                             {competition.status}
                                         </span>
                                     </div>
-                                    <p className="text-gray-600">Season: {competition.season}</p>
+                                    <p className="text-gray-600 mb-1 text-sm">Season: {competition.season}</p>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <button
                                         onClick={() => onSelect?.(competition.id)}
-                                        className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-md hover:bg-emerald-100 border border-emerald-100 transition-colors"
+                                        className="flex items-center gap-2 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-md hover:bg-emerald-100 transition-colors border border-emerald-100"
                                     >
                                         <CheckSquare size={18} />
                                         <span className="text-sm font-medium">Select</span>
                                     </button>
-                                    <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-md"><Edit2 size={20} /></button>
-                                    <button className="p-2 text-red-600 hover:bg-red-50 rounded-md"><Trash2 size={20} /></button>
+                                    
+                                    <div className="h-8 w-[1px] bg-gray-200 mx-1" />
+
+                                    <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-md">
+                                        <Edit2 size={20} />
+                                    </button>
+                                    <button className="p-2 text-red-600 hover:bg-red-50 rounded-md">
+                                        <Trash2 size={20} />
+                                    </button>
                                 </div>
                             </div>
                         </div>

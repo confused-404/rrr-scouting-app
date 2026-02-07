@@ -2,79 +2,24 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type { Competition } from '../types/competition.types';
 import type { Submission, Form, FormField } from '../types/form.types';
 import { competitionApi, formApi } from '../services/api';
+import { Filter, X, BarChart3, Database } from 'lucide-react';
 
-type FilterOp =
-  | 'equals'
-  | 'contains'
-  | 'starts_with'
-  | 'ends_with'
-  | 'gt'
-  | 'gte'
-  | 'lt'
-  | 'lte'
-  | 'includes';
-
-type Stats = {
-  count: number;
-  mean: number | null;
-  median: number | null;
-  mode: number | null;
-};
+type FilterOp = 'equals' | 'contains' | 'starts_with' | 'ends_with' | 'gt' | 'gte' | 'lt' | 'lte' | 'includes';
 
 interface ResponseViewerProps {
   competitionId?: string;
   onFormSelect?: (id: string | null) => void;
 }
 
-// --- Helper Logic (Restored) ---
-function isQuantitative(field: FormField) {
-  return field.type === 'number' || field.type === 'ranking';
+// Helpers for Stats
+function isQuantitative(field: FormField) { 
+  return field.type === 'number' || field.type === 'ranking'; 
 }
 
-function toNumberOrNull(v: any): number | null {
+function toNumber(v: any) { 
   if (v === '' || v === null || v === undefined) return null;
-  const n = typeof v === 'number' ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function mean(nums: number[]): number | null {
-  if (nums.length === 0) return null;
-  return nums.reduce((sum, n) => sum + n, 0) / nums.length;
-}
-
-function median(nums: number[]): number | null {
-  if (nums.length === 0) return null;
-  const sorted = [...nums].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-function mode(nums: number[]): number | null {
-  if (nums.length === 0) return null;
-  const freq = new Map<number, number>();
-  nums.forEach(n => freq.set(n, (freq.get(n) ?? 0) + 1));
-  let bestVal: number | null = null;
-  let bestCount = -1;
-  for (const [val, count] of freq.entries()) {
-    if (count > bestCount) {
-      bestCount = count;
-      bestVal = val;
-    }
-  }
-  return bestVal;
-}
-
-function getDefaultOp(field: FormField): FilterOp {
-  switch (field.type) {
-    case 'text': return 'contains';
-    case 'multiple_choice': return 'equals';
-    case 'multiple_select': return 'includes';
-    default: return 'equals';
-  }
-}
-
-function normalizeString(v: any): string {
-  return String(v ?? '').trim();
+  const n = Number(v); 
+  return isNaN(n) ? null : n; 
 }
 
 export const ResponseViewer: React.FC<ResponseViewerProps> = ({ competitionId, onFormSelect }) => {
@@ -85,251 +30,245 @@ export const ResponseViewer: React.FC<ResponseViewerProps> = ({ competitionId, o
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Filter State
   const [filterFieldId, setFilterFieldId] = useState<number | null>(null);
   const [filterOp, setFilterOp] = useState<FilterOp>('contains');
   const [filterValue, setFilterValue] = useState<string>('');
 
+  // 1. Initial Load of Competitions
   useEffect(() => {
-    const loadComps = async () => {
-      const data = await competitionApi.getAll();
-      setCompetitions(data);
-      if (competitionId) {
-        const comp = data.find(c => c.id === competitionId);
-        if (comp) setSelectedCompetition(comp);
-      }
-    };
-    loadComps();
-  }, [competitionId]);
+    competitionApi.getAll().then(setCompetitions).catch(console.error);
+  }, []);
 
+  // 2. Sync Competition from Prop (from AdminMode)
+  useEffect(() => {
+    if (competitionId && competitions.length > 0) {
+      const comp = competitions.find(c => c.id === competitionId);
+      if (comp) setSelectedCompetition(comp);
+    }
+  }, [competitionId, competitions]);
+
+  // 3. Load Forms when Competition changes
   useEffect(() => {
     if (selectedCompetition) {
-      const loadForms = async () => {
-        setLoading(true);
-        const data = await formApi.getFormsByCompetition(selectedCompetition.id);
-        setForms(data);
-        if (data.length > 0) setSelectedForm(data[0]);
-        setLoading(false);
-      };
-      loadForms();
+      formApi.getFormsByCompetition(selectedCompetition.id)
+        .then(data => {
+          setForms(data);
+          if (data.length > 0) {
+            setSelectedForm(data[0]);
+          } else {
+            setSelectedForm(null);
+          }
+        })
+        .catch(console.error);
     }
-    setSubmissions([]);
-    setFilterFieldId(null);
-    setFilterValue('');
   }, [selectedCompetition]);
 
+  // 4. Load Submissions when Form changes & Notify Parent for Exporting
   useEffect(() => {
     onFormSelect?.(selectedForm?.id || null);
+
     if (selectedForm) {
-      const loadSubs = async () => {
-        const subs = await formApi.getSubmissions(selectedForm.id);
-        setSubmissions(subs);
-      };
-      loadSubs();
-      if (selectedForm.fields.length > 0) {
+      setLoading(true);
+      formApi.getSubmissions(selectedForm.id)
+        .then(subs => {
+          setSubmissions(subs);
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error(err);
+          setLoading(false);
+        });
+      
+      if (selectedForm.fields.length > 0 && !filterFieldId) {
         setFilterFieldId(selectedForm.fields[0].id);
-        setFilterOp(getDefaultOp(selectedForm.fields[0]));
       }
+    } else {
+      setSubmissions([]);
     }
-  }, [selectedForm, onFormSelect]);
+  }, [selectedForm?.id]);
 
-  const availableOps = useMemo((): FilterOp[] => {
-    const f = selectedForm?.fields.find(f => f.id === filterFieldId);
-    if (!f) return ['contains'];
-    switch (f.type) {
-      case 'text': return ['contains', 'equals', 'starts_with', 'ends_with'];
-      case 'multiple_choice': return ['equals'];
-      case 'multiple_select': return ['includes'];
-      case 'number':
-      case 'ranking': return ['equals', 'gt', 'gte', 'lt', 'lte'];
-      default: return ['equals'];
-    }
-  }, [selectedForm, filterFieldId]);
-
+  // 5. Advanced Filtering Logic
   const filteredSubmissions = useMemo(() => {
-    if (!selectedForm || !filterFieldId) return submissions;
-    const raw = filterValue.trim();
-    if (raw === '') return submissions;
-
-    const field = selectedForm.fields.find(f => f.id === filterFieldId);
-    if (!field) return submissions;
-
-    return submissions.filter((sub) => {
-      const v = sub.data?.[String(field.id)];
-      switch (field.type) {
-        case 'text':
-        case 'multiple_choice': {
-          const s = normalizeString(v).toLowerCase();
-          const q = raw.toLowerCase();
-          if (filterOp === 'equals') return s === q;
-          if (filterOp === 'starts_with') return s.startsWith(q);
-          if (filterOp === 'ends_with') return s.endsWith(q);
-          return s.includes(q);
-        }
-        case 'multiple_select': {
-          const arr = Array.isArray(v) ? v : [];
-          return arr.some(item => normalizeString(item).toLowerCase().includes(raw.toLowerCase()));
-        }
-        case 'number':
-        case 'ranking': {
-          const n = toNumberOrNull(v);
-          const q = toNumberOrNull(raw);
-          if (n === null || q === null) return false;
-          if (filterOp === 'equals') return n === q;
-          if (filterOp === 'gt') return n > q;
-          if (filterOp === 'gte') return n >= q;
-          if (filterOp === 'lt') return n < q;
-          if (filterOp === 'lte') return n <= q;
-          return false;
-        }
-        default: return true;
+    if (!selectedForm || !filterFieldId || !filterValue.trim()) return submissions;
+    const q = filterValue.trim().toLowerCase();
+    
+    return submissions.filter(sub => {
+      const rawValue = sub.data?.[filterFieldId];
+      const v = String(rawValue ?? '').toLowerCase();
+      
+      // Numeric Logic
+      if (filterOp === 'gt' || filterOp === 'lt' || filterOp === 'gte' || filterOp === 'lte') {
+        const numV = toNumber(rawValue);
+        const numQ = toNumber(filterValue);
+        if (numV === null || numQ === null) return false;
+        if (filterOp === 'gt') return numV > numQ;
+        if (filterOp === 'lt') return numV < numQ;
+        if (filterOp === 'gte') return numV >= numQ;
+        if (filterOp === 'lte') return numV <= numQ;
       }
-    });
-  }, [submissions, selectedForm, filterFieldId, filterOp, filterValue]);
 
-  const quantitativeStats = useMemo(() => {
+      // String Logic
+      if (filterOp === 'equals') return v === q;
+      if (filterOp === 'starts_with') return v.startsWith(q);
+      if (filterOp === 'ends_with') return v.endsWith(q);
+      return v.includes(q);
+    });
+  }, [submissions, filterFieldId, filterValue, filterOp, selectedForm]);
+
+  // 6. Quantitative Statistics
+  const stats = useMemo(() => {
     if (!selectedForm) return [];
     return selectedForm.fields.filter(isQuantitative).map(field => {
-      const nums = filteredSubmissions.map(s => toNumberOrNull(s.data?.[field.id])).filter((n): n is number => n !== null);
-      return {
-        field,
-        stats: { count: nums.length, mean: mean(nums), median: median(nums), mode: mode(nums) }
-      };
+      const vals = filteredSubmissions
+        .map(s => toNumber(s.data?.[field.id]))
+        .filter((v): v is number => v !== null);
+
+      if (vals.length === 0) return { field, mean: "0.00", count: 0 };
+      const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+      return { field, mean: avg.toFixed(2), count: vals.length };
     });
   }, [selectedForm, filteredSubmissions]);
 
-  const formatNum = (n: number | null) => (n === null ? '—' : Number.isInteger(n) ? String(n) : n.toFixed(2));
+  if (!selectedCompetition) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm p-12 text-center border-2 border-dashed border-gray-200">
+        <Database className="mx-auto text-gray-300 mb-4" size={48} />
+        <h3 className="text-lg font-medium text-gray-900">No Competition Selected</h3>
+        <p className="text-gray-500 text-sm">Select a competition in the sidebar or Competitions tab.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Selection Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Select Competition</label>
-          <select
-            value={selectedCompetition?.id || ''}
-            onChange={(e) => setSelectedCompetition(competitions.find(c => c.id === e.target.value) || null)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+          <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Competition Context</label>
+          <select 
+            value={selectedCompetition.id} 
+            onChange={(e) => {
+                const comp = competitions.find(c => c.id === e.target.value);
+                if (comp) setSelectedCompetition(comp);
+            }} 
+            className="w-full bg-gray-50 border-none rounded-md px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-blue-500"
           >
-            {competitions.map(comp => (
-              <option key={comp.id} value={comp.id}>{comp.name} ({comp.season})</option>
-            ))}
+            {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Select Form</label>
-          <select
-            value={selectedForm?.id || ''}
-            onChange={(e) => setSelectedForm(forms.find(f => f.id === e.target.value) || null)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+          <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Active Scouting Form</label>
+          <select 
+            value={selectedForm?.id || ''} 
+            onChange={(e) => {
+                const form = forms.find(f => f.id === e.target.value);
+                if (form) setSelectedForm(form);
+            }} 
+            className="w-full bg-gray-50 border-none rounded-md px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-blue-500"
           >
-            {forms.map(form => (
-              <option key={form.id} value={form.id}>{form.name}</option>
-            ))}
+            {forms.length > 0 ? (
+              forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)
+            ) : (
+              <option value="">No forms available</option>
+            )}
           </select>
         </div>
       </div>
 
       {loading ? (
-        <div className="p-12 text-center text-gray-500 bg-white rounded-lg">Loading...</div>
-      ) : !selectedForm ? (
-        <div className="p-12 text-center text-gray-500 bg-white rounded-lg">Select a form to view responses</div>
+        <div className="p-20 text-center text-gray-400 animate-pulse font-medium uppercase tracking-widest text-xs">Fetching records...</div>
       ) : (
         <>
-          {/* Filtering UI (Restored) */}
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-end">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Filter Field</label>
-                <select
-                  value={filterFieldId ?? ''}
-                  onChange={(e) => setFilterFieldId(Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  {selectedForm.fields.map(f => (
-                    <option key={f.id} value={f.id}>{f.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="w-full md:w-48">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Operator</label>
-                <select
-                  value={filterOp}
-                  onChange={(e) => setFilterOp(e.target.value as FilterOp)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  {availableOps.map(op => <option key={op} value={op}>{op}</option>)}
-                </select>
-              </div>
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Value</label>
-                <input
-                  value={filterValue}
-                  onChange={(e) => setFilterValue(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  placeholder="Type to filter..."
-                />
-              </div>
-              <button onClick={() => setFilterValue('')} className="px-4 py-2 bg-gray-100 rounded-md hover:bg-gray-200">Clear</button>
-            </div>
-            <p className="mt-3 text-sm text-gray-600">Showing <b>{filteredSubmissions.length}</b> / {submissions.length} submissions</p>
-          </div>
-
-          {/* Stats Summary (Restored) */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-xl font-semibold mb-4">Quantitative Summary (filtered)</h2>
-            {quantitativeStats.length === 0 ? (
-              <p className="text-gray-500 text-sm">No numeric fields on this form.</p>
-            ) : (
-              <div className="space-y-4">
-                {quantitativeStats.map(({ field, stats }) => (
-                  <div key={field.id} className="border border-gray-100 rounded-lg p-4">
-                    <div className="flex justify-between mb-3">
-                      <span className="font-medium text-gray-900">{field.label}</span>
-                      <span className="text-sm text-gray-500">n = {stats.count}</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4 text-sm">
-                      <div className="bg-gray-50 p-2 rounded">
-                        <div className="text-gray-500 text-xs">Mean</div>
-                        <div className="font-bold">{formatNum(stats.mean)}</div>
-                      </div>
-                      <div className="bg-gray-50 p-2 rounded">
-                        <div className="text-gray-500 text-xs">Median</div>
-                        <div className="font-bold">{formatNum(stats.median)}</div>
-                      </div>
-                      <div className="bg-gray-50 p-2 rounded">
-                        <div className="text-gray-500 text-xs">Mode</div>
-                        <div className="font-bold">{formatNum(stats.mode)}</div>
-                      </div>
-                    </div>
+          {/* Statistics Grid */}
+          {stats.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {stats.map(s => (
+                <div key={s.field.id} className="bg-blue-600 text-white p-5 rounded-2xl shadow-lg border-b-4 border-blue-800">
+                  <div className="flex items-center gap-2 mb-2 opacity-80 uppercase text-[10px] font-black tracking-widest">
+                    <BarChart3 size={14}/> {s.field.label}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Submissions List (Restored Card View) */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-xl font-semibold mb-4">Submissions ({filteredSubmissions.length})</h2>
-            <div className="space-y-4">
-              {filteredSubmissions.map((submission) => (
-                <div key={submission.id} className="border border-gray-200 rounded-lg p-4">
-                  <p className="text-xs text-gray-400 mb-3 uppercase font-bold tracking-wider">
-                    {new Date(submission.timestamp).toLocaleString()}
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-y-3 gap-x-6">
-                    {selectedForm.fields.map((field) => {
-                      const v = submission.data?.[String(field.id)];
-                      return (
-                        <div key={field.id} className="border-l-2 border-blue-500 pl-3">
-                          <p className="text-xs font-bold text-gray-500 uppercase">{field.label}</p>
-                          <p className="text-gray-900">{v === undefined || v === '' ? '—' : Array.isArray(v) ? v.join(', ') : String(v)}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <div className="text-3xl font-black tracking-tighter">{s.mean}</div>
+                  <div className="text-[10px] mt-1 opacity-60 font-bold uppercase tracking-tight">Avg from {s.count} Entries</div>
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Advanced Filter Bar */}
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-3 items-center">
+            <div className="flex items-center gap-2 text-gray-400 mr-2">
+                <Filter size={18} />
+                <span className="text-xs font-black uppercase tracking-wider">Filter</span>
+            </div>
+            
+            <select 
+              className="border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+              value={filterFieldId || ''}
+              onChange={(e) => setFilterFieldId(Number(e.target.value))}
+            >
+              {selectedForm?.fields.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+            </select>
+
+            <select 
+              className="border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-mono font-bold"
+              value={filterOp}
+              onChange={(e) => setFilterOp(e.target.value as FilterOp)}
+            >
+              <option value="contains">Contains</option>
+              <option value="equals">Equals</option>
+              <option value="gt">Value &gt;</option>
+              <option value="lt">Value &lt;</option>
+              <option value="starts_with">Starts With</option>
+            </select>
+
+            <input 
+              placeholder="Search values..." 
+              value={filterValue} 
+              onChange={(e) => setFilterValue(e.target.value)} 
+              className="flex-1 border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium" 
+            />
+
+            {filterValue && (
+                <button onClick={() => setFilterValue('')} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
+                    <X size={20}/>
+                </button>
+            )}
+          </div>
+
+          {/* Responses Display (Card List) */}
+          <div className="space-y-4">
+            {filteredSubmissions.length === 0 ? (
+                <div className="p-12 text-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed font-medium italic">
+                    No scouting records found for this filter.
+                </div>
+            ) : (
+                filteredSubmissions.map(sub => (
+                    <div key={sub.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-blue-200 hover:shadow-md transition-all">
+                      <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-50">
+                        <div className="flex items-center gap-3">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                Timestamp: {new Date(sub.timestamp).toLocaleString()}
+                            </span>
+                        </div>
+                        <span className="text-[9px] font-bold text-gray-300">ID: {sub.id.slice(0,8)}</span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                        {selectedForm?.fields.map(f => (
+                          <div key={f.id} className="space-y-1">
+                            <div className="text-[9px] uppercase font-black text-blue-500 tracking-tighter opacity-70">{f.label}</div>
+                            <div className="text-sm font-bold text-gray-800 break-words leading-tight">
+                                {Array.isArray(sub.data?.[f.id]) 
+                                    ? sub.data[f.id].join(', ') 
+                                    : String(sub.data?.[f.id] ?? '—')}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                ))
+            )}
           </div>
         </>
       )}
