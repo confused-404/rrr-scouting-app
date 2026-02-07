@@ -36,15 +36,34 @@ export const FormManager: React.FC = () => {
     }, [selectedCompetition]);
 
     const loadCompetitions = async () => {
-        try {
-            const data = await competitionApi.getAll();
-            setCompetitions(data);
-            if (data.length > 0 && !selectedCompetition) {
-                setSelectedCompetition(data[0]);
+      try {
+        const data = await competitionApi.getAll();
+        setCompetitions(data);
+        
+        if (data.length > 0) {
+          // If there's a selected competition, update it with fresh data
+          if (selectedCompetition) {
+            const updatedSelected = data.find(c => c.id === selectedCompetition.id);
+            if (updatedSelected) {
+              setSelectedCompetition(updatedSelected);
+            } else {
+              // Selected competition no longer exists, fall back to first
+              setSelectedCompetition(data[0]);
             }
-        } catch (error) {
-            console.error('Error loading competitions:', error);
+          } else {
+            // No selection yet, pick the first one
+            setSelectedCompetition(data[0]);
+          }
+        } else {
+          // No competitions available
+          setSelectedCompetition(null);
         }
+        
+        return data; // Return for use in handleSetActiveForm
+      } catch (error) {
+        console.error('Error loading competitions:', error);
+        return [];
+      }
     };
 
     const loadForms = async () => {
@@ -147,10 +166,6 @@ export const FormManager: React.FC = () => {
         try {
             await competitionApi.setActiveForm(selectedCompetition.id, formId);
             await loadCompetitions();
-            const updatedComp = competitions.find((c) => c.id === selectedCompetition.id);
-            if (updatedComp) {
-                setSelectedCompetition(updatedComp);
-            }
         } catch (error) {
             console.error('Error setting active form:', error);
             alert('Error setting active form');
