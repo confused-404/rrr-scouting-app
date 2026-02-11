@@ -1,3 +1,6 @@
+// Run the following command in the backend folder
+// node --env-file=.env.local src/promoteUser.js
+
 import { auth } from "./config/firebase.js";
 
 async function promoteToAdmin(uid) {
