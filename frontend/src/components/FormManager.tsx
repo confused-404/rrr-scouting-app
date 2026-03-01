@@ -164,6 +164,7 @@ export const FormManager: React.FC = () => {
 
         setLoading(true);
         try {
+            // pass formId if toggling, or null to clear all
             await competitionApi.setActiveForm(selectedCompetition.id, formId);
             await loadCompetitions();
         } catch (error) {
@@ -403,18 +404,23 @@ export const FormManager: React.FC = () => {
                                             </button>
 
                                             <button
-                                                onClick={() =>
-                                                    handleSetActiveForm(
-                                                        selectedCompetition.activeFormId === form.id ? null : form.id
-                                                    )
+                                                onClick={() => handleSetActiveForm(form.id)}
+                                                className={`p-2 rounded ${
+                                                    selectedCompetition.activeFormIds?.includes(form.id)
+                                                        ? 'bg-yellow-100 text-yellow-600'
+                                                        : 'text-gray-400 hover:text-yellow-600'
+                                                }`}
+                                                title={
+                                                    selectedCompetition.activeFormIds?.includes(form.id)
+                                                        ? 'Active form'
+                                                        : 'Set as active'
                                                 }
-                                                className={`p-2 rounded ${selectedCompetition.activeFormId === form.id
-                                                    ? 'bg-yellow-100 text-yellow-600'
-                                                    : 'text-gray-400 hover:text-yellow-600'
-                                                    }`}
-                                                title={selectedCompetition.activeFormId === form.id ? 'Active form' : 'Set as active'}
                                             >
-                                                <Star size={18} fill={selectedCompetition.activeFormId === form.id ? 'currentColor' : 'none'} />
+                                                <Star size={18} fill={
+                                                    selectedCompetition.activeFormIds?.includes(form.id)
+                                                        ? 'currentColor'
+                                                        : 'none'
+                                                } />
                                             </button>
                                         </>
                                     )}

@@ -36,7 +36,7 @@ export const competitionModel = {
         endDate: convertTimestamp(data.endDate),
         createdAt: convertTimestamp(data.createdAt),
         formIds: data.formIds || [],
-        activeFormId: data.activeFormId,
+        activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
       };
     });
   },
@@ -57,7 +57,7 @@ export const competitionModel = {
         endDate: convertTimestamp(data.endDate),
         createdAt: convertTimestamp(data.createdAt),
         formIds: data.formIds || [],
-        activeFormId: data.activeFormId,
+        activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
       };
     });
   },
@@ -76,7 +76,7 @@ export const competitionModel = {
       endDate: convertTimestamp(data.endDate),
       createdAt: convertTimestamp(data.createdAt),
       formIds: data.formIds || [],
-      activeFormId: data.activeFormId,
+      activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
     };
   },
 
@@ -88,7 +88,7 @@ export const competitionModel = {
       startDate: competitionData.startDate, // Store as string
       endDate: competitionData.endDate, // Store as string
       formIds: competitionData.formIds || [],
-      activeFormId: competitionData.activeFormId || null,
+      activeFormIds: competitionData.activeFormIds || (competitionData.activeFormId ? [competitionData.activeFormId] : []),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     
@@ -103,7 +103,7 @@ export const competitionModel = {
       endDate: convertTimestamp(data.endDate),
       createdAt: convertTimestamp(data.createdAt),
       formIds: data.formIds || [],
-      activeFormId: data.activeFormId,
+      activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
     };
   },
 
@@ -121,7 +121,12 @@ export const competitionModel = {
     if (competitionData.startDate !== undefined) updateData.startDate = competitionData.startDate;
     if (competitionData.endDate !== undefined) updateData.endDate = competitionData.endDate;
     if (competitionData.formIds !== undefined) updateData.formIds = competitionData.formIds;
-    if (competitionData.activeFormId !== undefined) updateData.activeFormId = competitionData.activeFormId;
+    if (competitionData.activeFormIds !== undefined) {
+      updateData.activeFormIds = competitionData.activeFormIds;
+    } else if (competitionData.activeFormId !== undefined) {
+      // backwards compatibility
+      updateData.activeFormIds = competitionData.activeFormId ? [competitionData.activeFormId] : [];
+    }
     
     // console.log('Updating competition with:', updateData); // Debug log
     
