@@ -37,6 +37,8 @@ export const competitionModel = {
         createdAt: convertTimestamp(data.createdAt),
         formIds: data.formIds || [],
         activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
+        scoutingTeams: data.scoutingTeams || [],
+        scoutingAssignments: data.scoutingAssignments || [],
       };
     });
   },
@@ -58,6 +60,8 @@ export const competitionModel = {
         createdAt: convertTimestamp(data.createdAt),
         formIds: data.formIds || [],
         activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
+        scoutingTeams: data.scoutingTeams || [],
+        scoutingAssignments: data.scoutingAssignments || [],
       };
     });
   },
@@ -77,6 +81,8 @@ export const competitionModel = {
       createdAt: convertTimestamp(data.createdAt),
       formIds: data.formIds || [],
       activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
+      scoutingTeams: data.scoutingTeams || [],
+      scoutingAssignments: data.scoutingAssignments || [],
     };
   },
 
@@ -89,6 +95,8 @@ export const competitionModel = {
       endDate: competitionData.endDate, // Store as string
       formIds: competitionData.formIds || [],
       activeFormIds: competitionData.activeFormIds || (competitionData.activeFormId ? [competitionData.activeFormId] : []),
+      scoutingTeams: competitionData.scoutingTeams || [],
+      scoutingAssignments: competitionData.scoutingAssignments || [],
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     
@@ -104,6 +112,8 @@ export const competitionModel = {
       createdAt: convertTimestamp(data.createdAt),
       formIds: data.formIds || [],
       activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
+      scoutingTeams: data.scoutingTeams || [],
+      scoutingAssignments: data.scoutingAssignments || [],
     };
   },
 
@@ -127,6 +137,8 @@ export const competitionModel = {
       // backwards compatibility
       updateData.activeFormIds = competitionData.activeFormId ? [competitionData.activeFormId] : [];
     }
+    if (competitionData.scoutingTeams !== undefined) updateData.scoutingTeams = competitionData.scoutingTeams;
+    if (competitionData.scoutingAssignments !== undefined) updateData.scoutingAssignments = competitionData.scoutingAssignments;
     
     // console.log('Updating competition with:', updateData); // Debug log
     

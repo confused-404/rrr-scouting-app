@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Layout } from 'lucide-react';
+import { Layout, Clock } from 'lucide-react';
 import type { FormField as FormFieldType, Form } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { FormField } from './FormField';
 import { formApi } from '../services/api';
 import { TeamLookup } from './TeamLookup';
 import { MatchSchedule } from './MatchSchedule';
+import { ScoutingScheduleViewer } from './ScoutingScheduleViewer';
 
 interface UserModeProps {
   selectedCompetition: Competition | null;
 }
 
-type UserTab = 'scout' | 'teamLookup' | 'schedule';
+type UserTab = 'scout' | 'teamLookup' | 'schedule' | 'scoutingSchedule';
 
 type FieldErrors = Record<number, string>;
 
@@ -244,6 +245,17 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
           Scout
         </button>
         <button 
+          onClick={() => setActiveTab('scoutingSchedule')}
+          className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
+            activeTab === 'scoutingSchedule' 
+              ? 'bg-blue-600 text-white shadow-md' 
+              : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+          }`}
+        >
+          <Clock size={14} />
+          My Scouting
+        </button>
+        <button 
           onClick={() => setActiveTab('teamLookup')}
           className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
             activeTab === 'teamLookup' 
@@ -330,6 +342,8 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
             </button>
           </div>
         </div>
+      ) : activeTab === 'scoutingSchedule' ? (
+        <ScoutingScheduleViewer selectedCompetition={selectedCompetition} />
       ) : activeTab === 'teamLookup' ? (
         <TeamLookup />
       ) : (

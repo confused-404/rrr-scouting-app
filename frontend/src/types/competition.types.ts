@@ -1,5 +1,26 @@
 export type CompetitionStatus = 'draft' | 'active' | 'completed' | 'archived';
 
+export type Scout = {
+  name: string;
+};
+
+export type ScoutingTeam = {
+  id: string;
+  name: string;
+  members: Scout[];
+  position: 'red1' | 'red2' | 'red3' | 'blue1' | 'blue2' | 'blue3';
+  shiftPattern: number;
+  offsetPattern: number;
+};
+
+export type GeneratedAssignment = {
+  matchNumber: number;
+  position: 'red1' | 'red2' | 'red3' | 'blue1' | 'blue2' | 'blue3';
+  teamId: string;
+  teamName: string;
+  scouts: string[];
+};
+
 export type Competition = {
   id: string;
   name: string;
@@ -14,5 +35,7 @@ export type Competition = {
    */
   activeFormId?: string;
   activeFormIds?: string[];
+  scoutingTeams?: ScoutingTeam[];
+  scoutingAssignments?: GeneratedAssignment[];
   createdAt: string;
 };

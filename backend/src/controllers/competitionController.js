@@ -64,7 +64,7 @@ export const competitionController = {
   // Update competition
   updateCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormId, activeFormIds } = req.body;
+      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments } = req.body;
       
       const updatedCompetition = await competitionModel.updateCompetition(req.params.id, {
         ...(name && { name }),
@@ -74,6 +74,8 @@ export const competitionController = {
         ...(endDate && { endDate }),
         ...(activeFormIds !== undefined && { activeFormIds }),
         ...(activeFormId !== undefined && { activeFormId }),
+        ...(scoutingTeams !== undefined && { scoutingTeams }),
+        ...(scoutingAssignments !== undefined && { scoutingAssignments }),
       });
       
       if (!updatedCompetition) {
