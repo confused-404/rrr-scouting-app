@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Settings, FileText, BarChart } from 'lucide-react';
+import { Settings, FileText, BarChart, Users } from 'lucide-react';
 import { CompetitionManager } from './CompetitionManager';
 import { FormManager } from './FormManager';
 import { ResponseViewer } from './ResponseViewer';
 import { TeamLookup } from './TeamLookup';
 import { MatchSchedule } from './MatchSchedule';
+import { ScoutingTeams } from './ScoutingTeams';
 
-type AdminTab = 'competitions' | 'forms' | 'analytics';
+type AdminTab = 'competitions' | 'forms' | 'analytics' | 'scoutingTeams';
 
 // analytics subtabs
 type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule';
@@ -17,7 +18,6 @@ export const AdminMode: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Main Navigation Tabs */}
       <div className="bg-white rounded-xl shadow-sm p-2 border border-gray-100 flex gap-2">
         <button 
           onClick={() => setActiveTab('competitions')} 
@@ -39,6 +39,16 @@ export const AdminMode: React.FC = () => {
         >
           <FileText size={16} /> Forms
         </button>
+        <button
+          onClick={() => setActiveTab('scoutingTeams')}
+          className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
+            activeTab === 'scoutingTeams'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+          }`}
+        >
+          <Users size={16} /> Scouting Teams
+        </button>
         <button 
           onClick={() => setActiveTab('analytics')} 
           className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
@@ -51,10 +61,13 @@ export const AdminMode: React.FC = () => {
         </button>
       </div>
 
+
       {/* Tab Content */}
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         {activeTab === 'competitions' && <CompetitionManager />}
         {activeTab === 'forms' && <FormManager />}
+        {activeTab === 'scoutingTeams' && <ScoutingTeams />}
+
         {activeTab === 'analytics' && (
           <div className="space-y-4">
             {/* Analytics Sub-navigation */}
