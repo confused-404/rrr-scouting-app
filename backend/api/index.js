@@ -4,6 +4,7 @@ import cors from 'cors';
 import formRoutes from '../src/routes/formRoutes.js';
 import authRoutes from '../src/routes/authRoutes.js';
 import competitionRoutes from '../src/routes/competitionRoutes.js';
+import tbaRoutes from '../src/routes/tbaRoutes.js';
 import statboticsRoutes from '../src/routes/statboticsRoutes.js';
 import { errorHandler } from '../src/middleware/errorHandler.js';
 import { validateApiKey, rateLimit } from '../src/middleware/apiAuth.js';
@@ -49,6 +50,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/competitions', competitionRoutes);
 app.use('/api/forms', formRoutes);
+app.use('/api/tba', tbaRoutes);
 app.use('/api/statbotics', statboticsRoutes);
 
 // Error handling
