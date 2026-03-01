@@ -125,6 +125,26 @@ export const tbaController = {
   },
 
   /**
+   * GET /api/tba/teams/:year/simple
+   * Proxy TBA endpoint that returns simple team objects for the given year
+   * Example: /api/tba/teams/2024/simple
+   */
+  getTeamsSimple: async (req, res) => {
+    try {
+      const { year } = req.params;
+      if (!year) {
+        return res.status(400).json({ message: 'Year is required' });
+      }
+      const data = await fetchTBA(`/teams/${year}/simple`);
+      res.json(data);
+    } catch (error) {
+      console.error('Error in getTeamsSimple:', error);
+      res.status(error.status || 500).json({ message: error.message });
+    }
+  },
+
+
+  /**
    * GET /api/tba/events/:year
    * Get all events in a given year
    * Example: /api/tba/events/2024

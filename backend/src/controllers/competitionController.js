@@ -40,7 +40,7 @@ export const competitionController = {
   // Create competition
   createCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate } = req.body;
+      const { name, season, status, startDate, endDate, activeFormIds } = req.body;
       
       if (!name || !season) {
         return res.status(400).json({ message: 'Name and season are required' });
@@ -64,7 +64,7 @@ export const competitionController = {
   // Update competition
   updateCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormId } = req.body;
+      const { name, season, status, startDate, endDate, activeFormId, activeFormIds } = req.body;
       
       const updatedCompetition = await competitionModel.updateCompetition(req.params.id, {
         ...(name && { name }),
@@ -72,6 +72,7 @@ export const competitionController = {
         ...(status && { status }),
         ...(startDate && { startDate }),
         ...(endDate && { endDate }),
+        ...(activeFormIds !== undefined && { activeFormIds }),
         ...(activeFormId !== undefined && { activeFormId }),
       });
       
@@ -168,7 +169,9 @@ export const competitionController = {
     }
   },
 
-  // Set active form ID for competition
+  // Toggle an active form ID for a competition (multiple allowed)
+  // If formId is present it will be added/removed from the active list.
+  // Sending no formId will clear all actives.
   setActiveFormId: async (req, res) => {
     try {
       const { formId } = req.body;
@@ -179,13 +182,30 @@ export const competitionController = {
         return res.status(404).json({ message: 'Competition not found' });
       }
 
-      // If formId is provided, verify it exists in the formIds array
+      // ensure form exists in competition
       if (formId && !competition.formIds.includes(formId)) {
         return res.status(400).json({ message: 'Form ID does not exist in this competition' });
       }
 
+      // start from existing array (handle legacy activeFormId)
+      let activeIds = competition.activeFormIds || [];
+      if (!Array.isArray(activeIds) && competition.activeFormId) {
+        activeIds = [competition.activeFormId];
+      }
+
+      if (formId) {
+        if (activeIds.includes(formId)) {
+          activeIds = activeIds.filter(id => id !== formId);
+        } else {
+          activeIds.push(formId);
+        }
+      } else {
+        // clear all
+        activeIds = [];
+      }
+
       const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
-        activeFormId: formId || null,
+        activeFormIds: activeIds,
       });
 
       res.json(updatedCompetition);

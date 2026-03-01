@@ -24,6 +24,11 @@ router.get('/team/:team_key/event/:event_key/matches', tbaController.getTeamEven
 // GET /api/tba/events/2024
 router.get('/events/:year', tbaController.getEvents);
 
+// Supplemental team routes
+// GET /api/tba/teams/2024/simple
+router.get('/teams/:year/simple', tbaController.getTeamsSimple);
+
+
 // GET /api/tba/event/2024casj
 router.get('/event/:event_key', tbaController.getEvent);
 

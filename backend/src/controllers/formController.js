@@ -123,10 +123,13 @@ export const formController = {
         const updatedFormIds = (competition.formIds || []).filter(id => id !== req.params.id);
         const updateData = { formIds: updatedFormIds };
 
-        // If this was the active form, clear it
-        if (competition.activeFormId === req.params.id) {
-          updateData.activeFormId = null;
+        // remove from activeFormIds if present (supports legacy activeFormId too)
+        let activeIds = competition.activeFormIds || [];
+        if (!Array.isArray(activeIds) && competition.activeFormId) {
+          activeIds = [competition.activeFormId];
         }
+        activeIds = activeIds.filter(id => id !== req.params.id);
+        updateData.activeFormIds = activeIds;
 
         await competitionModel.updateCompetition(form.competitionId, updateData);
       }

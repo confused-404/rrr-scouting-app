@@ -145,3 +145,25 @@ export const formApi = {
     return response.data;
   },
 };
+
+export const tbaApi = {
+  getTeam: async (teamKey: string): Promise<any> => {
+    const response = await api.get(`/tba/team/${teamKey}`);
+    return response.data;
+  },
+
+  getTeamsSimple: async (year: string): Promise<any[]> => {
+    const response = await api.get(`/tba/teams/${year}/simple`);
+    return response.data;
+  },
+
+  getEvents: async (year: string): Promise<any[]> => {
+    const response = await api.get(`/tba/events/${year}`);
+    return response.data;
+  },
+
+  getEventMatches: async (eventKey: string): Promise<any[]> => {
+    const response = await api.get(`/tba/event/${eventKey}/matches`);
+    return response.data;
+  },
+};
