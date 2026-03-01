@@ -4,11 +4,12 @@ import { CompetitionManager } from './CompetitionManager';
 import { FormManager } from './FormManager';
 import { ResponseViewer } from './ResponseViewer';
 import { TeamLookup } from './TeamLookup';
+import { MatchSchedule } from './MatchSchedule';
 
 type AdminTab = 'competitions' | 'forms' | 'analytics';
 
 // analytics subtabs
-type AnalyticsTab = 'responses' | 'teamLookup';
+type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule';
 
 export const AdminMode: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('competitions');
@@ -78,12 +79,23 @@ export const AdminMode: React.FC = () => {
               >
                 Team Lookup
               </button>
+              <button
+                onClick={() => setAnalyticsTab('schedule')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  analyticsTab === 'schedule'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Schedule
+              </button>
             </div>
 
             {/* Analytics content */}
             <div>
               {analyticsTab === 'responses' && <ResponseViewer />}
               {analyticsTab === 'teamLookup' && <TeamLookup />}
+              {analyticsTab === 'schedule' && <MatchSchedule />}
             </div>
           </div>
         )}

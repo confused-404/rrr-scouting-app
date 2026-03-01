@@ -5,12 +5,13 @@ import type { Competition } from '../types/competition.types';
 import { FormField } from './FormField';
 import { formApi } from '../services/api';
 import { TeamLookup } from './TeamLookup';
+import { MatchSchedule } from './MatchSchedule';
 
 interface UserModeProps {
   selectedCompetition: Competition | null;
 }
 
-type UserTab = 'scout' | 'teamLookup';
+type UserTab = 'scout' | 'teamLookup' | 'schedule';
 
 type FieldErrors = Record<number, string>;
 
@@ -244,6 +245,16 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
         >
           Team Lookup
         </button>
+        <button 
+          onClick={() => setActiveTab('schedule')}
+          className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
+            activeTab === 'schedule' 
+              ? 'bg-blue-600 text-white shadow-md' 
+              : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+          }`}
+        >
+          Schedule
+        </button>
       </div>
 
       {activeTab === 'scout' ? (
@@ -291,8 +302,10 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
             </button>
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'teamLookup' ? (
         <TeamLookup />
+      ) : (
+        <MatchSchedule />
       )}
     </div>
   );
