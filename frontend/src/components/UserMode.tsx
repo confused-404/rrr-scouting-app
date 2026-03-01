@@ -4,10 +4,13 @@ import type { FormField as FormFieldType } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { FormField } from './FormField';
 import { formApi } from '../services/api';
+import { TeamLookup } from './TeamLookup';
 
 interface UserModeProps {
   selectedCompetition: Competition | null;
 }
+
+type UserTab = 'scout' | 'teamLookup';
 
 type FieldErrors = Record<number, string>;
 
@@ -17,6 +20,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   const [currentFormId, setCurrentFormId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchingForm, setFetchingForm] = useState(true);
+  const [activeTab, setActiveTab] = useState<UserTab>('scout');
 
   const [errors, setErrors] = useState<FieldErrors>({});
 
@@ -158,6 +162,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   };
 
   const handleSubmit = async () => {
+    if (activeTab !== 'scout') return;
     if (!currentFormId || !selectedCompetition) {
       alert('No form available');
       return;
@@ -185,7 +190,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     }
   };
 
-  if (!selectedCompetition) {
+  if (!selectedCompetition && activeTab === 'scout') {
     return (
       <div className="bg-white rounded-lg shadow-sm p-12 text-center text-gray-500">
         <Layout size={48} className="mx-auto mb-4 opacity-50" />
@@ -194,7 +199,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     );
   }
 
-  if (fetchingForm) {
+  if (fetchingForm && activeTab === 'scout') {
     return (
       <div className="bg-white rounded-lg shadow-sm p-6">
         <div className="text-center py-12 text-gray-500">
@@ -216,49 +221,79 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm p-6">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <p className="text-sm text-blue-800">
-          <strong>Submitting for:</strong> {selectedCompetition.name} ({selectedCompetition.season})
-        </p>
-      </div>
-
-      <div className="space-y-6">
-        <h2 className="text-2xl font-semibold mb-6">Submit Form</h2>
-
-        {Object.keys(errors).length > 0 && (
-          <div className="border border-red-200 bg-red-50 text-red-800 rounded-lg p-4">
-            Please fill out all required fields.
-          </div>
-        )}
-
-        {formFields.map((field) => (
-          <div key={field.id} id={`field-${field.id}`}>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {field.label}
-              {field.required && <span className="text-red-600 ml-1">*</span>}
-            </label>
-
-            <FormField
-              field={field}
-              value={responses[String(field.id)]}
-              onChange={(value) => handleInputChange(field.id, value)}
-            />
-
-            {errors[field.id] ? (
-              <p className="mt-1 text-sm text-red-600">{errors[field.id]}</p>
-            ) : null}
-          </div>
-        ))}
-
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+    <div className="space-y-6">
+      {/* tab navigation */}
+      <div className="bg-white rounded-xl shadow-sm p-2 border border-gray-100 flex gap-2">
+        <button 
+          onClick={() => setActiveTab('scout')}
+          className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
+            activeTab === 'scout' 
+              ? 'bg-blue-600 text-white shadow-md' 
+              : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+          }`}
         >
-          {loading ? 'Submitting...' : 'Submit'}
+          Scout
+        </button>
+        <button 
+          onClick={() => setActiveTab('teamLookup')}
+          className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
+            activeTab === 'teamLookup' 
+              ? 'bg-blue-600 text-white shadow-md' 
+              : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+          }`}
+        >
+          Team Lookup
         </button>
       </div>
+
+      {activeTab === 'scout' ? (
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <p className="text-sm text-blue-800">
+              <strong>Submitting for:</strong> {selectedCompetition?.name} ({selectedCompetition?.season})
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <h2 className="text-2xl font-semibold mb-6">Submit Form</h2>
+
+            {Object.keys(errors).length > 0 && (
+              <div className="border border-red-200 bg-red-50 text-red-800 rounded-lg p-4">
+                Please fill out all required fields.
+              </div>
+            )}
+
+            {formFields.map((field) => (
+              <div key={field.id} id={`field-${field.id}`}>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {field.label}
+                  {field.required && <span className="text-red-600 ml-1">*</span>}
+                </label>
+
+                <FormField
+                  field={field}
+                  value={responses[String(field.id)]}
+                  onChange={(value) => handleInputChange(field.id, value)}
+                />
+
+                {errors[field.id] ? (
+                  <p className="mt-1 text-sm text-red-600">{errors[field.id]}</p>
+                ) : null}
+              </div>
+            ))}
+
+            <button
+              onClick={handleSubmit}
+              disabled={loading}
+              className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Submitting...' : 'Submit'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <TeamLookup />
+      )}
     </div>
   );
 };
