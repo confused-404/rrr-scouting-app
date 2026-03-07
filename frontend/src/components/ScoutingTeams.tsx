@@ -108,6 +108,15 @@ export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null 
         return;
       }
 
+      // Create a map of match numbers to times
+      const matchTimes = new Map<number, number>();
+      matchSchedule.forEach((match: any) => {
+        const matchNum = match.match_number || (match.key ? parseInt(match.key.split('m')[1]) : 0);
+        if (matchNum && match.time) {
+          matchTimes.set(matchNum, match.time);
+        }
+      });
+
       // Calculate groups of 6 teams
       const teamsPerGroup = 6;
       const numGroups = teams.length / teamsPerGroup;
@@ -128,6 +137,7 @@ export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null 
             teamId: team.id,
             teamName: team.name,
             scouts: team.members.map(m => m.name),
+            matchTime: matchTimes.get(matchNum),
           });
         });
       }

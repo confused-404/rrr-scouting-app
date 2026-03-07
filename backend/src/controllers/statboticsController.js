@@ -150,6 +150,30 @@ export const statboticsController = {
   },
 
   /**
+   * GET /api/statbotics/event/:event/matches
+   * Returns match schedule for a single event.
+   * Example: /api/statbotics/event/2024casj/matches
+   */
+  getEventMatches: async (req, res) => {
+    try {
+      const { event } = req.params;
+
+      if (!event) {
+        return res.status(400).json({ message: 'Event key is required' });
+      }
+
+      const data = await fetchStatbotics('/matches', { event });
+      res.json(data);
+    } catch (error) {
+      console.error('Error in getEventMatches:', error);
+      if (error.status === 404) {
+        return res.status(404).json({ message: 'No matches found' });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  /**
    * GET /api/statbotics/team_year/:team/:year
    * Returns a team's EPA stats aggregated for a full season year.
    * Example: /api/statbotics/team_year/254/2024

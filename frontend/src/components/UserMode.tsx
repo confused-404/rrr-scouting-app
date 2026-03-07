@@ -92,6 +92,35 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     loadFields();
   }, [selectedFormId]);
 
+  // Clear responses for fields that become hidden due to condition changes
+  useEffect(() => {
+    if (formFields.length === 0) return;
+
+    const newResponses = { ...responses };
+    let hasChanges = false;
+
+    for (const field of formFields) {
+      if (!shouldShowField(field)) {
+        const key = String(field.id);
+        if (newResponses[key] !== undefined) {
+          delete newResponses[key];
+          hasChanges = true;
+        }
+      }
+    }
+
+    if (hasChanges) {
+      setResponses(newResponses);
+      // Also clear any errors for hidden fields
+      const newErrors = { ...errors };
+      for (const field of formFields) {
+        if (!shouldShowField(field) && newErrors[field.id]) {
+          delete newErrors[field.id];
+        }
+      }
+      setErrors(newErrors);
+    }
+  }, [responses, formFields]);
 
   const handleInputChange = (fieldId: number, value: any) => {
     const key = String(fieldId);
@@ -102,6 +131,9 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     const nextErrors: FieldErrors = {};
 
     for (const field of fields) {
+      // Skip validation for fields that aren't shown due to conditions
+      if (!shouldShowField(field)) continue;
+
       if (!field.required) continue;
 
       const key = String(field.id);
@@ -167,6 +199,36 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   const scrollToField = (fieldId: number) => {
     const el = document.getElementById(`field-${fieldId}`);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const shouldShowField = (field: FormFieldType): boolean => {
+    if (!field.condition) return true;
+
+    const { fieldId, operator, value } = field.condition;
+    const dependentValue = responses[String(fieldId)];
+
+    if (dependentValue === undefined || dependentValue === null || dependentValue === '') {
+      return false;
+    }
+
+    switch (operator) {
+      case 'equals':
+        return dependentValue === value;
+      case 'not_equals':
+        return dependentValue !== value;
+      case 'contains':
+        if (Array.isArray(dependentValue)) {
+          return dependentValue.includes(value);
+        }
+        return String(dependentValue).includes(String(value));
+      case 'not_contains':
+        if (Array.isArray(dependentValue)) {
+          return !dependentValue.includes(value);
+        }
+        return !String(dependentValue).includes(String(value));
+      default:
+        return true;
+    }
   };
 
   const handleSubmit = async () => {
@@ -292,7 +354,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
               </div>
             )}
 
-            {formFields.map((field) => (
+            {formFields.filter(shouldShowField).map((field) => (
               <div key={field.id} id={`field-${field.id}`}>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   {field.label}

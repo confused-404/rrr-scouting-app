@@ -9,6 +9,22 @@ interface ScoutingScheduleViewerProps {
 export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ selectedCompetition }) => {
   const [viewMode, setViewMode] = useState<'all' | 'myMatches'>('all');
 
+  // Get current time for comparison
+  const now = new Date();
+
+  // Find next match for the user
+  const getNextMatch = () => {
+    if (!selectedCompetition?.scoutingAssignments) return null;
+
+    const futureAssignments = selectedCompetition.scoutingAssignments
+      .filter(a => a.matchTime && a.matchTime * 1000 > now.getTime())
+      .sort((a, b) => a.matchTime! - b.matchTime!);
+
+    return futureAssignments[0] || null;
+  };
+
+  const nextMatch = getNextMatch();
+
   if (!selectedCompetition) {
     return (
       <div className="bg-white rounded-lg shadow-sm p-12 text-center text-gray-500">
@@ -72,6 +88,23 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
         </p>
       </div>
 
+      {/* Next Match Alert */}
+      {nextMatch && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Clock size={16} className="text-blue-600" />
+            <span className="font-semibold text-blue-900">Your Next Match</span>
+          </div>
+          <div className="text-sm text-blue-800">
+            <p><strong>Match {nextMatch.matchNumber}</strong> - {getPositionLabel(nextMatch.position)}</p>
+            <p>{nextMatch.matchTime ? new Date(nextMatch.matchTime * 1000).toLocaleString() : 'Time TBD'}</p>
+            {nextMatch.scouts.length > 0 && (
+              <p className="mt-1">Scouting with: {nextMatch.scouts.join(', ')}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* View Mode Toggle */}
       <div className="bg-white rounded-lg shadow-sm p-2 flex gap-2">
         <button
@@ -111,6 +144,11 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="font-bold text-lg text-gray-800">Match {matchNum}</div>
+                  {matchAssignments[0]?.matchTime && (
+                    <div className="text-sm text-gray-500">
+                      {new Date(matchAssignments[0].matchTime * 1000).toLocaleString()}
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {matchAssignments.map((assignment) => (
@@ -157,6 +195,11 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
                         <div className={`px-3 py-1 rounded text-sm font-bold ${getPositionColor(assignment.position)}`}>
                           {getPositionLabel(assignment.position)}
                         </div>
+                        {assignment.matchTime && (
+                          <div className="text-xs text-gray-500">
+                            {new Date(assignment.matchTime * 1000).toLocaleString()}
+                          </div>
+                        )}
                       </div>
                       {assignment.scouts.length > 0 && (
                         <div className="text-sm text-gray-500">
