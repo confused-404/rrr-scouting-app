@@ -181,7 +181,7 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
             required: false,
         };
 
-        if (type === 'multiple_choice' || type === 'multiple_select') {
+        if (type === 'multiple_choice' || type === 'multiple_select' || type === 'rank_order') {
             setFormFields([...formFields, { ...base, options: ['Option 1'] }]);
             return;
         }
@@ -435,6 +435,13 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
                             </button>
 
                             <button
+                                onClick={() => addField('rank_order')}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                            >
+                                + Rank Order
+                            </button>
+
+                            <button
                                 onClick={() => addField('multiple_choice')}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                             >
@@ -515,7 +522,7 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
 
 
                                     {/* Options editor */}
-                                    {(field.type === 'multiple_choice' || field.type === 'multiple_select') && (
+                                    {(field.type === 'multiple_choice' || field.type === 'multiple_select' || field.type === 'rank_order') && (
                                         <div className="space-y-2 mb-4">
                                             {(field.options ?? []).map((option, i) => (
                                                 <div key={i} className="flex items-center gap-2">

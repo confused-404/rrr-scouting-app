@@ -189,8 +189,11 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
           break;
         }
 
-        default:
+        case 'rank_order': {
+          const arr = Array.isArray(value) ? value : [];
+          if (arr.length === 0) nextErrors[field.id] = 'Please select and rank at least one option.';
           break;
+        }
       }
     }
 

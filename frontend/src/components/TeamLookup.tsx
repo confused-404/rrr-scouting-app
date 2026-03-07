@@ -117,6 +117,19 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
             });
             summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
             
+          } else if (field.type === 'rank_order') {
+            // For rank order, count frequency of each unique ranking combination
+            const counts: Record<string, number> = {};
+            filteredSubs.forEach(sub => {
+              const val = sub.data?.[field.id];
+              if (Array.isArray(val) && val.length > 0) {
+                // Convert array to readable string representation
+                const rankingString = val.join(' > ');
+                counts[rankingString] = (counts[rankingString] || 0) + 1;
+              }
+            });
+            summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
+            
           } else {
             // For text and ranking, collect unique values
             const values = new Set<string>();
@@ -205,21 +218,26 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
               {Object.entries(qualitativeSummary).map(([fieldKey, summary]) => {
                 const [label] = fieldKey.split('|'); // Extract just the label part
                 
-                if (summary.type === 'multiple_choice' || summary.type === 'multiple_select') {
+                if (summary.type === 'multiple_choice' || summary.type === 'multiple_select' || summary.type === 'rank_order') {
                   const { counts, options } = summary.data;
                   const totalResponses = filteredSubs.length;
+                  
+                  // For rank_order, show ranking combinations instead of individual options
+                  const displayItems = summary.type === 'rank_order' 
+                    ? Object.keys(counts).sort((a, b) => counts[b] - counts[a]) // Sort by frequency
+                    : options;
                   
                   return (
                     <div key={fieldKey} className="bg-white p-4 rounded-lg shadow">
                       <div className="font-black text-sm mb-3">{label}</div>
                       <div className="space-y-2">
-                        {options.map((option: string) => {
-                          const count = counts[option] || 0;
+                        {displayItems.map((item: string) => {
+                          const count = counts[item] || 0;
                           const percentage = totalResponses > 0 ? (count / totalResponses * 100).toFixed(1) : '0';
                           
                           return (
-                            <div key={option} className="flex items-center justify-between">
-                              <span className="text-sm">{option}</span>
+                            <div key={item} className="flex items-center justify-between">
+                              <span className="text-sm flex-1 pr-2">{item}</span>
                               <div className="flex items-center gap-2">
                                 <div className="w-24 bg-gray-200 rounded-full h-2">
                                   <div 
@@ -234,8 +252,8 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
                             </div>
                           );
                         })}
-                        {options.length === 0 && Object.keys(counts).length > 0 && (
-                          // Fallback for options not defined in form
+                        {displayItems.length === 0 && Object.keys(counts).length > 0 && summary.type !== 'rank_order' && (
+                          // Fallback for options not defined in form (not applicable for rank_order)
                           Object.entries(counts).map(([option, count]) => (
                             <div key={option} className="flex items-center justify-between">
                               <span className="text-sm">{option}</span>
