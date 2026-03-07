@@ -85,26 +85,55 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
   }, [forms, filteredSubs]);
 
   const qualitativeSummary = useMemo(() => {
-    const summary: Record<string, Set<string>> = {};
+    const summary: Record<string, { type: FormField['type']; data: any }> = {};
+    
     forms.forEach(form => {
       form.fields.forEach(field => {
         if (!isQuantitative(field)) {
-          filteredSubs.forEach(sub => {
-            const raw = sub.data?.[field.id];
-            if (raw !== undefined && raw !== null && raw !== '') {
-              const text = Array.isArray(raw) ? raw.join(', ') : String(raw);
-              if (!summary[field.label]) summary[field.label] = new Set();
-              summary[field.label].add(text);
-            }
-          });
+          const fieldKey = `${field.label}|${field.id}`; // Include ID to handle duplicate labels
+          
+          if (field.type === 'multiple_choice') {
+            // Count occurrences of each option
+            const counts: Record<string, number> = {};
+            filteredSubs.forEach(sub => {
+              const val = sub.data?.[field.id];
+              if (val !== undefined && val !== null && val !== '') {
+                const key = String(val);
+                counts[key] = (counts[key] || 0) + 1;
+              }
+            });
+            summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
+            
+          } else if (field.type === 'multiple_select') {
+            // For multiple select, count each option individually
+            const counts: Record<string, number> = {};
+            filteredSubs.forEach(sub => {
+              const val = sub.data?.[field.id];
+              if (Array.isArray(val)) {
+                val.forEach(option => {
+                  counts[option] = (counts[option] || 0) + 1;
+                });
+              }
+            });
+            summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
+            
+          } else {
+            // For text and ranking, collect unique values
+            const values = new Set<string>();
+            filteredSubs.forEach(sub => {
+              const raw = sub.data?.[field.id];
+              if (raw !== undefined && raw !== null && raw !== '') {
+                const text = Array.isArray(raw) ? raw.join(', ') : String(raw);
+                values.add(text);
+              }
+            });
+            summary[fieldKey] = { type: field.type, data: Array.from(values) };
+          }
         }
       });
     });
-    const out: Record<string, string[]> = {};
-    Object.entries(summary).forEach(([k, set]) => {
-      out[k] = Array.from(set);
-    });
-    return out;
+    
+    return summary;
   }, [forms, filteredSubs]);
 
   const handleSearch = async () => {
@@ -173,14 +202,71 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
           {/* Qualitative summary */}
           {Object.keys(qualitativeSummary).length > 0 && (
             <div className="space-y-4">
-              {Object.entries(qualitativeSummary).map(([label, values]) => (
-                <div key={label} className="bg-white p-4 rounded-lg shadow">
-                  <div className="font-black text-sm mb-2">{label}</div>
-                  <ul className="list-disc list-inside text-sm">
-                    {values.map(v => <li key={v}>{v}</li>)}
-                  </ul>
-                </div>
-              ))}
+              {Object.entries(qualitativeSummary).map(([fieldKey, summary]) => {
+                const [label] = fieldKey.split('|'); // Extract just the label part
+                
+                if (summary.type === 'multiple_choice' || summary.type === 'multiple_select') {
+                  const { counts, options } = summary.data;
+                  const totalResponses = filteredSubs.length;
+                  
+                  return (
+                    <div key={fieldKey} className="bg-white p-4 rounded-lg shadow">
+                      <div className="font-black text-sm mb-3">{label}</div>
+                      <div className="space-y-2">
+                        {options.map((option: string) => {
+                          const count = counts[option] || 0;
+                          const percentage = totalResponses > 0 ? (count / totalResponses * 100).toFixed(1) : '0';
+                          
+                          return (
+                            <div key={option} className="flex items-center justify-between">
+                              <span className="text-sm">{option}</span>
+                              <div className="flex items-center gap-2">
+                                <div className="w-24 bg-gray-200 rounded-full h-2">
+                                  <div 
+                                    className="bg-blue-600 h-2 rounded-full" 
+                                    style={{ width: `${percentage}%` }}
+                                  ></div>
+                                </div>
+                                <span className="text-sm font-medium text-gray-600 min-w-[3rem] text-right">
+                                  {count} ({percentage}%)
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {options.length === 0 && Object.keys(counts).length > 0 && (
+                          // Fallback for options not defined in form
+                          Object.entries(counts).map(([option, count]) => (
+                            <div key={option} className="flex items-center justify-between">
+                              <span className="text-sm">{option}</span>
+                              <span className="text-sm font-medium text-gray-600">
+                                {count as number} response{count as number !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                } else {
+                  // For text and ranking fields, show unique values
+                  const values = summary.data as string[];
+                  return (
+                    <div key={fieldKey} className="bg-white p-4 rounded-lg shadow">
+                      <div className="font-black text-sm mb-2">{label}</div>
+                      <div className="text-sm text-gray-600 mb-2">
+                        {values.length} unique response{values.length !== 1 ? 's' : ''}
+                      </div>
+                      <ul className="list-disc list-inside text-sm max-h-32 overflow-y-auto">
+                        {values.slice(0, 10).map(v => <li key={v}>{v}</li>)}
+                        {values.length > 10 && (
+                          <li className="text-gray-500">... and {values.length - 10} more</li>
+                        )}
+                      </ul>
+                    </div>
+                  );
+                }
+              })}
             </div>
           )}
         </>
