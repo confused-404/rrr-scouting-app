@@ -16,6 +16,13 @@ export type FormField = {
   // ranking-specific
   min?: number;
   max?: number;
+
+  // conditional logic
+  condition?: {
+    fieldId: number; // ID of the field this depends on
+    operator: 'equals' | 'not_equals' | 'contains' | 'not_contains';
+    value: string | number | string[]; // value(s) to match
+  };
 };
 
 export type Form = {

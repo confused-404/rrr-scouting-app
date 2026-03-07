@@ -545,6 +545,93 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null }>
                                         />
                                         Required
                                     </label>
+
+                                    {/* Conditional Logic */}
+                                    <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                                        <h4 className="text-sm font-medium text-gray-700 mb-3">Conditional Logic</h4>
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={!!field.condition}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            updateField(field.id, {
+                                                                condition: {
+                                                                    fieldId: formFields[0]?.id || 0,
+                                                                    operator: 'equals',
+                                                                    value: ''
+                                                                }
+                                                            });
+                                                        } else {
+                                                            updateField(field.id, { condition: undefined });
+                                                        }
+                                                    }}
+                                                    className="text-blue-600"
+                                                />
+                                                <span className="text-sm text-gray-700">Show this field only when...</span>
+                                            </div>
+
+                                            {field.condition && (
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-600 mb-1">Field</label>
+                                                        <select
+                                                            value={field.condition.fieldId}
+                                                            onChange={(e) => updateField(field.id, {
+                                                                condition: {
+                                                                    ...field.condition!,
+                                                                    fieldId: Number(e.target.value)
+                                                                }
+                                                            })}
+                                                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                                                        >
+                                                            {formFields
+                                                                .filter(f => f.id !== field.id)
+                                                                .map(otherField => (
+                                                                    <option key={otherField.id} value={otherField.id}>
+                                                                        {otherField.label || `Field ${otherField.id}`}
+                                                                    </option>
+                                                                ))}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-600 mb-1">Condition</label>
+                                                        <select
+                                                            value={field.condition.operator}
+                                                            onChange={(e) => updateField(field.id, {
+                                                                condition: {
+                                                                    ...field.condition!,
+                                                                    operator: e.target.value as any
+                                                                }
+                                                            })}
+                                                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                                                        >
+                                                            <option value="equals">Equals</option>
+                                                            <option value="not_equals">Not Equals</option>
+                                                            <option value="contains">Contains</option>
+                                                            <option value="not_contains">Does Not Contain</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-600 mb-1">Value</label>
+                                                        <input
+                                                            type="text"
+                                                            value={field.condition.value}
+                                                            onChange={(e) => updateField(field.id, {
+                                                                condition: {
+                                                                    ...field.condition!,
+                                                                    value: e.target.value
+                                                                }
+                                                            })}
+                                                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                                                            placeholder="Enter value"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             ))}
                         </div>
