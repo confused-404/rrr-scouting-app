@@ -1,13 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Competition } from '../types/competition.types';
-import type { Submission, Form, FormField } from '../types/form.types';
+import type { Submission, Form } from '../types/form.types';
 import { formApi } from '../services/api';
-import { Filter, X, BarChart3, Download} from 'lucide-react';
+import { Filter, X, Download} from 'lucide-react';
 
 type FilterOp = 'contains' | 'equals' | 'gt' | 'lt';
 
-// Helpers for Stats
-const isQuantitative = (field: FormField) => field.type === 'number' || field.type === 'ranking';
+// Helper for filtering
 const toNumber = (v: any) => (v === '' || v === null || v === undefined) ? null : Number(v);
 
 export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
@@ -78,15 +77,6 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
     });
   }, [submissions, filterFieldId, filterValue, filterOp, selectedForm]);
 
-  const stats = useMemo(() => {
-    if (!selectedForm) return [];
-    return selectedForm.fields.filter(isQuantitative).map(field => {
-      const vals = filteredSubmissions.map(s => toNumber(s.data?.[field.id])).filter((v): v is number => v !== null && !isNaN(v));
-      const avg = vals.length === 0 ? 0 : vals.reduce((a, b) => a + b, 0) / vals.length;
-      return { field, mean: avg.toFixed(2), count: vals.length };
-    });
-  }, [selectedForm, filteredSubmissions]);
-
   if (!selectedCompetition) return <div className="p-10 text-center text-gray-400">No active competition selected</div>;
 
   return (
@@ -108,17 +98,6 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
         <div className="py-20 text-center font-black text-gray-300 animate-pulse tracking-widest uppercase">Fetching Data...</div>
       ) : (
         <>
-          {/* Stats Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {stats.map(s => (
-              <div key={s.field.id} className="bg-blue-600 text-white p-5 rounded-2xl shadow-lg border-b-4 border-blue-800">
-                <div className="flex items-center gap-2 mb-2 opacity-80 uppercase text-[10px] font-black tracking-widest"><BarChart3 size={14}/> {s.field.label}</div>
-                <div className="text-3xl font-black">{s.mean}</div>
-                <div className="text-[10px] mt-1 opacity-60 font-bold uppercase tracking-tight">Average of {s.count} responses</div>
-              </div>
-            ))}
-          </div>
-
           {/* Filter Bar */}
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-3 items-center">
             <Filter size={18} className="text-gray-400 ml-2" />
