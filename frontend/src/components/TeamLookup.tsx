@@ -2,20 +2,29 @@ import React, { useEffect, useState, useMemo } from 'react';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission, FormField } from '../types/form.types';
 import { formApi, tbaApi } from '../services/api';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, ClipboardList } from 'lucide-react';
 
 // reuse helpers from ResponseViewer
 const isQuantitative = (field: FormField) => field.type === 'number' || field.type === 'ranking';
 const toNumber = (v: any) => (v === '' || v === null || v === undefined) ? null : Number(v);
 
-export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
+interface TeamLookupProps {
+  selectedCompetition?: Competition | null;
+  superscoutNotes?: string;
+  targetTeam?: string; // To ensure notes only show for the active team
+}
+
+export const TeamLookup: React.FC<TeamLookupProps> = ({ 
+  selectedCompetition, 
+  superscoutNotes, 
+  targetTeam 
+}) => {
   const [forms, setForms] = useState<Form[]>([]);
   const [allSubmissions, setAllSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [teamQuery, setTeamQuery] = useState('');
   const [teamInfo, setTeamInfo] = useState<any | null>(null);
-  // no longer support name-based lookup; only number
 
   useEffect(() => {
     if (selectedCompetition) {
@@ -30,7 +39,6 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
       const loadedForms = await formApi.getFormsByCompetition(selectedCompetition.id);
       setForms(loadedForms);
 
-      // Load submissions for all forms
       const allSubs: Submission[] = [];
       for (const form of loadedForms) {
         const subs = await formApi.getSubmissions(form.id);
@@ -44,13 +52,11 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
     }
   };
 
-  // clear team query/info when context changes
   useEffect(() => {
     setTeamQuery('');
     setTeamInfo(null);
   }, [selectedCompetition?.id]);
 
-  // filtered submissions by team query
   const filteredSubs = useMemo(() => {
     if (!teamQuery.trim()) return [];
     const q = teamQuery.trim().toLowerCase();
@@ -69,7 +75,6 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
         if (!fieldStats[field.label]) {
           fieldStats[field.label] = { field, vals: [] };
         }
-        // collect values from filteredSubs for this field
         filteredSubs.forEach(sub => {
           const val = toNumber(sub.data?.[field.id]);
           if (val !== null && !isNaN(val)) {
@@ -90,10 +95,9 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
     forms.forEach(form => {
       form.fields.forEach(field => {
         if (!isQuantitative(field)) {
-          const fieldKey = `${field.label}|${field.id}`; // Include ID to handle duplicate labels
+          const fieldKey = `${field.label}|${field.id}`;
           
           if (field.type === 'multiple_choice') {
-            // Count occurrences of each option
             const counts: Record<string, number> = {};
             filteredSubs.forEach(sub => {
               const val = sub.data?.[field.id];
@@ -105,7 +109,6 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
             summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
             
           } else if (field.type === 'multiple_select') {
-            // For multiple select, count each option individually
             const counts: Record<string, number> = {};
             filteredSubs.forEach(sub => {
               const val = sub.data?.[field.id];
@@ -118,12 +121,10 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
             summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
             
           } else if (field.type === 'rank_order') {
-            // For rank order, count frequency of each unique ranking combination
             const counts: Record<string, number> = {};
             filteredSubs.forEach(sub => {
               const val = sub.data?.[field.id];
               if (Array.isArray(val) && val.length > 0) {
-                // Convert array to readable string representation
                 const rankingString = val.join(' > ');
                 counts[rankingString] = (counts[rankingString] || 0) + 1;
               }
@@ -131,7 +132,6 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
             summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
             
           } else {
-            // For text and ranking, collect unique values
             const values = new Set<string>();
             filteredSubs.forEach(sub => {
               const raw = sub.data?.[field.id];
@@ -145,7 +145,6 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
         }
       });
     });
-    
     return summary;
   }, [forms, filteredSubs]);
 
@@ -155,13 +154,11 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
       setTeamInfo(null);
       return;
     }
-
     try {
       if (!/^\d+$/.test(q)) {
         alert('Please enter a numeric team number');
         return;
       }
-
       const key = `frc${q}`;
       const data = await tbaApi.getTeam(key);
       setTeamInfo(data);
@@ -170,6 +167,9 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
       setTeamInfo(null);
     }
   };
+
+  // Only show notes if the current search query matches the team the notes belong to
+  const showNotes = superscoutNotes && teamQuery.trim() === targetTeam?.trim();
 
   if (!selectedCompetition) return <div className="p-10 text-center text-gray-400">No active competition selected</div>;
 
@@ -188,12 +188,23 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
         </button>
       </div>
 
-
       {teamInfo && (
         <div className="bg-white p-4 rounded-lg shadow">
           <div className="font-black text-lg">{teamInfo.nickname || teamInfo.team_number}</div>
           <div className="text-sm text-gray-600">{teamInfo.team_number && `#${teamInfo.team_number}`}</div>
           {teamInfo.city && <div className="text-sm text-gray-600">{teamInfo.city}, {teamInfo.state_prov || teamInfo.country}</div>}
+        </div>
+      )}
+
+      {/* NEW: Superscouter Notes Section */}
+      {showNotes && (
+        <div className="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-xl shadow-sm">
+          <div className="flex items-center gap-2 mb-3 text-amber-800 font-black uppercase text-xs tracking-widest">
+            <ClipboardList size={18} /> Superscouter Insight
+          </div>
+          <div className="text-gray-800 whitespace-pre-wrap text-sm leading-relaxed font-medium">
+            {superscoutNotes}
+          </div>
         </div>
       )}
 
@@ -216,15 +227,13 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
           {Object.keys(qualitativeSummary).length > 0 && (
             <div className="space-y-4">
               {Object.entries(qualitativeSummary).map(([fieldKey, summary]) => {
-                const [label] = fieldKey.split('|'); // Extract just the label part
+                const [label] = fieldKey.split('|');
                 
                 if (summary.type === 'multiple_choice' || summary.type === 'multiple_select' || summary.type === 'rank_order') {
                   const { counts, options } = summary.data;
                   const totalResponses = filteredSubs.length;
-                  
-                  // For rank_order, show ranking combinations instead of individual options
                   const displayItems = summary.type === 'rank_order' 
-                    ? Object.keys(counts).sort((a, b) => counts[b] - counts[a]) // Sort by frequency
+                    ? Object.keys(counts).sort((a, b) => counts[b] - counts[a])
                     : options;
                   
                   return (
@@ -252,22 +261,10 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
                             </div>
                           );
                         })}
-                        {displayItems.length === 0 && Object.keys(counts).length > 0 && summary.type !== 'rank_order' && (
-                          // Fallback for options not defined in form (not applicable for rank_order)
-                          Object.entries(counts).map(([option, count]) => (
-                            <div key={option} className="flex items-center justify-between">
-                              <span className="text-sm">{option}</span>
-                              <span className="text-sm font-medium text-gray-600">
-                                {count as number} response{count as number !== 1 ? 's' : ''}
-                              </span>
-                            </div>
-                          ))
-                        )}
                       </div>
                     </div>
                   );
                 } else {
-                  // For text and ranking fields, show unique values
                   const values = summary.data as string[];
                   return (
                     <div key={fieldKey} className="bg-white p-4 rounded-lg shadow">
@@ -292,3 +289,5 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
     </div>
   );
 };
+
+export default TeamLookup;
