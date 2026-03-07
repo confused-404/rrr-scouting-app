@@ -5,9 +5,7 @@ import type { FormField as FormFieldType, Form } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { formApi, competitionApi } from '../services/api';
 
-export const FormManager: React.FC = () => {
-    const [competitions, setCompetitions] = useState<Competition[]>([]);
-    const [selectedCompetition, setSelectedCompetition] = useState<Competition | null>(null);
+export const FormManager: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
     const [forms, setForms] = useState<Form[]>([]);
     const [selectedForm, setSelectedForm] = useState<Form | null>(null);
     const [formFields, setFormFields] = useState<FormFieldType[]>([]);
@@ -24,47 +22,11 @@ export const FormManager: React.FC = () => {
     const [newFormName, setNewFormName] = useState('');
 
     useEffect(() => {
-        loadCompetitions();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    useEffect(() => {
         if (selectedCompetition) {
             loadForms();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedCompetition]);
-
-    const loadCompetitions = async () => {
-      try {
-        const data = await competitionApi.getAll();
-        setCompetitions(data);
-        
-        if (data.length > 0) {
-          // If there's a selected competition, update it with fresh data
-          if (selectedCompetition) {
-            const updatedSelected = data.find(c => c.id === selectedCompetition.id);
-            if (updatedSelected) {
-              setSelectedCompetition(updatedSelected);
-            } else {
-              // Selected competition no longer exists, fall back to first
-              setSelectedCompetition(data[0]);
-            }
-          } else {
-            // No selection yet, pick the first one
-            setSelectedCompetition(data[0]);
-          }
-        } else {
-          // No competitions available
-          setSelectedCompetition(null);
-        }
-        
-        return data; // Return for use in handleSetActiveForm
-      } catch (error) {
-        console.error('Error loading competitions:', error);
-        return [];
-      }
-    };
 
     const loadForms = async () => {
         if (!selectedCompetition) return;
@@ -166,7 +128,7 @@ export const FormManager: React.FC = () => {
         try {
             // pass formId if toggling, or null to clear all
             await competitionApi.setActiveForm(selectedCompetition.id, formId);
-            await loadCompetitions();
+            await loadForms();
         } catch (error) {
             console.error('Error setting active form:', error);
             alert('Error setting active form');
@@ -281,27 +243,12 @@ export const FormManager: React.FC = () => {
         );
     };
 
+    if (!selectedCompetition) {
+        return <div className="p-10 text-center text-gray-400">No active competition selected</div>;
+    }
+
     return (
         <div className="space-y-6">
-            {/* Competition Selection */}
-            <div className="bg-white rounded-lg shadow-sm p-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Select Competition</label>
-                <select
-                    value={selectedCompetition?.id || ''}
-                    onChange={(e) => {
-                        const comp = competitions.find((c) => c.id === e.target.value);
-                        setSelectedCompetition(comp || null);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                    {competitions.map((comp) => (
-                        <option key={comp.id} value={comp.id}>
-                            {comp.name} ({comp.season}) - {comp.status}
-                        </option>
-                    ))}
-                </select>
-            </div>
-
             {/* Create Form Dialog */}
             {showCreateDialog && (
                 <div className="bg-white rounded-lg shadow-sm p-6">

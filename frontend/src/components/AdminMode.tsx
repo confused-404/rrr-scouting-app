@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Settings, FileText, BarChart, Users } from 'lucide-react';
 import { CompetitionManager } from './CompetitionManager';
 import { FormManager } from './FormManager';
@@ -6,6 +6,8 @@ import { ResponseViewer } from './ResponseViewer';
 import { TeamLookup } from './TeamLookup';
 import { MatchSchedule } from './MatchSchedule';
 import { ScoutingTeams } from './ScoutingTeams';
+import { competitionApi } from '../services/api';
+import type { Competition } from '../types/competition.types';
 
 type AdminTab = 'competitions' | 'forms' | 'analytics' | 'scoutingTeams';
 
@@ -15,6 +17,20 @@ type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule';
 export const AdminMode: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('competitions');
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>('responses');
+  const [activeCompetition, setActiveCompetition] = useState<Competition | null>(null);
+
+  useEffect(() => {
+    loadActiveCompetition();
+  }, []);
+
+  const loadActiveCompetition = async () => {
+    try {
+      const comp = await competitionApi.getActive();
+      setActiveCompetition(comp);
+    } catch (error) {
+      console.error('Error loading active competition:', error);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -65,8 +81,8 @@ export const AdminMode: React.FC = () => {
       {/* Tab Content */}
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         {activeTab === 'competitions' && <CompetitionManager />}
-        {activeTab === 'forms' && <FormManager />}
-        {activeTab === 'scoutingTeams' && <ScoutingTeams />}
+        {activeTab === 'forms' && <FormManager selectedCompetition={activeCompetition} />}
+        {activeTab === 'scoutingTeams' && <ScoutingTeams selectedCompetition={activeCompetition} />}
 
         {activeTab === 'analytics' && (
           <div className="space-y-4">
@@ -106,9 +122,9 @@ export const AdminMode: React.FC = () => {
 
             {/* Analytics content */}
             <div>
-              {analyticsTab === 'responses' && <ResponseViewer />}
-              {analyticsTab === 'teamLookup' && <TeamLookup />}
-              {analyticsTab === 'schedule' && <MatchSchedule />}
+              {analyticsTab === 'responses' && <ResponseViewer selectedCompetition={activeCompetition} />}
+              {analyticsTab === 'teamLookup' && <TeamLookup selectedCompetition={activeCompetition} />}
+              {analyticsTab === 'schedule' && <MatchSchedule selectedCompetition={activeCompetition} />}
             </div>
           </div>
         )}

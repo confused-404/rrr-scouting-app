@@ -8,9 +8,6 @@ export type ScoutingTeam = {
   id: string;
   name: string;
   members: Scout[];
-  position: 'red1' | 'red2' | 'red3' | 'blue1' | 'blue2' | 'blue3';
-  shiftPattern: number;
-  offsetPattern: number;
 };
 
 export type GeneratedAssignment = {
@@ -37,5 +34,6 @@ export type Competition = {
   activeFormIds?: string[];
   scoutingTeams?: ScoutingTeam[];
   scoutingAssignments?: GeneratedAssignment[];
+  eventKey?: string; // TBA event key
   createdAt: string;
 };

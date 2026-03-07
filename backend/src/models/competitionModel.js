@@ -39,6 +39,7 @@ export const competitionModel = {
         activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
         scoutingTeams: data.scoutingTeams || [],
         scoutingAssignments: data.scoutingAssignments || [],
+        eventKey: data.eventKey,
       };
     });
   },
@@ -62,6 +63,7 @@ export const competitionModel = {
         activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
         scoutingTeams: data.scoutingTeams || [],
         scoutingAssignments: data.scoutingAssignments || [],
+        eventKey: data.eventKey,
       };
     });
   },
@@ -83,6 +85,7 @@ export const competitionModel = {
       activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
       scoutingTeams: data.scoutingTeams || [],
       scoutingAssignments: data.scoutingAssignments || [],
+      eventKey: data.eventKey,
     };
   },
 
@@ -97,6 +100,7 @@ export const competitionModel = {
       activeFormIds: competitionData.activeFormIds || (competitionData.activeFormId ? [competitionData.activeFormId] : []),
       scoutingTeams: competitionData.scoutingTeams || [],
       scoutingAssignments: competitionData.scoutingAssignments || [],
+      eventKey: competitionData.eventKey,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     
@@ -114,6 +118,7 @@ export const competitionModel = {
       activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
       scoutingTeams: data.scoutingTeams || [],
       scoutingAssignments: data.scoutingAssignments || [],
+      eventKey: data.eventKey,
     };
   },
 
@@ -122,6 +127,21 @@ export const competitionModel = {
     const doc = await docRef.get();
     
     if (!doc.exists) return null;
+    
+    // If setting status to active, deactivate all other competitions
+    if (competitionData.status === 'active') {
+      const snapshot = await db.collection(COMPETITIONS_COLLECTION)
+        .where('status', '==', 'active')
+        .get();
+      
+      const batch = db.batch();
+      snapshot.docs.forEach(doc => {
+        if (doc.id !== id) {
+          batch.update(doc.ref, { status: 'draft' });
+        }
+      });
+      await batch.commit();
+    }
     
     // Build update object with only provided fields
     const updateData = {};
@@ -139,6 +159,7 @@ export const competitionModel = {
     }
     if (competitionData.scoutingTeams !== undefined) updateData.scoutingTeams = competitionData.scoutingTeams;
     if (competitionData.scoutingAssignments !== undefined) updateData.scoutingAssignments = competitionData.scoutingAssignments;
+    if (competitionData.eventKey !== undefined) updateData.eventKey = competitionData.eventKey;
     
     // console.log('Updating competition with:', updateData); // Debug log
     

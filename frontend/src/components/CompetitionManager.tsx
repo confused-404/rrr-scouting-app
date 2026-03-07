@@ -15,6 +15,7 @@ export const CompetitionManager: React.FC = () => {
         status: 'draft' as CompetitionStatus,
         startDate: new Date().toISOString().split('T')[0],
         endDate: new Date().toISOString().split('T')[0],
+        eventKey: '',
     });
 
     useEffect(() => {
@@ -49,6 +50,7 @@ export const CompetitionManager: React.FC = () => {
             status: comp.status,
             startDate: comp.startDate,
             endDate: comp.endDate,
+            eventKey: comp.eventKey || '',
         });
         setIsFormOpen(true);
     };
@@ -69,6 +71,7 @@ export const CompetitionManager: React.FC = () => {
                 status: 'draft',
                 startDate: new Date().toISOString().split('T')[0],
                 endDate: new Date().toISOString().split('T')[0],
+                eventKey: '',
             });
             await loadCompetitions();
         } catch (error) {
@@ -132,13 +135,17 @@ export const CompetitionManager: React.FC = () => {
                                     <input className="w-full bg-gray-50 border-gray-200 rounded-lg px-3 py-2 font-bold" value={formData.season} onChange={e => setFormData({...formData, season: e.target.value})} />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Status</label>
-                                    <select className="w-full bg-gray-50 border-gray-200 rounded-lg px-3 py-2 font-bold" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as CompetitionStatus})}>
-                                        <option value="draft">Draft</option>
-                                        <option value="active">Active</option>
-                                        <option value="completed">Completed</option>
-                                    </select>
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Event Key</label>
+                                    <input className="w-full bg-gray-50 border-gray-200 rounded-lg px-3 py-2 font-bold" value={formData.eventKey} onChange={e => setFormData({...formData, eventKey: e.target.value})} placeholder="e.g. 2024cmptx" />
                                 </div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Status</label>
+                                <select className="w-full bg-gray-50 border-gray-200 rounded-lg px-3 py-2 font-bold" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as CompetitionStatus})}>
+                                    <option value="draft">Draft</option>
+                                    <option value="active">Active</option>
+                                    <option value="completed">Completed</option>
+                                </select>
                             </div>
                             <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg flex items-center justify-center gap-2">
                                 <Save size={18} /> {editingId ? 'Update Changes' : 'Create Event'}

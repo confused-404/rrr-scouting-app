@@ -12,7 +12,6 @@ type AppMode = 'admin' | 'user';
 
 function App() {
   const [mode, setMode] = useState<AppMode>('user');
-  const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [selectedCompetition, setSelectedCompetition] = useState<Competition | null>(null);
   const [userModeKey, setUserModeKey] = useState(0);
   
@@ -44,23 +43,14 @@ function App() {
     try {
       const data = await competitionApi.getActive();
 
-      setCompetitions(data);
-      
-      if (data.length > 0) {
-        const stillExists = selectedCompetition && data.find(c => c.id === selectedCompetition.id);
-        if (!stillExists) {
-          setSelectedCompetition(data[0]);
-        } else {
-            const updated = data.find(c => c.id === selectedCompetition.id);
-            if (updated) {
-                setSelectedCompetition(updated);
-            }
-        }
+      if (data) {
+        setSelectedCompetition(data);
       } else {
         setSelectedCompetition(null);
       }
     } catch (error) {
       console.error('Error loading competitions:', error);
+      setSelectedCompetition(null);
     }
   };
 
@@ -123,27 +113,12 @@ function App() {
             </div>
           </div>
 
-          {mode === 'user' && (
+          {mode === 'user' && selectedCompetition && (
             <div className="flex items-center gap-2">
               <Calendar size={16} className="text-gray-500" />
-              <select
-                value={selectedCompetition?.id || ''}
-                onChange={(e) => {
-                  const comp = competitions.find(c => c.id === e.target.value);
-                  setSelectedCompetition(comp || null);
-                }}
-                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {!competitions || competitions.length === 0 ? (
-                  <option value="">No active competitions</option>
-                ) : (
-                  competitions.map((comp) => (
-                    <option key={comp.id} value={comp.id}>
-                      {comp.name} ({comp.season})
-                    </option>
-                  ))
-                )}
-              </select>
+              <span className="text-sm text-gray-700 font-medium">
+                {selectedCompetition.name} ({selectedCompetition.season})
+              </span>
             </div>
           )}
         </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Clock } from 'lucide-react';
-import type { FormField as FormFieldType, Form } from '../types/form.types';
+import type { FormField as FormFieldType } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { FormField } from './FormField';
 import { formApi } from '../services/api';
@@ -18,7 +18,6 @@ type FieldErrors = Record<number, string>;
 
 export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   const [formFields, setFormFields] = useState<FormFieldType[]>([]);
-  const [forms, setForms] = useState<Form[]>([]);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, any>>({});
   const [currentFormId, setCurrentFormId] = useState<string | null>(null);
@@ -44,7 +43,6 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     setFetchingForm(true);
     try {
       const loaded = await formApi.getFormsByCompetition(selectedCompetition.id);
-      setForms(loaded);
 
       // determine default selected form id using activeFormIds
       const actives = selectedCompetition.activeFormIds || (selectedCompetition.activeFormId ? [selectedCompetition.activeFormId] : []);
@@ -285,26 +283,6 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
             </p>
           </div>
 
-          {/* form selector dropdown when multiple active forms exist */}
-          {selectedCompetition?.activeFormIds && selectedCompetition.activeFormIds.length > 0 && (
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Select Form</label>
-              <select
-                value={selectedFormId || ''}
-                onChange={(e) => setSelectedFormId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {forms
-                  .filter(f => selectedCompetition.activeFormIds?.includes(f.id))
-                  .map(f => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          )}
-
           <div className="space-y-6">
             <h2 className="text-2xl font-semibold mb-6">Submit Form</h2>
 
@@ -345,9 +323,9 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
       ) : activeTab === 'scoutingSchedule' ? (
         <ScoutingScheduleViewer selectedCompetition={selectedCompetition} />
       ) : activeTab === 'teamLookup' ? (
-        <TeamLookup />
+        <TeamLookup selectedCompetition={selectedCompetition} />
       ) : (
-        <MatchSchedule />
+        <MatchSchedule selectedCompetition={selectedCompetition} />
       )}
     </div>
   );
