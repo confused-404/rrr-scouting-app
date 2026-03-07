@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, X, Clock, Target } from 'lucide-react';
+import { Users, Plus, X, Clock } from 'lucide-react';
 import type { Competition, ScoutingTeam, GeneratedAssignment } from '../types/competition.types';
-import { competitionApi } from '../services/api';
+import { competitionApi, tbaApi } from '../services/api';
 
 export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
   const [teams, setTeams] = useState<ScoutingTeam[]>([]);
   const [assignments, setAssignments] = useState<GeneratedAssignment[]>([]);
   const [newTeamName, setNewTeamName] = useState('');
   const [newScoutName, setNewScoutName] = useState('');
-  const [selectedPosition, setSelectedPosition] = useState<ScoutingTeam['position']>('red1');
-  const [shiftLength, setShiftLength] = useState(5);
-  const [totalMatches, setTotalMatches] = useState(50);
+  const [matchesPerShift, setMatchesPerShift] = useState(5);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   // Load teams/assignments when competition changes
@@ -50,9 +49,6 @@ export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null 
       id: Date.now().toString(),
       name: newTeamName,
       members: [],
-      position: selectedPosition,
-      shiftPattern: shiftLength,
-      offsetPattern: 0,
     };
 
     const updatedTeams = [...teams, newTeam];
@@ -90,51 +86,59 @@ export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null 
     saveToCompetition(updatedTeams);
   };
 
-  const updateTeamOffset = (teamId: string, offset: number) => {
-    const updatedTeams = teams.map(team =>
-      team.id === teamId ? { ...team, offsetPattern: offset } : team
-    );
-    saveToCompetition(updatedTeams);
-  };
+  const generateSchedule = async () => {
+    if (!selectedCompetition?.eventKey) {
+      alert('Please set an event key for this competition first');
+      return;
+    }
 
-  const generateAssignments = () => {
-    const newAssignments: GeneratedAssignment[] = [];
+    if (teams.length === 0 || teams.length % 6 !== 0) {
+      alert('Please create scouting teams (must be a multiple of 6)');
+      return;
+    }
 
-    teams.forEach(team => {
-      for (let match = 1; match <= totalMatches; match++) {
-        const adjustedMatch = match - 1;
-        const cycleLength = team.shiftPattern * 2;
-        const positionInCycle = (adjustedMatch + team.offsetPattern) % cycleLength;
+    setIsGenerating(true);
+    try {
+      // Get match schedule from TBA
+      const matchSchedule = await tbaApi.getEventMatches(selectedCompetition.eventKey);
+      const totalMatches = matchSchedule.length;
 
-        if (positionInCycle < team.shiftPattern) {
+      if (totalMatches === 0) {
+        alert('No matches found for this event');
+        return;
+      }
+
+      // Calculate groups of 6 teams
+      const teamsPerGroup = 6;
+      const numGroups = teams.length / teamsPerGroup;
+
+      const newAssignments: GeneratedAssignment[] = [];
+      const positions: GeneratedAssignment['position'][] = ['red1', 'red2', 'red3', 'blue1', 'blue2', 'blue3'];
+
+      for (let matchNum = 1; matchNum <= totalMatches; matchNum++) {
+        // Determine which group is active for this match
+        const groupIndex = ((matchNum - 1) / matchesPerShift) % numGroups;
+        const activeTeams = teams.slice(groupIndex * teamsPerGroup, (groupIndex + 1) * teamsPerGroup);
+
+        // Assign teams to positions, rotating through the match
+        activeTeams.forEach((team, teamIndex) => {
           newAssignments.push({
-            matchNumber: match,
-            position: team.position,
+            matchNumber: matchNum,
+            position: positions[teamIndex],
             teamId: team.id,
             teamName: team.name,
             scouts: team.members.map(m => m.name),
           });
-        }
+        });
       }
-    });
 
-    saveToCompetition(teams, newAssignments);
-  };
-
-  const getPositionColor = (position: ScoutingTeam['position']) => {
-    return position.startsWith('red')
-      ? 'bg-red-100 text-red-800'
-      : 'bg-blue-100 text-blue-800';
-  };
-
-  const getPositionLabel = (position: ScoutingTeam['position']) => {
-    const color = position.startsWith('red') ? 'Red' : 'Blue';
-    const num = position.slice(-1);
-    return `${color} ${num}`;
-  };
-
-  const getAssignmentsForMatch = (matchNumber: number) => {
-    return assignments.filter(a => a.matchNumber === matchNumber);
+      await saveToCompetition(teams, newAssignments);
+    } catch (error) {
+      console.error('Error generating schedule:', error);
+      alert('Failed to generate schedule');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   if (!selectedCompetition) {
@@ -146,241 +150,174 @@ export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null 
     );
   }
 
-  const positions: ScoutingTeam['position'][] = ['red1', 'red2', 'red3', 'blue1', 'blue2', 'blue3'];
-
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="bg-white rounded-xl shadow-sm p-6">
         <div className="flex items-center gap-3 mb-2">
           <Users size={24} className="text-blue-600" />
-          <h2 className="text-2xl font-bold text-gray-800">Rotating Scouting Teams</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Scouting Teams</h2>
         </div>
         <p className="text-sm text-gray-500">
-          Create teams that rotate positions automatically (e.g., 5 matches on, 5 matches off)
+          Create scouting teams that will automatically rotate through all positions
         </p>
       </div>
 
-      {/* Configuration and Controls */}
-      <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Shift Length (matches on)</label>
-            <input
-              type="number"
-              min="1"
-              max="20"
-              value={shiftLength}
-              onChange={(e) => setShiftLength(parseInt(e.target.value) || 5)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Total Matches</label>
-            <input
-              type="number"
-              min="1"
-              value={totalMatches}
-              onChange={(e) => setTotalMatches(parseInt(e.target.value) || 50)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={generateAssignments}
-              disabled={teams.length === 0 || isSaving}
-              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 transition-all"
-            >
-              <Target size={18} />
-              Generate Schedule
-            </button>
-          </div>
-        </div>
-
-        <div className="border-t border-gray-200 pt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Team Name</label>
-            <input
-              type="text"
-              placeholder="e.g., Team Alpha"
-              value={newTeamName}
-              onChange={(e) => setNewTeamName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
-            <select
-              value={selectedPosition}
-              onChange={(e) => setSelectedPosition(e.target.value as ScoutingTeam['position'])}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="red1">Red 1</option>
-              <option value="red2">Red 2</option>
-              <option value="red3">Red 3</option>
-              <option value="blue1">Blue 1</option>
-              <option value="blue2">Blue 2</option>
-              <option value="blue3">Blue 3</option>
-            </select>
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={createTeam}
-              disabled={!newTeamName.trim() || isSaving}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 transition-all"
-            >
-              <Plus size={18} />
-              Create Team
-            </button>
-          </div>
-        </div>
-
-        <div className="border-t border-gray-200 pt-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Scout Name</label>
+      {/* Create Team */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold mb-4">Create New Team</h3>
+        <div className="flex gap-3">
           <input
             type="text"
-            placeholder="Enter scout name"
-            value={newScoutName}
-            onChange={(e) => setNewScoutName(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            placeholder="Team name (e.g., Team Alpha)"
+            value={newTeamName}
+            onChange={(e) => setNewTeamName(e.target.value)}
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           />
+          <button
+            onClick={createTeam}
+            disabled={isSaving}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            <Plus size={18} />
+            {isSaving ? 'Creating...' : 'Create Team'}
+          </button>
         </div>
       </div>
 
-      {/* Team Details - Grouped by Position */}
-      <div className="space-y-6">
+      {/* Teams List */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold mb-4">Teams ({teams.length})</h3>
         {teams.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-            <Users size={48} className="mx-auto mb-4 opacity-25" />
-            <p className="text-gray-500 font-medium">No scouting teams created yet</p>
-            <p className="text-sm text-gray-400">Create teams above to get started</p>
-          </div>
+          <p className="text-gray-500 text-center py-8">No teams created yet</p>
         ) : (
-          positions.map((position) => {
-            const positionTeams = teams.filter(t => t.position === position);
-            if (positionTeams.length === 0) return null;
+          <div className="space-y-4">
+            {teams.map(team => (
+              <div key={team.id} className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-semibold text-lg">{team.name}</h4>
+                  <button
+                    onClick={() => deleteTeam(team.id)}
+                    disabled={isSaving}
+                    className="p-1 text-red-500 hover:bg-red-50 rounded"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
 
-            return (
-              <div key={position} className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-                <h3
-                  className={`text-lg font-bold px-3 py-1.5 rounded-md mb-4 w-fit ${getPositionColor(
-                    position
-                  )}`}
-                >
-                  {getPositionLabel(position)}
-                </h3>
+                {/* Add Scout */}
+                <div className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    placeholder="Scout name"
+                    value={newScoutName}
+                    onChange={(e) => setNewScoutName(e.target.value)}
+                    className="flex-1 px-3 py-1 border border-gray-300 rounded text-sm"
+                  />
+                  <button
+                    onClick={() => addScoutToTeam(team.id)}
+                    disabled={isSaving}
+                    className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                  >
+                    Add
+                  </button>
+                </div>
 
-                <div className="space-y-4">
-                  {positionTeams.map((team) => (
-                    <div
-                      key={team.id}
-                      className="bg-gray-50 rounded-lg p-4 border border-gray-200"
+                {/* Scouts List */}
+                <div className="flex flex-wrap gap-2">
+                  {team.members.map((scout, index) => (
+                    <span
+                      key={index}
+                      className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
                     >
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <h4 className="text-base font-bold text-gray-800">{team.name}</h4>
-                          <p className="text-xs text-gray-500">
-                            {team.shiftPattern} on / {team.shiftPattern} off • {team.members.length} scouts
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Offset
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              max="20"
-                              value={team.offsetPattern}
-                              onChange={(e) =>
-                                updateTeamOffset(team.id, parseInt(e.target.value) || 0)
-                              }
-                              disabled={isSaving}
-                              className="w-16 px-2 py-1 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                            />
-                          </div>
-                          <button
-                            onClick={() => deleteTeam(team.id)}
-                            disabled={isSaving}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50 transition-all"
-                          >
-                            <X size={18} />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Scouts */}
-                      <div className="flex flex-wrap gap-2">
-                        {team.members.map((scout, idx) => (
-                          <div
-                            key={idx}
-                            className="px-3 py-1 bg-gray-200 text-gray-800 rounded-full text-sm font-medium flex items-center gap-2"
-                          >
-                            {scout.name}
-                            <button
-                              onClick={() => removeScoutFromTeam(team.id, scout.name)}
-                              disabled={isSaving}
-                              className="text-red-600 hover:text-red-700 disabled:opacity-50"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
-                        <button
-                          onClick={() => addScoutToTeam(team.id)}
-                          disabled={!newScoutName.trim() || isSaving}
-                          className="px-3 py-1 border border-gray-300 text-gray-700 rounded-full text-sm font-medium hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
-                        >
-                          <Plus size={14} />
-                          Add
-                        </button>
-                      </div>
-                    </div>
+                      {scout.name}
+                      <button
+                        onClick={() => removeScoutFromTeam(team.id, scout.name)}
+                        disabled={isSaving}
+                        className="ml-1 text-blue-600 hover:text-blue-800"
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
                   ))}
                 </div>
               </div>
-            );
-          })
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Generated Schedule Preview */}
-      {assignments.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-          <div className="flex items-center gap-2 mb-4">
-            <Clock size={20} className="text-blue-600" />
-            <h3 className="text-lg font-bold text-gray-800">Generated Schedule Preview</h3>
+      {/* Schedule Generation */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold mb-4">Generate Schedule</h3>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Matches per Shift</label>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={matchesPerShift}
+                onChange={(e) => setMatchesPerShift(parseInt(e.target.value) || 5)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">How many matches each group scouts before rotating</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Event</label>
+              <div className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm">
+                {selectedCompetition.eventKey || 'No event selected'}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Set event key in competition settings</p>
+            </div>
           </div>
-          <p className="text-xs text-gray-500 mb-4">Showing first 10 matches</p>
 
-          <div className="space-y-2">
-            {Array.from({ length: Math.min(10, totalMatches) }, (_, i) => i + 1).map((matchNum) => {
-              const matchAssignments = getAssignmentsForMatch(matchNum);
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h4 className="font-medium text-blue-900 mb-2">Schedule Summary</h4>
+            <div className="text-sm text-blue-800 space-y-1">
+              <p>• Teams: {teams.length} (must be multiple of 6)</p>
+              <p>• Groups: {teams.length > 0 ? Math.floor(teams.length / 6) : 0}</p>
+              <p>• Shift length: {matchesPerShift} matches</p>
+              <p>• Teams rotate through all 6 positions automatically</p>
+            </div>
+          </div>
+
+          <button
+            onClick={generateSchedule}
+            disabled={isGenerating || teams.length === 0 || teams.length % 6 !== 0 || !selectedCompetition.eventKey}
+            className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            <Clock size={18} />
+            {isGenerating ? 'Generating...' : 'Generate Scouting Schedule'}
+          </button>
+        </div>
+      </div>
+
+      {/* Current Assignments Preview */}
+      {assignments.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h3 className="text-lg font-semibold mb-4">Schedule Preview</h3>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {Array.from(new Set(assignments.map(a => a.matchNumber))).slice(0, 10).map(matchNum => {
+              const matchAssignments = assignments.filter(a => a.matchNumber === matchNum);
               return (
-                <div key={matchNum} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
-                  <div className="font-bold text-gray-800 w-20">Match {matchNum}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {positions.map((position) => {
-                      const assignment = matchAssignments.find(a => a.position === position);
-                      return (
-                        <div
-                          key={position}
-                          className={`px-2 py-1 rounded text-xs font-bold ${
-                            assignment
-                              ? getPositionColor(position)
-                              : 'bg-gray-300 text-gray-600'
-                          }`}
-                        >
-                          {getPositionLabel(position)}: {assignment ? assignment.teamName : 'Off'}
-                        </div>
-                      );
-                    })}
+                <div key={matchNum} className="flex items-center gap-4 p-2 bg-gray-50 rounded">
+                  <span className="font-medium w-16">Match {matchNum}</span>
+                  <div className="flex flex-wrap gap-1">
+                    {matchAssignments.map(assignment => (
+                      <span key={assignment.teamId} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                        {assignment.teamName} ({assignment.position})
+                      </span>
+                    ))}
                   </div>
                 </div>
               );
             })}
           </div>
+          {assignments.length > 60 && (
+            <p className="text-sm text-gray-500 mt-2">... and {assignments.length - 60} more assignments</p>
+          )}
         </div>
       )}
     </div>
