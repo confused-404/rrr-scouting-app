@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Clock } from 'lucide-react';
-import type { FormField as FormFieldType, Form } from '../types/form.types';
+import type { FormField as FormFieldType } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { FormField } from './FormField';
 import { formApi } from '../services/api';
@@ -18,7 +18,6 @@ type FieldErrors = Record<number, string>;
 
 export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   const [formFields, setFormFields] = useState<FormFieldType[]>([]);
-  const [forms, setForms] = useState<Form[]>([]);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, any>>({});
   const [currentFormId, setCurrentFormId] = useState<string | null>(null);
@@ -44,7 +43,6 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     setFetchingForm(true);
     try {
       const loaded = await formApi.getFormsByCompetition(selectedCompetition.id);
-      setForms(loaded);
 
       // determine default selected form id using activeFormIds
       const actives = selectedCompetition.activeFormIds || (selectedCompetition.activeFormId ? [selectedCompetition.activeFormId] : []);

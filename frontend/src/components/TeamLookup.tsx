@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission, FormField } from '../types/form.types';
-import { competitionApi, formApi, tbaApi } from '../services/api';
+import { formApi, tbaApi } from '../services/api';
 import { BarChart3 } from 'lucide-react';
 
 // reuse helpers from ResponseViewer
@@ -10,8 +10,7 @@ const toNumber = (v: any) => (v === '' || v === null || v === undefined) ? null 
 
 export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
   const [forms, setForms] = useState<Form[]>([]);
-  const [selectedForm, setSelectedForm] = useState<Form | null>(null);
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [allSubmissions, setAllSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [teamQuery, setTeamQuery] = useState('');
@@ -20,64 +19,84 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
 
   useEffect(() => {
     if (selectedCompetition) {
-      formApi.getFormsByCompetition(selectedCompetition.id).then(data => {
-        setForms(data);
-        setSelectedForm(data.length > 0 ? data[0] : null);
-      });
+      loadAllData();
     }
   }, [selectedCompetition?.id]);
 
-  useEffect(() => {
-    if (selectedForm) {
-      setLoading(true);
-      formApi.getSubmissions(selectedForm.id)
-        .then(subs => {
-          setSubmissions(subs);
-          setLoading(false);
-        })
-        .catch(() => setLoading(false));
+  const loadAllData = async () => {
+    if (!selectedCompetition) return;
+    setLoading(true);
+    try {
+      const loadedForms = await formApi.getFormsByCompetition(selectedCompetition.id);
+      setForms(loadedForms);
+
+      // Load submissions for all forms
+      const allSubs: Submission[] = [];
+      for (const form of loadedForms) {
+        const subs = await formApi.getSubmissions(form.id);
+        allSubs.push(...subs);
+      }
+      setAllSubmissions(allSubs);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
     }
-  }, [selectedForm?.id]);
+  };
 
   // clear team query/info when context changes
   useEffect(() => {
     setTeamQuery('');
     setTeamInfo(null);
-  }, [selectedCompetition?.id, selectedForm?.id]);
+  }, [selectedCompetition?.id]);
 
   // filtered submissions by team query
   const filteredSubs = useMemo(() => {
     if (!teamQuery.trim()) return [];
     const q = teamQuery.trim().toLowerCase();
-    return submissions.filter(sub => {
+    return allSubmissions.filter(sub => {
       return Object.values(sub.data).some(val => {
         if (val === undefined || val === null) return false;
         return String(val).toLowerCase().includes(q);
       });
     });
-  }, [submissions, teamQuery]);
+  }, [allSubmissions, teamQuery]);
 
   const stats = useMemo(() => {
-    if (!selectedForm) return [];
-    return selectedForm.fields.filter(isQuantitative).map(field => {
-      const vals = filteredSubs.map(s => toNumber(s.data?.[field.id])).filter((v): v is number => v !== null && !isNaN(v));
+    const fieldStats: Record<string, { field: FormField; vals: number[] }> = {};
+    forms.forEach(form => {
+      form.fields.filter(isQuantitative).forEach(field => {
+        if (!fieldStats[field.label]) {
+          fieldStats[field.label] = { field, vals: [] };
+        }
+        // collect values from filteredSubs for this field
+        filteredSubs.forEach(sub => {
+          const val = toNumber(sub.data?.[field.id]);
+          if (val !== null && !isNaN(val)) {
+            fieldStats[field.label].vals.push(val);
+          }
+        });
+      });
+    });
+    return Object.values(fieldStats).map(({ field, vals }) => {
       const avg = vals.length === 0 ? 0 : vals.reduce((a, b) => a + b, 0) / vals.length;
       return { field, mean: avg.toFixed(2), count: vals.length };
     });
-  }, [selectedForm, filteredSubs]);
+  }, [forms, filteredSubs]);
 
   const qualitativeSummary = useMemo(() => {
-    if (!selectedForm) return {} as Record<string, string[]>;
     const summary: Record<string, Set<string>> = {};
-    filteredSubs.forEach(sub => {
-      selectedForm.fields.forEach(field => {
+    forms.forEach(form => {
+      form.fields.forEach(field => {
         if (!isQuantitative(field)) {
-          const raw = sub.data?.[field.id];
-          if (raw !== undefined && raw !== null && raw !== '') {
-            const text = Array.isArray(raw) ? raw.join(', ') : String(raw);
-            if (!summary[field.label]) summary[field.label] = new Set();
-            summary[field.label].add(text);
-          }
+          filteredSubs.forEach(sub => {
+            const raw = sub.data?.[field.id];
+            if (raw !== undefined && raw !== null && raw !== '') {
+              const text = Array.isArray(raw) ? raw.join(', ') : String(raw);
+              if (!summary[field.label]) summary[field.label] = new Set();
+              summary[field.label].add(text);
+            }
+          });
         }
       });
     });
@@ -86,7 +105,7 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
       out[k] = Array.from(set);
     });
     return out;
-  }, [selectedForm, filteredSubs]);
+  }, [forms, filteredSubs]);
 
   const handleSearch = async () => {
     const q = teamQuery.trim();
@@ -114,16 +133,6 @@ export const TeamLookup: React.FC<{ selectedCompetition?: Competition | null }> 
 
   return (
     <div className="space-y-6 pb-20">
-      {/* Selectors */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-end">
-        <div className="flex-1 w-full">
-          <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Form</label>
-          <select value={selectedForm?.id || ''} onChange={(e) => setSelectedForm(forms.find(f => f.id === e.target.value) || null)} className="w-full bg-gray-50 border-none rounded-lg px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-blue-500">
-            {forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
-        </div>
-      </div>
-
       {/* Team search */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
         <input

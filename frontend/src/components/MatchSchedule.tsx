@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { Competition } from '../types/competition.types';
-import { competitionApi, tbaApi } from '../services/api';
+import { tbaApi } from '../services/api';
 
 export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
   const [matches, setMatches] = useState<any[]>([]);
