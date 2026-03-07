@@ -16,6 +16,7 @@ export type GeneratedAssignment = {
   teamId: string;
   teamName: string;
   scouts: string[];
+  matchTime?: number; // Unix timestamp
 };
 
 export type Competition = {

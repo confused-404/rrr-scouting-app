@@ -1,22 +1,59 @@
 import React, { useEffect, useState } from 'react';
 import type { Competition } from '../types/competition.types';
-import { tbaApi } from '../services/api';
+import { tbaApi, statboticsApi } from '../services/api';
 
 export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
   const [matches, setMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [dataSource, setDataSource] = useState<'tba' | 'statbotics'>('tba');
+  const [teamFilter, setTeamFilter] = useState<string>('');
 
   useEffect(() => {
     if (!selectedCompetition?.eventKey) {
       setMatches([]);
       return;
     }
+    fetchMatches();
+  }, [selectedCompetition, dataSource]);
+
+  const fetchMatches = async () => {
+    if (!selectedCompetition?.eventKey) return;
+
     setLoading(true);
-    tbaApi.getEventMatches(selectedCompetition.eventKey)
-      .then(data => setMatches(data || []))
-      .catch(() => setMatches([]))
-      .finally(() => setLoading(false));
-  }, [selectedCompetition]);
+    try {
+      let data;
+      if (dataSource === 'tba') {
+        data = await tbaApi.getEventMatches(selectedCompetition.eventKey);
+      } else {
+        data = await statboticsApi.getEventMatches(selectedCompetition.eventKey);
+      }
+      setMatches(data || []);
+    } catch (error) {
+      console.error('Error fetching matches:', error);
+      setMatches([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredMatches = matches.filter(match => {
+    if (!teamFilter) return true;
+
+    const teamKey = teamFilter.startsWith('frc') ? teamFilter : `frc${teamFilter}`;
+    const redTeams = match.alliances?.red?.team_keys || [];
+    const blueTeams = match.alliances?.blue?.team_keys || [];
+
+    return redTeams.includes(teamKey) || blueTeams.includes(teamKey) ||
+           redTeams.includes(parseInt(teamFilter)) || blueTeams.includes(parseInt(teamFilter));
+  });
+
+  const getMatchTime = (match: any) => {
+    if (dataSource === 'statbotics') {
+      return match.time ? new Date(match.time * 1000).toLocaleString() : 'TBD';
+    } else {
+      return match.time ? new Date(match.time * 1000).toLocaleString() : 'TBD';
+    }
+  };
 
   if (!selectedCompetition) {
     return (
@@ -37,37 +74,94 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
 
   return (
     <div className="space-y-6 pb-20">
+      {/* Header and Controls */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <h3 className="text-lg font-bold text-gray-800 mb-4">{selectedCompetition.name} - Match Schedule</h3>
+
+        {/* Data Source Toggle */}
+        <div className="flex gap-4 mb-4">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700">Data Source:</label>
+            <select
+              value={dataSource}
+              onChange={(e) => setDataSource(e.target.value as 'tba' | 'statbotics')}
+              className="px-3 py-1 border border-gray-300 rounded text-sm"
+            >
+              <option value="tba">The Blue Alliance</option>
+              <option value="statbotics">Statbotics</option>
+            </select>
+          </div>
+
+          {/* Team Filter */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700">Filter Team:</label>
+            <input
+              type="text"
+              placeholder="Team number (e.g. 254)"
+              value={teamFilter}
+              onChange={(e) => setTeamFilter(e.target.value)}
+              className="px-3 py-1 border border-gray-300 rounded text-sm w-32"
+            />
+          </div>
+        </div>
+
+        {teamFilter && (
+          <p className="text-sm text-blue-600">
+            Showing matches for team {teamFilter} ({filteredMatches.length} matches)
+          </p>
+        )}
+      </div>
+
       {loading ? (
         <div className="py-20 text-center font-black text-gray-300 animate-pulse tracking-widest uppercase">Loading schedule...</div>
       ) : (
         <div className="space-y-4">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 className="text-lg font-bold text-gray-800">{selectedCompetition.name} - Match Schedule</h3>
-          </div>
-          {matches.length === 0 ? (
-            <div className="p-12 text-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed font-bold italic">No matches available.</div>
+          {filteredMatches.length === 0 ? (
+            <div className="p-12 text-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed font-bold italic">
+              {teamFilter ? `No matches found for team ${teamFilter}` : 'No matches available.'}
+            </div>
           ) : (
-            matches.map((m: any) => (
-              <div key={m.key} className="bg-white p-4 rounded-lg shadow">
-                <div className="font-black uppercase text-sm mb-2">
-                  {m.comp_level}{m.match_number}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <div>
-                    <div className="font-bold text-red-600">Red Alliance</div>
-                    <ul className="list-disc list-inside">
-                      {m.alliances.red.team_keys.map((tk: string) => <li key={tk}>{tk}</li>)}
-                    </ul>
+            filteredMatches
+              .sort((a, b) => {
+                // Sort by match number, handling different data structures
+                const aNum = a.match_number || (a.key ? parseInt(a.key.split('m')[1]) : 0);
+                const bNum = b.match_number || (b.key ? parseInt(b.key.split('m')[1]) : 0);
+                return aNum - bNum;
+              })
+              .map((m: any) => (
+                <div key={m.key} className="bg-white p-4 rounded-lg shadow">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-black uppercase text-sm">
+                      {m.comp_level}{m.match_number || (m.key ? m.key.split('m')[1] : '')}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {getMatchTime(m)}
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-bold text-blue-600">Blue Alliance</div>
-                    <ul className="list-disc list-inside">
-                      {m.alliances.blue.team_keys.map((tk: string) => <li key={tk}>{tk}</li>)}
-                    </ul>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <div className="font-bold text-red-600">Red Alliance</div>
+                      <ul className="list-disc list-inside">
+                        {(m.alliances?.red?.team_keys || []).map((tk: string | number) => (
+                          <li key={tk} className={teamFilter && (tk.toString().includes(teamFilter) || tk.toString() === `frc${teamFilter}`) ? 'font-bold text-red-700' : ''}>
+                            {tk}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <div className="font-bold text-blue-600">Blue Alliance</div>
+                      <ul className="list-disc list-inside">
+                        {(m.alliances?.blue?.team_keys || []).map((tk: string | number) => (
+                          <li key={tk} className={teamFilter && (tk.toString().includes(teamFilter) || tk.toString() === `frc${teamFilter}`) ? 'font-bold text-blue-700' : ''}>
+                            {tk}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              ))
           )}
         </div>
       )}

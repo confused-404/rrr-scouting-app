@@ -23,6 +23,10 @@ router.get('/team/:team', statboticsController.getTeam);
 // GET /api/statbotics/event/2024casj
 router.get('/event/:event', statboticsController.getEvent);
 
+// Single event match schedule
+// GET /api/statbotics/event/2024casj/matches
+router.get('/event/:event/matches', statboticsController.getEventMatches);
+
 // Team's EPA stats for a full season
 // GET /api/statbotics/team_year/254/2024
 router.get('/team_year/:team/:year', statboticsController.getTeamYear);

@@ -167,3 +167,20 @@ export const tbaApi = {
     return response.data;
   },
 };
+
+export const statboticsApi = {
+  getEventMatches: async (eventKey: string): Promise<any[]> => {
+    const response = await api.get(`/statbotics/event/${eventKey}`);
+    return response.data;
+  },
+
+  getTeamEvent: async (team: string, event: string): Promise<any> => {
+    const response = await api.get(`/statbotics/team_event/${team}/${event}`);
+    return response.data;
+  },
+
+  getTeamEvents: async (params?: { team?: string; year?: string; event?: string }): Promise<any[]> => {
+    const response = await api.get('/statbotics/team_events', { params });
+    return response.data;
+  },
+};
