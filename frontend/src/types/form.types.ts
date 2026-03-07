@@ -1,6 +1,7 @@
 export type FormFieldType =
   | 'number'
   | 'ranking'
+  | 'rank_order'
   | 'text'
   | 'multiple_choice'
   | 'multiple_select';

@@ -125,6 +125,90 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange }) 
       );
     }
 
+    case 'rank_order': {
+      const options = field.options ?? [];
+      const selectedOptions: string[] = Array.isArray(value) ? value : [];
+
+      const toggleOption = (option: string) => {
+        if (selectedOptions.includes(option)) {
+          // Remove option
+          onChange(selectedOptions.filter(o => o !== option));
+        } else {
+          // Add option at the end
+          onChange([...selectedOptions, option]);
+        }
+      };
+
+      const moveUp = (index: number) => {
+        if (index === 0) return;
+        const newOrder = [...selectedOptions];
+        [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+        onChange(newOrder);
+      };
+
+      const moveDown = (index: number) => {
+        if (index === selectedOptions.length - 1) return;
+        const newOrder = [...selectedOptions];
+        [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+        onChange(newOrder);
+      };
+
+      return (
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-gray-600 mb-3">First, select the locations/paths that apply to this robot:</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {options.length > 0 ? options.map((option) => (
+                <label key={option} className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedOptions.includes(option)}
+                    onChange={() => toggleOption(option)}
+                    className="text-blue-600"
+                  />
+                  <span>{option}</span>
+                </label>
+              )) : (
+                <p className="text-sm text-gray-500">No options configured for this field.</p>
+              )}
+            </div>
+          </div>
+
+          {selectedOptions.length > 0 && (
+            <div>
+              <p className="text-sm text-gray-600 mb-3">Now rank them from most preferred (top) to least preferred (bottom):</p>
+              <div className="space-y-2">
+                {selectedOptions.map((option, index) => (
+                  <div key={option} className="flex items-center gap-2 p-2 bg-blue-50 rounded-md">
+                    <span className="text-sm font-medium text-blue-700 w-6">{index + 1}.</span>
+                    <span className="flex-1">{option}</span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => moveUp(index)}
+                        disabled={index === 0}
+                        className="px-2 py-1 text-xs bg-blue-500 text-white rounded disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveDown(index)}
+                        disabled={index === selectedOptions.length - 1}
+                        className="px-2 py-1 text-xs bg-blue-500 text-white rounded disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     default:
       return null;
   }
