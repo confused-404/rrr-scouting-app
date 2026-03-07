@@ -18,6 +18,7 @@ type FieldErrors = Record<number, string>;
 
 export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   const [formFields, setFormFields] = useState<FormFieldType[]>([]);
+  const [forms, setForms] = useState<{ id: string; name: string }[]>([]);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, any>>({});
   const [currentFormId, setCurrentFormId] = useState<string | null>(null);
@@ -44,17 +45,21 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     try {
       const loaded = await formApi.getFormsByCompetition(selectedCompetition.id);
 
-      // determine default selected form id using activeFormIds
-      const actives = selectedCompetition.activeFormIds || (selectedCompetition.activeFormId ? [selectedCompetition.activeFormId] : []);
-      let defaultId: string | null = null;
-      if (actives.length > 0) {
-        if (loaded.find(f => actives.includes(f.id))) {
-          defaultId = actives.find(id => loaded.some(f => f.id === id)) || null;
-        }
-      }
-      if (!defaultId && loaded.length > 0) {
-        defaultId = loaded[0].id;
-      }
+      const actives = selectedCompetition.activeFormIds ||
+        (selectedCompetition.activeFormId ? [selectedCompetition.activeFormId] : []);
+
+      // Filter to only active forms, preserving order
+      const activeForms = actives
+        .map((id: string) => loaded.find((f: { id: string }) => f.id === id))
+        .filter(Boolean) as typeof loaded;
+
+      const formsToShow = activeForms.length > 0 ? activeForms : loaded;
+      console.log('loaded:', loaded);
+      console.log('activeForms:', activeForms);
+      console.log('formsToShow:', formsToShow);
+      setForms(formsToShow);
+
+      const defaultId = formsToShow[0]?.id ?? null;
       setSelectedFormId(defaultId);
     } catch (error) {
       console.error('Error loading form:', error);
@@ -67,7 +72,6 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   useEffect(() => {
     const loadFields = async () => {
       if (!selectedFormId) {
-        // nothing selected, clear state and stop spinner
         setFormFields([]);
         setCurrentFormId(null);
         setFetchingForm(false);
@@ -94,7 +98,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
 
   // Clear responses for fields that become hidden due to condition changes
   useEffect(() => {
-    if (formFields.length === 0) return;
+    if (formFields.length === 0 && activeTab === 'scout') return;
 
     const newResponses = { ...responses };
     let hasChanges = false;
@@ -111,7 +115,6 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
 
     if (hasChanges) {
       setResponses(newResponses);
-      // Also clear any errors for hidden fields
       const newErrors = { ...errors };
       for (const field of formFields) {
         if (!shouldShowField(field) && newErrors[field.id]) {
@@ -131,9 +134,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     const nextErrors: FieldErrors = {};
 
     for (const field of fields) {
-      // Skip validation for fields that aren't shown due to conditions
       if (!shouldShowField(field)) continue;
-
       if (!field.required) continue;
 
       const key = String(field.id);
@@ -294,42 +295,42 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     <div className="space-y-6">
       {/* tab navigation */}
       <div className="bg-white rounded-xl shadow-sm p-2 border border-gray-100 flex gap-2">
-        <button 
+        <button
           onClick={() => setActiveTab('scout')}
           className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
-            activeTab === 'scout' 
-              ? 'bg-blue-600 text-white shadow-md' 
+            activeTab === 'scout'
+              ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
           }`}
         >
           Scout
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('scoutingSchedule')}
           className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
-            activeTab === 'scoutingSchedule' 
-              ? 'bg-blue-600 text-white shadow-md' 
+            activeTab === 'scoutingSchedule'
+              ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
           }`}
         >
           <Clock size={14} />
           My Scouting
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('teamLookup')}
           className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
-            activeTab === 'teamLookup' 
-              ? 'bg-blue-600 text-white shadow-md' 
+            activeTab === 'teamLookup'
+              ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
           }`}
         >
           Team Lookup
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('schedule')}
           className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
-            activeTab === 'schedule' 
-              ? 'bg-blue-600 text-white shadow-md' 
+            activeTab === 'schedule'
+              ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
           }`}
         >
@@ -344,6 +345,26 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
               <strong>Submitting for:</strong> {selectedCompetition?.name} ({selectedCompetition?.season})
             </p>
           </div>
+
+          {/* Form selector dropdown — only shown when multiple active forms exist */}
+          {forms.length > 1 && (
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Select Form
+              </label>
+              <select
+                value={selectedFormId ?? ''}
+                onChange={(e) => setSelectedFormId(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                {forms.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="space-y-6">
             <h2 className="text-2xl font-semibold mb-6">Submit Form</h2>
