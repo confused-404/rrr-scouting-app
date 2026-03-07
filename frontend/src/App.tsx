@@ -126,7 +126,7 @@ function App() {
 
       <div className="max-w-4xl mx-auto px-4 py-8">
         {mode === 'admin' && isAdmin ? (
-          <AdminMode />
+          <AdminMode onCompetitionUpdate={() => loadCompetitions()} />
         ) : (
           <UserMode key={userModeKey} selectedCompetition={selectedCompetition} />
         )}

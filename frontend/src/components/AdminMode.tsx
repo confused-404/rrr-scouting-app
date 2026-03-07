@@ -14,7 +14,7 @@ type AdminTab = 'competitions' | 'forms' | 'analytics' | 'scoutingTeams';
 // analytics subtabs
 type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule';
 
-export const AdminMode: React.FC = () => {
+export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCompetitionUpdate }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('competitions');
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>('responses');
   const [activeCompetition, setActiveCompetition] = useState<Competition | null>(null);
@@ -29,6 +29,14 @@ export const AdminMode: React.FC = () => {
       setActiveCompetition(comp);
     } catch (error) {
       console.error('Error loading active competition:', error);
+    }
+  };
+
+  // Wrap the onCompetitionUpdate to also refresh AdminMode's activeCompetition
+  const handleCompetitionUpdate = () => {
+    loadActiveCompetition();
+    if (onCompetitionUpdate) {
+      onCompetitionUpdate();
     }
   };
 
@@ -81,7 +89,7 @@ export const AdminMode: React.FC = () => {
       {/* Tab Content */}
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         {activeTab === 'competitions' && <CompetitionManager />}
-        {activeTab === 'forms' && <FormManager selectedCompetition={activeCompetition} />}
+        {activeTab === 'forms' && <FormManager selectedCompetition={activeCompetition} onCompetitionUpdate={handleCompetitionUpdate} />}
         {activeTab === 'scoutingTeams' && <ScoutingTeams selectedCompetition={activeCompetition} />}
 
         {activeTab === 'analytics' && (

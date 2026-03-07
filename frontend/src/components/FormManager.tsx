@@ -5,7 +5,7 @@ import type { FormField as FormFieldType, Form } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { formApi, competitionApi } from '../services/api';
 
-export const FormManager: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
+export const FormManager: React.FC<{ selectedCompetition?: Competition | null, onCompetitionUpdate?: () => void }> = ({ selectedCompetition, onCompetitionUpdate }) => {
     const [forms, setForms] = useState<Form[]>([]);
     const [selectedForm, setSelectedForm] = useState<Form | null>(null);
     const [formFields, setFormFields] = useState<FormFieldType[]>([]);
@@ -126,9 +126,12 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null }>
 
         setLoading(true);
         try {
-            // pass formId if toggling, or null to clear all
             await competitionApi.setActiveForm(selectedCompetition.id, formId);
             await loadForms();
+            // Refresh the competition data in parent component
+            if (onCompetitionUpdate) {
+                onCompetitionUpdate();
+            }
         } catch (error) {
             console.error('Error setting active form:', error);
             alert('Error setting active form');
