@@ -47,16 +47,64 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
   const handleExportCSV = async () => {
     if (!selectedForm || submissions.length === 0) return;
     setIsExporting(true);
-    const headers = selectedForm.fields.map(f => f.label);
-    const fieldIds = selectedForm.fields.map(f => String(f.id));
-    const csvRows = submissions.map((sub: any) => 
-      fieldIds.map(id => `"${String(sub.data[id] ?? '').replace(/"/g, '""')}"`).join(',')
-    );
-    const blob = new Blob([[headers.join(','), ...csvRows].join('\n')], { type: 'text/csv' });
+
+    // Find team field (case insensitive search for "team" in label)
+    const teamField = selectedForm.fields.find(f => f.label.toLowerCase().includes('team'));
+    if (!teamField) {
+      alert('No team field found in form. Cannot export analyzed data.');
+      setIsExporting(false);
+      return;
+    }
+
+    // Group submissions by team
+    const teamGroups: Record<string, Submission[]> = {};
+    submissions.forEach(sub => {
+      const teamValue = String(sub.data?.[teamField.id] ?? '').trim();
+      if (teamValue) {
+        if (!teamGroups[teamValue]) teamGroups[teamValue] = [];
+        teamGroups[teamValue].push(sub);
+      }
+    });
+
+    // Prepare headers: Team, then quantitative fields, then qualitative fields
+    const quantitativeFields = selectedForm.fields.filter(f => f.type === 'number' || f.type === 'ranking');
+    const qualitativeFields = selectedForm.fields.filter(f => f.type !== 'number' && f.type !== 'ranking');
+    
+    const headers = ['Team', ...quantitativeFields.map(f => f.label), ...qualitativeFields.map(f => f.label)];
+
+    // Prepare rows
+    const csvRows = Object.entries(teamGroups).map(([team, teamSubs]) => {
+      const row: string[] = [team];
+
+      // Quantitative: averages
+      quantitativeFields.forEach(field => {
+        const vals = teamSubs.map(s => toNumber(s.data?.[field.id])).filter((v): v is number => v !== null && !isNaN(v));
+        const avg = vals.length === 0 ? '' : (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2);
+        row.push(avg);
+      });
+
+      // Qualitative: unique values comma-separated
+      qualitativeFields.forEach(field => {
+        const values = new Set<string>();
+        teamSubs.forEach(sub => {
+          const raw = sub.data?.[field.id];
+          if (raw !== undefined && raw !== null && raw !== '') {
+            const text = Array.isArray(raw) ? raw.join(', ') : String(raw);
+            values.add(text);
+          }
+        });
+        row.push(Array.from(values).join('; '));
+      });
+
+      return row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',');
+    });
+
+    const csvContent = [headers.join(','), ...csvRows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${selectedForm.name}_data.csv`;
+    link.download = `${selectedForm.name}_analyzed_data.csv`;
     link.click();
     setIsExporting(false);
   };
