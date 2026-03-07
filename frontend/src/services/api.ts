@@ -60,7 +60,7 @@ export const competitionApi = {
     return response.data;
   },
 
-  getActive: async (): Promise<Competition[]> => {
+  getActive: async (): Promise<Competition | null> => {
     const response = await api.get('/competitions/active');
     return response.data;
   },

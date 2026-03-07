@@ -3,9 +3,7 @@ import { Users, Plus, X, Clock, Target } from 'lucide-react';
 import type { Competition, ScoutingTeam, GeneratedAssignment } from '../types/competition.types';
 import { competitionApi } from '../services/api';
 
-export const ScoutingTeams: React.FC = () => {
-  const [competitions, setCompetitions] = useState<Competition[]>([]);
-  const [selectedCompetition, setSelectedCompetition] = useState<Competition | null>(null);
+export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
   const [teams, setTeams] = useState<ScoutingTeam[]>([]);
   const [assignments, setAssignments] = useState<GeneratedAssignment[]>([]);
   const [newTeamName, setNewTeamName] = useState('');
@@ -14,20 +12,6 @@ export const ScoutingTeams: React.FC = () => {
   const [shiftLength, setShiftLength] = useState(5);
   const [totalMatches, setTotalMatches] = useState(50);
   const [isSaving, setIsSaving] = useState(false);
-
-  // Load competitions on mount
-  useEffect(() => {
-    const loadCompetitions = async () => {
-      try {
-        const data = await competitionApi.getAll();
-        setCompetitions(data);
-        if (data.length > 0) setSelectedCompetition(data[0]);
-      } catch (error) {
-        console.error('Error loading competitions:', error);
-      }
-    };
-    loadCompetitions();
-  }, []);
 
   // Load teams/assignments when competition changes
   useEffect(() => {
@@ -48,12 +32,6 @@ export const ScoutingTeams: React.FC = () => {
       });
       setTeams(updatedTeams);
       if (updatedAssignments) setAssignments(updatedAssignments);
-      // Update in competitions list
-      setCompetitions(competitions.map(c => 
-        c.id === selectedCompetition.id 
-          ? { ...c, scoutingTeams: updatedTeams, ...(updatedAssignments && { scoutingAssignments: updatedAssignments }) }
-          : c
-      ));
     } catch (error) {
       console.error('Error saving teams:', error);
       alert('Failed to save teams');
@@ -163,7 +141,7 @@ export const ScoutingTeams: React.FC = () => {
     return (
       <div className="bg-white rounded-lg shadow-sm p-12 text-center text-gray-500">
         <Users size={48} className="mx-auto mb-4 opacity-50" />
-        <p>Please select a competition to manage scouting teams</p>
+        <p>No active competition selected</p>
       </div>
     );
   }
@@ -172,21 +150,6 @@ export const ScoutingTeams: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Competition Selector */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Select Competition</label>
-        <select
-          value={selectedCompetition?.id || ''}
-          onChange={(e) => setSelectedCompetition(competitions.find(c => c.id === e.target.value) || null)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-        >
-          {competitions.map(comp => (
-            <option key={comp.id} value={comp.id}>
-              {comp.name} ({comp.season})
-            </option>
-          ))}
-        </select>
-      </div>
       {/* Header */}
       <div className="bg-white rounded-xl shadow-sm p-6">
         <div className="flex items-center gap-3 mb-2">

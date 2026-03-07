@@ -10,9 +10,7 @@ type FilterOp = 'contains' | 'equals' | 'gt' | 'lt';
 const isQuantitative = (field: FormField) => field.type === 'number' || field.type === 'ranking';
 const toNumber = (v: any) => (v === '' || v === null || v === undefined) ? null : Number(v);
 
-export const ResponseViewer: React.FC = () => {
-  const [competitions, setCompetitions] = useState<Competition[]>([]);
-  const [selectedCompetition, setSelectedCompetition] = useState<Competition | null>(null);
+export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
   const [forms, setForms] = useState<Form[]>([]);
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -23,13 +21,6 @@ export const ResponseViewer: React.FC = () => {
   const [filterFieldId, setFilterFieldId] = useState<number | null>(null);
   const [filterOp, setFilterOp] = useState<FilterOp>('contains');
   const [filterValue, setFilterValue] = useState<string>('');
-
-  useEffect(() => {
-    competitionApi.getAll().then(data => {
-      setCompetitions(data);
-      if (data.length > 0) setSelectedCompetition(data[0]);
-    });
-  }, []);
 
   useEffect(() => {
     if (selectedCompetition) {
@@ -96,18 +87,12 @@ export const ResponseViewer: React.FC = () => {
     });
   }, [selectedForm, filteredSubmissions]);
 
-  if (!selectedCompetition) return <div className="p-10 text-center text-gray-400">Loading...</div>;
+  if (!selectedCompetition) return <div className="p-10 text-center text-gray-400">No active competition selected</div>;
 
   return (
     <div className="space-y-6 pb-20">
       {/* Top Selectors */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-end">
-        <div className="flex-1 w-full">
-          <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Competition</label>
-          <select value={selectedCompetition.id} onChange={(e) => setSelectedCompetition(competitions.find(c => c.id === e.target.value) || null)} className="w-full bg-gray-50 border-none rounded-lg px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-blue-500">
-            {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
         <div className="flex-1 w-full">
           <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Form</label>
           <select value={selectedForm?.id || ''} onChange={(e) => setSelectedForm(forms.find(f => f.id === e.target.value) || null)} className="w-full bg-gray-50 border-none rounded-lg px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-blue-500">

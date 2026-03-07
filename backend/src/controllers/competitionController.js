@@ -16,9 +16,26 @@ export const competitionController = {
   getActiveCompetitions: async (req, res) => {
     try {
       const competitions = await competitionModel.getActiveCompetitions();
-      res.json(competitions);
+      if (competitions.length === 0) {
+        return res.json(null); // Return null if no active competition
+      }
+      res.json(competitions[0]); // Return the single active competition
     } catch (error) {
       console.error('Error in getActiveCompetitions:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  // Get the active competition (single)
+  getActiveCompetition: async (req, res) => {
+    try {
+      const competitions = await competitionModel.getActiveCompetitions();
+      if (competitions.length === 0) {
+        return res.status(404).json({ message: 'No active competition found' });
+      }
+      res.json(competitions[0]);
+    } catch (error) {
+      console.error('Error in getActiveCompetition:', error);
       res.status(500).json({ message: error.message });
     }
   },
@@ -40,7 +57,7 @@ export const competitionController = {
   // Create competition
   createCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormIds } = req.body;
+      const { name, season, status, startDate, endDate, activeFormIds, eventKey } = req.body;
       
       if (!name || !season) {
         return res.status(400).json({ message: 'Name and season are required' });
@@ -52,6 +69,8 @@ export const competitionController = {
         status: status || 'draft',
         startDate: startDate || new Date().toISOString(),
         endDate: endDate || new Date().toISOString(),
+        activeFormIds: activeFormIds || [],
+        eventKey,
       });
       
       res.status(201).json(newCompetition);
@@ -64,7 +83,7 @@ export const competitionController = {
   // Update competition
   updateCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments } = req.body;
+      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey } = req.body;
       
       const updatedCompetition = await competitionModel.updateCompetition(req.params.id, {
         ...(name && { name }),
@@ -76,6 +95,7 @@ export const competitionController = {
         ...(activeFormId !== undefined && { activeFormId }),
         ...(scoutingTeams !== undefined && { scoutingTeams }),
         ...(scoutingAssignments !== undefined && { scoutingAssignments }),
+        ...(eventKey !== undefined && { eventKey }),
       });
       
       if (!updatedCompetition) {

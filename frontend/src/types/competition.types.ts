@@ -37,5 +37,6 @@ export type Competition = {
   activeFormIds?: string[];
   scoutingTeams?: ScoutingTeam[];
   scoutingAssignments?: GeneratedAssignment[];
+  eventKey?: string; // TBA event key
   createdAt: string;
 };
