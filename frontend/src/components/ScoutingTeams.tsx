@@ -119,27 +119,37 @@ export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null 
 
       // Calculate groups of 6 teams
       const teamsPerGroup = 6;
-      const numGroups = teams.length / teamsPerGroup;
+      const numGroups = Math.floor(teams.length / teamsPerGroup);
+
+      // Ensure we have valid parameters
+      if (numGroups === 0 || matchesPerShift <= 0) {
+        alert('Invalid team configuration or shift length');
+        return;
+      }
 
       const newAssignments: GeneratedAssignment[] = [];
       const positions: GeneratedAssignment['position'][] = ['red1', 'red2', 'red3', 'blue1', 'blue2', 'blue3'];
 
       for (let matchNum = 1; matchNum <= totalMatches; matchNum++) {
         // Determine which group is active for this match
-        const groupIndex = ((matchNum - 1) / matchesPerShift) % numGroups;
+        // Use integer division to ensure we get whole numbers
+        const groupIndex = Math.floor((matchNum - 1) / matchesPerShift) % numGroups;
         const activeTeams = teams.slice(groupIndex * teamsPerGroup, (groupIndex + 1) * teamsPerGroup);
 
-        // Assign teams to positions, rotating through the match
-        activeTeams.forEach((team, teamIndex) => {
-          newAssignments.push({
-            matchNumber: matchNum,
-            position: positions[teamIndex],
-            teamId: team.id,
-            teamName: team.name,
-            scouts: team.members.map(m => m.name),
-            matchTime: matchTimes.get(matchNum),
+        // Ensure we have exactly 6 teams for this match
+        if (activeTeams.length === teamsPerGroup) {
+          // Assign teams to positions, rotating through the match
+          activeTeams.forEach((team, teamIndex) => {
+            newAssignments.push({
+              matchNumber: matchNum,
+              position: positions[teamIndex],
+              teamId: team.id,
+              teamName: team.name,
+              scouts: team.members.map(m => m.name),
+              matchTime: matchTimes.get(matchNum),
+            });
           });
-        });
+        }
       }
 
       await saveToCompetition(teams, newAssignments);
