@@ -20,20 +20,27 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
   const [activeCompetition, setActiveCompetition] = useState<Competition | null>(null);
 
   useEffect(() => {
+    const loadActiveCompetition = async () => {
+      try {
+        const comp = await competitionApi.getActive();
+        setActiveCompetition(comp);
+      } catch (error) {
+        console.error('Error loading active competition:', error);
+      }
+    };
     loadActiveCompetition();
   }, []);
 
-  const loadActiveCompetition = async () => {
-    try {
-      const comp = await competitionApi.getActive();
-      setActiveCompetition(comp);
-    } catch (error) {
-      console.error('Error loading active competition:', error);
-    }
-  };
-
   // Wrap the onCompetitionUpdate to also refresh AdminMode's activeCompetition
   const handleCompetitionUpdate = () => {
+    const loadActiveCompetition = async () => {
+      try {
+        const comp = await competitionApi.getActive();
+        setActiveCompetition(comp);
+      } catch (error) {
+        console.error('Error loading active competition:', error);
+      }
+    };
     loadActiveCompetition();
     if (onCompetitionUpdate) {
       onCompetitionUpdate();

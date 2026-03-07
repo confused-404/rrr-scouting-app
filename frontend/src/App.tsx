@@ -18,27 +18,6 @@ function App() {
   // isAdmin is now pulled from our updated AuthContext
   const { currentUser, logout, isAdmin } = useAuth();
 
-  useEffect(() => {
-    if (currentUser) {
-      loadCompetitions();
-    }
-  }, [currentUser]);
-
-  // Security check: if a user is not an admin but somehow set mode to admin, kick them back to user mode
-  useEffect(() => {
-    if (!isAdmin && mode === 'admin') {
-      setMode('user');
-    }
-  }, [mode, isAdmin]);
-
-  // Reload competitions when switching to user mode
-  useEffect(() => {
-    if (currentUser && mode === 'user') {
-      loadCompetitions();
-      setUserModeKey(prev => prev + 1);
-    }
-  }, [mode, currentUser]);
-
   const loadCompetitions = async () => {
     try {
       const data = await competitionApi.getActive();
@@ -53,6 +32,28 @@ function App() {
       setSelectedCompetition(null);
     }
   };
+
+  useEffect(() => {
+    if (currentUser) {
+      loadCompetitions();
+    }
+  }, [currentUser]);
+
+  // Security check: if a user is not an admin but somehow set mode to admin, kick them back to user mode
+  useEffect(() => {
+    if (!isAdmin && mode === 'admin') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMode('user');
+    }
+  }, [mode, isAdmin]);
+
+  // Reload competitions when switching to user mode
+  useEffect(() => {
+    if (currentUser && mode === 'user') {
+      loadCompetitions();
+      setUserModeKey(prev => prev + 1);
+    }
+  }, [mode, currentUser]);
 
   const handleLogout = async () => {
     try {
