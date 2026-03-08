@@ -44,21 +44,42 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
     setIsEditing(!isEditing);
   };
 
+  // Load notes when target team changes
+  useEffect(() => {
+    const loadNotes = async () => {
+      if (!targetTeam || !activeCompetition) return;
+      
+      try {
+        const data = await competitionApi.getSuperscouterNotes(activeCompetition.id, targetTeam);
+        setScouterNotes(data.notes);
+        setDraftNotes(data.notes);
+      } catch (error) {
+        console.error('Error loading notes:', error);
+      }
+    };
+
+    loadNotes();
+  }, [targetTeam, activeCompetition?.id]);
+
   const handleSaveNotes = async () => {
     if (!targetTeam) {
       alert("Please enter a team number before saving.");
       return;
     }
+    if (!activeCompetition) {
+      alert("No active competition selected.");
+      return;
+    }
     setIsSaving(true);
     try {
-      // API call logic would go here
-      // await competitionApi.saveSuperscoutNotes(activeCompetition?.id, targetTeam, draftNotes);
+      await competitionApi.saveSuperscouterNotes(activeCompetition.id, targetTeam, draftNotes);
       
       setScouterNotes(draftNotes); // "Commits" the draft to the live state
       setIsEditing(false);
       alert(`Saved notes for Team ${targetTeam}`);
     } catch (error) {
       console.error('Save error:', error);
+      alert('Error saving notes. Please try again.');
     } finally {
       setIsSaving(false);
     }

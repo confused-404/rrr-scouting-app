@@ -98,6 +98,16 @@ export const competitionApi = {
     const response = await api.post(`/competitions/${competitionId}/forms/set-active`, { formId });
     return response.data;
   },
+
+  saveSuperscouterNotes: async (competitionId: string, teamNumber: string, notes: string): Promise<Competition> => {
+    const response = await api.post(`/competitions/${competitionId}/superscouterNotes`, { teamNumber, notes });
+    return response.data;
+  },
+
+  getSuperscouterNotes: async (competitionId: string, teamNumber: string): Promise<{ teamNumber: string; notes: string }> => {
+    const response = await api.get(`/competitions/${competitionId}/superscouterNotes`, { params: { teamNumber } });
+    return response.data;
+  },
 };
 
 export const formApi = {

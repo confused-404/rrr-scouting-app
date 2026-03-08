@@ -40,6 +40,7 @@ export const competitionModel = {
         scoutingTeams: data.scoutingTeams || [],
         scoutingAssignments: data.scoutingAssignments || [],
         eventKey: data.eventKey,
+        superscouterNotes: data.superscouterNotes || {},
       };
     });
   },
@@ -64,6 +65,7 @@ export const competitionModel = {
         scoutingTeams: data.scoutingTeams || [],
         scoutingAssignments: data.scoutingAssignments || [],
         eventKey: data.eventKey,
+        superscouterNotes: data.superscouterNotes || {},
       };
     });
   },
@@ -86,6 +88,7 @@ export const competitionModel = {
       scoutingTeams: data.scoutingTeams || [],
       scoutingAssignments: data.scoutingAssignments || [],
       eventKey: data.eventKey,
+      superscouterNotes: data.superscouterNotes || {},
     };
   },
 
@@ -101,6 +104,7 @@ export const competitionModel = {
       scoutingTeams: competitionData.scoutingTeams || [],
       scoutingAssignments: competitionData.scoutingAssignments || [],
       eventKey: competitionData.eventKey,
+      superscouterNotes: competitionData.superscouterNotes || {},
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     
@@ -119,6 +123,7 @@ export const competitionModel = {
       scoutingTeams: data.scoutingTeams || [],
       scoutingAssignments: data.scoutingAssignments || [],
       eventKey: data.eventKey,
+      superscouterNotes: data.superscouterNotes || {},
     };
   },
 
@@ -160,6 +165,7 @@ export const competitionModel = {
     if (competitionData.scoutingTeams !== undefined) updateData.scoutingTeams = competitionData.scoutingTeams;
     if (competitionData.scoutingAssignments !== undefined) updateData.scoutingAssignments = competitionData.scoutingAssignments;
     if (competitionData.eventKey !== undefined) updateData.eventKey = competitionData.eventKey;
+    if (competitionData.superscouterNotes !== undefined) updateData.superscouterNotes = competitionData.superscouterNotes;
     
     // console.log('Updating competition with:', updateData); // Debug log
     

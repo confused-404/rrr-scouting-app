@@ -17,4 +17,8 @@ router.post('/:id/forms/add', verifyToken, competitionController.addFormId);
 router.post('/:id/forms/remove', verifyToken, competitionController.removeFormId);
 router.post('/:id/forms/set-active', verifyToken, competitionController.setActiveFormId);
 
+// Superscouternotesroutes
+router.post('/:id/superscouterNotes', verifyToken, competitionController.saveSuperscouterNotes);
+router.get('/:id/superscouterNotes', competitionController.getSuperscouterNotes);
+
 export default router;
