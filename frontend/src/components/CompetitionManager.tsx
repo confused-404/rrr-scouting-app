@@ -1,13 +1,64 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Edit2, Calendar, Plus, X, Save, AlertTriangle } from 'lucide-react';
+import { Trash2, Edit2, Calendar, Plus, X, Save, AlertTriangle, Upload, Image as ImageIcon } from 'lucide-react';
 import type { Competition, CompetitionStatus } from '../types/competition.types';
 import { competitionApi } from '../services/api';
+
+const MAX_PIT_MAP_BYTES = 750 * 1024;
+
+const fileToDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Failed to read image file'));
+        reader.readAsDataURL(file);
+    });
+
+const loadImage = (src: string): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Failed to process image'));
+        img.src = src;
+    });
+
+const compressImageDataUrl = async (inputDataUrl: string): Promise<string> => {
+    const img = await loadImage(inputDataUrl);
+    const maxDimension = 1600;
+    const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.width * scale));
+    canvas.height = Math.max(1, Math.round(img.height * scale));
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        throw new Error('Canvas is not available in this browser');
+    }
+
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    let quality = 0.85;
+    let output = canvas.toDataURL('image/jpeg', quality);
+
+    while (quality > 0.35) {
+        const body = output.split(',')[1] || '';
+        const bytes = Math.ceil((body.length * 3) / 4);
+        if (bytes <= MAX_PIT_MAP_BYTES) {
+            break;
+        }
+        quality -= 0.1;
+        output = canvas.toDataURL('image/jpeg', quality);
+    }
+
+    return output;
+};
 
 export const CompetitionManager: React.FC = () => {
     const [competitions, setCompetitions] = useState<Competition[]>([]);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [isUploadingPitMap, setIsUploadingPitMap] = useState(false);
     
     const [formData, setFormData] = useState({
         name: '',
@@ -16,6 +67,7 @@ export const CompetitionManager: React.FC = () => {
         startDate: new Date().toISOString().split('T')[0],
         endDate: new Date().toISOString().split('T')[0],
         eventKey: '',
+        pitMapImageUrl: '',
     });
 
     useEffect(() => {
@@ -51,8 +103,41 @@ export const CompetitionManager: React.FC = () => {
             startDate: comp.startDate,
             endDate: comp.endDate,
             eventKey: comp.eventKey || '',
+            pitMapImageUrl: comp.pitMapImageUrl || '',
         });
         setIsFormOpen(true);
+    };
+
+    const handlePitMapUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            alert('Please choose an image file.');
+            event.target.value = '';
+            return;
+        }
+
+        setIsUploadingPitMap(true);
+        try {
+            const raw = await fileToDataUrl(file);
+            const compressed = await compressImageDataUrl(raw);
+            const body = compressed.split(',')[1] || '';
+            const approxBytes = Math.ceil((body.length * 3) / 4);
+
+            if (approxBytes > MAX_PIT_MAP_BYTES) {
+                alert('Image is still too large after compression. Please upload a smaller image.');
+                return;
+            }
+
+            setFormData(prev => ({ ...prev, pitMapImageUrl: compressed }));
+        } catch (error) {
+            console.error('Pit map upload failed:', error);
+            alert('Could not process this image. Please try another file.');
+        } finally {
+            setIsUploadingPitMap(false);
+            event.target.value = '';
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -72,6 +157,7 @@ export const CompetitionManager: React.FC = () => {
                 startDate: new Date().toISOString().split('T')[0],
                 endDate: new Date().toISOString().split('T')[0],
                 eventKey: '',
+                pitMapImageUrl: '',
             });
             await loadCompetitions();
         } catch (error) {
@@ -147,6 +233,44 @@ export const CompetitionManager: React.FC = () => {
                                     <option value="completed">Completed</option>
                                 </select>
                             </div>
+
+                            <div className="space-y-3">
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Pit Map Image</label>
+                                <label className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 border border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer font-bold text-sm text-gray-700">
+                                    <Upload size={16} />
+                                    {isUploadingPitMap ? 'Processing image...' : 'Upload Pit Map'}
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={handlePitMapUpload}
+                                        disabled={isUploadingPitMap}
+                                    />
+                                </label>
+
+                                {formData.pitMapImageUrl ? (
+                                    <div className="border border-gray-200 rounded-xl p-2 bg-white">
+                                        <img
+                                            src={formData.pitMapImageUrl}
+                                            alt="Pit map preview"
+                                            className="w-full max-h-48 object-contain rounded-lg bg-gray-50"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, pitMapImageUrl: '' })}
+                                            className="mt-2 w-full py-2 text-sm font-bold rounded-lg bg-red-50 text-red-700 hover:bg-red-100"
+                                        >
+                                            Remove Pit Map
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+                                        <ImageIcon size={14} />
+                                        No pit map uploaded yet.
+                                    </div>
+                                )}
+                            </div>
+
                             <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg flex items-center justify-center gap-2">
                                 <Save size={18} /> {editingId ? 'Update Changes' : 'Create Event'}
                             </button>

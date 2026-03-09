@@ -57,7 +57,7 @@ export const competitionController = {
   // Create competition
   createCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormIds, eventKey } = req.body;
+      const { name, season, status, startDate, endDate, activeFormIds, eventKey, pitMapImageUrl } = req.body;
       
       if (!name || !season) {
         return res.status(400).json({ message: 'Name and season are required' });
@@ -71,6 +71,7 @@ export const competitionController = {
         endDate: endDate || new Date().toISOString(),
         activeFormIds: activeFormIds || [],
         eventKey,
+        pitMapImageUrl: pitMapImageUrl || '',
       });
       
       res.status(201).json(newCompetition);
@@ -83,7 +84,7 @@ export const competitionController = {
   // Update competition
   updateCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey, superscouterNotes } = req.body;
+      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey, superscouterNotes, pitMapImageUrl } = req.body;
       
       const updatedCompetition = await competitionModel.updateCompetition(req.params.id, {
         ...(name && { name }),
@@ -97,6 +98,7 @@ export const competitionController = {
         ...(scoutingAssignments !== undefined && { scoutingAssignments }),
         ...(eventKey !== undefined && { eventKey }),
         ...(superscouterNotes !== undefined && { superscouterNotes }),
+        ...(pitMapImageUrl !== undefined && { pitMapImageUrl }),
       });
       
       if (!updatedCompetition) {
