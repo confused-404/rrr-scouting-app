@@ -78,10 +78,10 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
         <div className="flex items-center gap-3 mb-2">
           <Clock size={24} className="text-blue-600" />
-          <h2 className="text-2xl font-bold text-gray-800">Scouting Schedule</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Scouting Schedule</h2>
         </div>
         <p className="text-sm text-gray-500">
           {selectedCompetition.name} ({selectedCompetition.season})
@@ -106,7 +106,7 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
       )}
 
       {/* View Mode Toggle */}
-      <div className="bg-white rounded-lg shadow-sm p-2 flex gap-2">
+      <div className="bg-white rounded-lg shadow-sm p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
         <button
           onClick={() => setViewMode('all')}
           className={`flex-1 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
@@ -140,12 +140,12 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
             return (
               <div
                 key={matchNum}
-                className="bg-white rounded-lg shadow-sm p-4 border border-gray-200"
+                className="bg-white rounded-lg shadow-sm p-3 sm:p-4 border border-gray-200"
               >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="font-bold text-lg text-gray-800">Match {matchNum}</div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 gap-1">
+                  <div className="font-bold text-base sm:text-lg text-gray-800">Match {matchNum}</div>
                   {matchAssignments[0]?.matchTime && (
-                    <div className="text-sm text-gray-500">
+                    <div className="text-xs sm:text-sm text-gray-500">
                       {new Date(matchAssignments[0].matchTime * 1000).toLocaleString()}
                     </div>
                   )}
@@ -182,27 +182,27 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
             </div>
           ) : (
             uniqueTeams.map((team) => (
-              <div key={team.teamId} className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-                <h3 className="text-lg font-bold text-gray-800 mb-4">{team.teamName}</h3>
+              <div key={team.teamId} className="bg-white rounded-lg shadow-sm p-4 sm:p-6 border border-gray-200">
+                <h3 className="text-base sm:text-lg font-bold text-gray-800 mb-4">{team.teamName}</h3>
                 <div className="space-y-2">
                   {team.assignments.map((assignment) => (
                     <div
                       key={`${assignment.matchNumber}-${assignment.position}`}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between p-3 bg-gray-50 rounded-lg"
                     >
-                      <div className="flex items-center gap-4">
-                        <div className="font-bold text-gray-800 w-24">Match {assignment.matchNumber}</div>
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                        <div className="font-bold text-gray-800 sm:w-24">Match {assignment.matchNumber}</div>
                         <div className={`px-3 py-1 rounded text-sm font-bold ${getPositionColor(assignment.position)}`}>
                           {getPositionLabel(assignment.position)}
                         </div>
                         {assignment.matchTime && (
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-gray-500 break-words">
                             {new Date(assignment.matchTime * 1000).toLocaleString()}
                           </div>
                         )}
                       </div>
                       {assignment.scouts.length > 0 && (
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-gray-500 break-words sm:text-right">
                           {assignment.scouts.join(', ')}
                         </div>
                       )}

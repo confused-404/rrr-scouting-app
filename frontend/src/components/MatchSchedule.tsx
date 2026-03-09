@@ -73,19 +73,19 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
   }
 
   return (
-    <div className="space-y-6 pb-20">
+    <div className="space-y-4 sm:space-y-6 pb-20">
       {/* Header and Controls */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h3 className="text-lg font-bold text-gray-800 mb-4">{selectedCompetition.name} - Match Schedule</h3>
+      <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100">
+        <h3 className="text-base sm:text-lg font-bold text-gray-800 mb-4">{selectedCompetition.name} - Match Schedule</h3>
 
         {/* Data Source Toggle */}
-        <div className="flex gap-4 mb-4">
-          <div className="flex items-center gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <label className="text-sm font-medium text-gray-700">Data Source:</label>
             <select
               value={dataSource}
               onChange={(e) => setDataSource(e.target.value as 'tba' | 'statbotics')}
-              className="px-3 py-1 border border-gray-300 rounded text-sm"
+              className="w-full sm:w-auto px-3 py-2 sm:py-1 border border-gray-300 rounded text-sm"
             >
               <option value="tba">The Blue Alliance</option>
               <option value="statbotics">Statbotics</option>
@@ -93,14 +93,14 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
           </div>
 
           {/* Team Filter */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <label className="text-sm font-medium text-gray-700">Filter Team:</label>
             <input
               type="text"
               placeholder="Team number (e.g. 254)"
               value={teamFilter}
               onChange={(e) => setTeamFilter(e.target.value)}
-              className="px-3 py-1 border border-gray-300 rounded text-sm w-32"
+              className="px-3 py-2 sm:py-1 border border-gray-300 rounded text-sm w-full sm:w-32"
             />
           </div>
         </div>
@@ -115,7 +115,7 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
       {loading ? (
         <div className="py-20 text-center font-black text-gray-300 animate-pulse tracking-widest uppercase">Loading schedule...</div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {filteredMatches.length === 0 ? (
             <div className="p-12 text-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed font-bold italic">
               {teamFilter ? `No matches found for team ${teamFilter}` : 'No matches available.'}
@@ -129,8 +129,8 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
                 return aNum - bNum;
               })
               .map((m: any) => (
-                <div key={m.key} className="bg-white p-4 rounded-lg shadow">
-                  <div className="flex items-center justify-between mb-2">
+                <div key={m.key} className="bg-white p-3 sm:p-4 rounded-lg shadow">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-1">
                     <div className="font-black uppercase text-sm">
                       {m.comp_level}{m.match_number || (m.key ? m.key.split('m')[1] : '')}
                     </div>
@@ -138,10 +138,10 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
                       {getMatchTime(m)}
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <div className="font-bold text-red-600">Red Alliance</div>
-                      <ul className="list-disc list-inside">
+                      <ul className="list-disc list-inside text-sm break-words">
                         {(m.alliances?.red?.team_keys || []).map((tk: string | number) => (
                           <li key={tk} className={teamFilter && (tk.toString().includes(teamFilter) || tk.toString() === `frc${teamFilter}`) ? 'font-bold text-red-700' : ''}>
                             {tk}
@@ -151,7 +151,7 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
                     </div>
                     <div>
                       <div className="font-bold text-blue-600">Blue Alliance</div>
-                      <ul className="list-disc list-inside">
+                      <ul className="list-disc list-inside text-sm break-words">
                         {(m.alliances?.blue?.team_keys || []).map((tk: string | number) => (
                           <li key={tk} className={teamFilter && (tk.toString().includes(teamFilter) || tk.toString() === `frc${teamFilter}`) ? 'font-bold text-blue-700' : ''}>
                             {tk}

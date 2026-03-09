@@ -297,10 +297,10 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   return (
     <div className="space-y-6">
       {/* tab navigation */}
-      <div className="bg-white rounded-xl shadow-sm p-2 border border-gray-100 flex gap-2">
+      <div className="bg-white rounded-xl shadow-sm p-2 border border-gray-100 grid grid-cols-2 sm:grid-cols-4 gap-2">
         <button
           onClick={() => setActiveTab('scout')}
-          className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
+          className={`px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
             activeTab === 'scout'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
@@ -310,7 +310,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
         </button>
         <button
           onClick={() => setActiveTab('scoutingSchedule')}
-          className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
+          className={`px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
             activeTab === 'scoutingSchedule'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
@@ -321,7 +321,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
         </button>
         <button
           onClick={() => setActiveTab('teamLookup')}
-          className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
+          className={`px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
             activeTab === 'teamLookup'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
@@ -331,7 +331,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
         </button>
         <button
           onClick={() => setActiveTab('schedule')}
-          className={`flex-1 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
+          className={`px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
             activeTab === 'schedule'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
@@ -342,16 +342,16 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
       </div>
 
       {activeTab === 'scout' ? (
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <p className="text-sm text-blue-800">
+        <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+            <p className="text-sm text-blue-800 leading-relaxed">
               <strong>Submitting for:</strong> {selectedCompetition?.name} ({selectedCompetition?.season})
             </p>
           </div>
 
           {/* Form selector dropdown — only shown when multiple active forms exist */}
           {forms.length > 1 && (
-            <div className="mb-6">
+            <div className="mb-4 sm:mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Select Form
               </label>
@@ -369,8 +369,8 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
             </div>
           )}
 
-          <div className="space-y-6">
-            <h2 className="text-2xl font-semibold mb-6">Submit Form</h2>
+          <div className="space-y-5 sm:space-y-6">
+            <h2 className="text-xl sm:text-2xl font-semibold mb-4 sm:mb-6">Submit Form</h2>
 
             {Object.keys(errors).length > 0 && (
               <div className="border border-red-200 bg-red-50 text-red-800 rounded-lg p-4">
