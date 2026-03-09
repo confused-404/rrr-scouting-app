@@ -36,5 +36,6 @@ export type Competition = {
   scoutingTeams?: ScoutingTeam[];
   scoutingAssignments?: GeneratedAssignment[];
   eventKey?: string; // TBA event key
+  pitMapImageUrl?: string;
   createdAt: string;
 };

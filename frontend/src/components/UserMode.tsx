@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Clock } from 'lucide-react';
+import { Layout, Clock, Image as ImageIcon } from 'lucide-react';
 import type { FormField as FormFieldType } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { FormField } from './FormField';
@@ -12,7 +12,7 @@ interface UserModeProps {
   selectedCompetition: Competition | null;
 }
 
-type UserTab = 'scout' | 'teamLookup' | 'schedule' | 'scoutingSchedule';
+type UserTab = 'scout' | 'teamLookup' | 'schedule' | 'scoutingSchedule' | 'pitMap';
 
 type FieldErrors = Record<number, string>;
 
@@ -283,7 +283,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     );
   }
 
-  if (formFields.length === 0) {
+  if (formFields.length === 0 && activeTab === 'scout') {
     return (
       <div className="bg-white rounded-lg shadow-sm p-6">
         <div className="text-center py-12 text-gray-500">
@@ -297,7 +297,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   return (
     <div className="space-y-6">
       {/* tab navigation */}
-      <div className="bg-white rounded-xl shadow-sm p-2 border border-gray-100 grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="bg-white rounded-xl shadow-sm p-2 border border-gray-100 grid grid-cols-2 sm:grid-cols-5 gap-2">
         <button
           onClick={() => setActiveTab('scout')}
           className={`px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
@@ -338,6 +338,17 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
           }`}
         >
           Schedule
+        </button>
+        <button
+          onClick={() => setActiveTab('pitMap')}
+          className={`px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
+            activeTab === 'pitMap'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+          }`}
+        >
+          <ImageIcon size={14} />
+          Pit Map
         </button>
       </div>
 
@@ -408,6 +419,27 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
         </div>
       ) : activeTab === 'scoutingSchedule' ? (
         <ScoutingScheduleViewer selectedCompetition={selectedCompetition} />
+      ) : activeTab === 'pitMap' ? (
+        <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6 space-y-4">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-semibold text-gray-900">Pit Map</h2>
+            <p className="text-sm text-gray-500 mt-1">Uploaded by admins for all scouters.</p>
+          </div>
+
+          {selectedCompetition?.pitMapImageUrl ? (
+            <div className="border border-gray-200 rounded-xl p-2 bg-gray-50">
+              <img
+                src={selectedCompetition.pitMapImageUrl}
+                alt={`Pit map for ${selectedCompetition.name}`}
+                className="w-full h-auto max-h-[75vh] object-contain rounded-lg bg-white"
+              />
+            </div>
+          ) : (
+            <div className="border border-dashed border-gray-300 rounded-xl p-10 text-center text-gray-500">
+              No pit map uploaded yet.
+            </div>
+          )}
+        </div>
       ) : activeTab === 'teamLookup' ? (
         <TeamLookup selectedCompetition={selectedCompetition} />
       ) : (
