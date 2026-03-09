@@ -167,6 +167,11 @@ export const tbaApi = {
     return response.data;
   },
 
+  getEventTeams: async (eventKey: string): Promise<any[]> => {
+    const response = await api.get(`/tba/event/${eventKey}/teams`);
+    return response.data;
+  },
+
   getEvents: async (year: string): Promise<any[]> => {
     const response = await api.get(`/tba/events/${year}`);
     return response.data;

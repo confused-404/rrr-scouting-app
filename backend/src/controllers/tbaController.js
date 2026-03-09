@@ -127,6 +127,7 @@ export const tbaController = {
   /**
    * GET /api/tba/teams/:year/simple
    * Proxy TBA endpoint that returns simple team objects for the given year
+   * Handles pagination to fetch all teams
    * Example: /api/tba/teams/2024/simple
    */
   getTeamsSimple: async (req, res) => {
@@ -135,8 +136,40 @@ export const tbaController = {
       if (!year) {
         return res.status(400).json({ message: 'Year is required' });
       }
-      const data = await fetchTBA(`/teams/${year}/simple`);
-      res.json(data);
+
+      // TBA API returns paginated results, need to fetch all pages
+      let allTeams = [];
+      let page = 0;
+      let hasMore = true;
+      let consecutiveErrors = 0;
+
+      while (hasMore && consecutiveErrors < 3) {
+        try {
+          console.log(`Fetching page ${page} for year ${year}`);
+          const data = await fetchTBA(`/teams/${year}/simple`, { page });
+          
+          if (!Array.isArray(data) || data.length === 0) {
+            console.log(`Page ${page} returned empty, stopping pagination`);
+            hasMore = false;
+          } else {
+            allTeams = allTeams.concat(data);
+            console.log(`Fetched page ${page} with ${data.length} teams, total now: ${allTeams.length}`);
+            page++;
+            consecutiveErrors = 0; // Reset error counter on success
+          }
+        } catch (error) {
+          consecutiveErrors++;
+          console.log(`Error fetching page ${page}: ${error.status} - ${error.message}`);
+          
+          // If we get a 404 or keep getting errors, we've reached the end
+          if (error.status === 404 || consecutiveErrors >= 3) {
+            hasMore = false;
+          }
+        }
+      }
+
+      console.log(`getTeamsSimple: Returning ${allTeams.length} teams for year ${year}`);
+      res.json(allTeams);
     } catch (error) {
       console.error('Error in getTeamsSimple:', error);
       res.status(error.status || 500).json({ message: error.message });
