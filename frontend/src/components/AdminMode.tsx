@@ -6,10 +6,11 @@ import { ResponseViewer } from './ResponseViewer';
 import { TeamLookup } from './TeamLookup';
 import { MatchSchedule } from './MatchSchedule';
 import { ScoutingTeams } from './ScoutingTeams';
+import { PickListManager } from './PickListManager';
 import { competitionApi } from '../services/api';
 import type { Competition } from '../types/competition.types';
 
-type AdminTab = 'competitions' | 'forms' | 'scoutingTeams' | 'analytics' | 'superscout';
+type AdminTab = 'competitions' | 'forms' | 'scoutingTeams' | 'analytics' | 'superscout' | 'picklists';
 type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule';
 
 export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCompetitionUpdate }) => {
@@ -122,12 +123,16 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
         <button onClick={() => setActiveTab('superscout')} className={`flex-1 min-w-[120px] px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'superscout' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
           <ClipboardList size={16} /> Superscouter
         </button>
+        <button onClick={() => setActiveTab('picklists')} className={`flex-1 min-w-[120px] px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'picklists' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
+          <ClipboardList size={16} /> Pick Lists
+        </button>
       </div>
 
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         {activeTab === 'competitions' && <CompetitionManager />}
         {activeTab === 'forms' && <FormManager selectedCompetition={activeCompetition} onCompetitionUpdate={handleCompetitionUpdate} />}
         {activeTab === 'scoutingTeams' && <ScoutingTeams selectedCompetition={activeCompetition} />}
+        {activeTab === 'picklists' && <PickListManager selectedCompetition={activeCompetition} onCompetitionUpdate={handleCompetitionUpdate} />}
 
         {/* --- SUPERSCOUTER TAB --- */}
         {activeTab === 'superscout' && (

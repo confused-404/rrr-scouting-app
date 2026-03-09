@@ -19,6 +19,14 @@ export type GeneratedAssignment = {
   matchTime?: number; // Unix timestamp
 };
 
+export type ManualPickList = {
+  id: string;
+  name: string;
+  firstPickRankings: string[];
+  secondPickRankings: string[];
+  thirdPickRankings: string[];
+};
+
 export type Competition = {
   id: string;
   name: string;
@@ -37,5 +45,6 @@ export type Competition = {
   scoutingAssignments?: GeneratedAssignment[];
   eventKey?: string; // TBA event key
   pitMapImageUrl?: string;
+  manualPickLists?: ManualPickList[];
   createdAt: string;
 };

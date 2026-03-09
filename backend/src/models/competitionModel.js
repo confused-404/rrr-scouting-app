@@ -42,6 +42,7 @@ export const competitionModel = {
         eventKey: data.eventKey,
         superscouterNotes: data.superscouterNotes || {},
         pitMapImageUrl: data.pitMapImageUrl || '',
+        manualPickLists: data.manualPickLists || [],
       };
     });
   },
@@ -68,6 +69,7 @@ export const competitionModel = {
         eventKey: data.eventKey,
         superscouterNotes: data.superscouterNotes || {},
         pitMapImageUrl: data.pitMapImageUrl || '',
+        manualPickLists: data.manualPickLists || [],
       };
     });
   },
@@ -92,6 +94,7 @@ export const competitionModel = {
       eventKey: data.eventKey,
       superscouterNotes: data.superscouterNotes || {},
       pitMapImageUrl: data.pitMapImageUrl || '',
+      manualPickLists: data.manualPickLists || [],
     };
   },
 
@@ -109,6 +112,7 @@ export const competitionModel = {
       eventKey: competitionData.eventKey,
       superscouterNotes: competitionData.superscouterNotes || {},
       pitMapImageUrl: competitionData.pitMapImageUrl || '',
+      manualPickLists: competitionData.manualPickLists || [],
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     
@@ -129,6 +133,7 @@ export const competitionModel = {
       eventKey: data.eventKey,
       superscouterNotes: data.superscouterNotes || {},
       pitMapImageUrl: data.pitMapImageUrl || '',
+      manualPickLists: data.manualPickLists || [],
     };
   },
 
@@ -172,6 +177,7 @@ export const competitionModel = {
     if (competitionData.eventKey !== undefined) updateData.eventKey = competitionData.eventKey;
     if (competitionData.superscouterNotes !== undefined) updateData.superscouterNotes = competitionData.superscouterNotes;
     if (competitionData.pitMapImageUrl !== undefined) updateData.pitMapImageUrl = competitionData.pitMapImageUrl;
+    if (competitionData.manualPickLists !== undefined) updateData.manualPickLists = competitionData.manualPickLists;
     
     // console.log('Updating competition with:', updateData); // Debug log
     

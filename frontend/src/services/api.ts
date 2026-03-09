@@ -176,6 +176,11 @@ export const tbaApi = {
     const response = await api.get(`/tba/event/${eventKey}/matches`);
     return response.data;
   },
+
+  getEventOPRs: async (eventKey: string): Promise<any> => {
+    const response = await api.get(`/tba/event/${eventKey}/oprs`);
+    return response.data;
+  },
 };
 
 export const statboticsApi = {
@@ -189,7 +194,7 @@ export const statboticsApi = {
     return response.data;
   },
 
-  getTeamEvents: async (params?: { team?: string; year?: string; event?: string }): Promise<any[]> => {
+  getTeamEvents: async (params?: { team?: string; year?: string; event?: string; limit?: number; offset?: number }): Promise<any[]> => {
     const response = await api.get('/statbotics/team_events', { params });
     return response.data;
   },
