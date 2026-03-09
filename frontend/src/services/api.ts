@@ -180,7 +180,7 @@ export const tbaApi = {
 
 export const statboticsApi = {
   getEventMatches: async (eventKey: string): Promise<any[]> => {
-    const response = await api.get(`/statbotics/event/${eventKey}`);
+    const response = await api.get(`/statbotics/event/${eventKey}/matches`);
     return response.data;
   },
 

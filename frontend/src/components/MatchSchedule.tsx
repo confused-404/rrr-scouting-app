@@ -7,6 +7,7 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
   const [loading, setLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'tba' | 'statbotics'>('tba');
   const [teamFilter, setTeamFilter] = useState<string>('');
+  const [fetchError, setFetchError] = useState<string>('');
 
   useEffect(() => {
     if (!selectedCompetition?.eventKey) {
@@ -20,8 +21,9 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
     if (!selectedCompetition?.eventKey) return;
 
     setLoading(true);
+    setFetchError('');
     try {
-      let data;
+      let data: any[] = [];
       if (dataSource === 'tba') {
         data = await tbaApi.getEventMatches(selectedCompetition.eventKey);
       } else {
@@ -30,7 +32,19 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
       setMatches(data || []);
     } catch (error) {
       console.error('Error fetching matches:', error);
-      setMatches([]);
+      try {
+        const fallbackSource = dataSource === 'tba' ? 'statbotics' : 'tba';
+        const fallbackData = fallbackSource === 'tba'
+          ? await tbaApi.getEventMatches(selectedCompetition.eventKey)
+          : await statboticsApi.getEventMatches(selectedCompetition.eventKey);
+
+        setMatches(fallbackData || []);
+        setFetchError(`Primary source (${dataSource.toUpperCase()}) failed. Showing ${fallbackSource.toUpperCase()} data instead.`);
+      } catch (fallbackError) {
+        console.error('Fallback match fetch also failed:', fallbackError);
+        setMatches([]);
+        setFetchError('Could not fetch match schedule right now. Please try again in a moment.');
+      }
     } finally {
       setLoading(false);
     }
@@ -109,6 +123,10 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
           <p className="text-sm text-blue-600">
             Showing matches for team {teamFilter} ({filteredMatches.length} matches)
           </p>
+        )}
+
+        {fetchError && (
+          <p className="text-sm text-amber-700 mt-3">{fetchError}</p>
         )}
       </div>
 

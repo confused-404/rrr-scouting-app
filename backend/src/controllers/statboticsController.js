@@ -169,7 +169,10 @@ export const statboticsController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'No matches found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({
+        message: error.message,
+        ...(process.env.NODE_ENV === 'development' && { upstream: error.body }),
+      });
     }
   },
 
