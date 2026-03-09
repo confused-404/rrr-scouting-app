@@ -83,7 +83,7 @@ export const competitionController = {
   // Update competition
   updateCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey } = req.body;
+      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey, superscouterNotes } = req.body;
       
       const updatedCompetition = await competitionModel.updateCompetition(req.params.id, {
         ...(name && { name }),
@@ -96,6 +96,7 @@ export const competitionController = {
         ...(scoutingTeams !== undefined && { scoutingTeams }),
         ...(scoutingAssignments !== undefined && { scoutingAssignments }),
         ...(eventKey !== undefined && { eventKey }),
+        ...(superscouterNotes !== undefined && { superscouterNotes }),
       });
       
       if (!updatedCompetition) {
@@ -233,6 +234,59 @@ export const competitionController = {
       res.json(updatedCompetition);
     } catch (error) {
       console.error('Error in setActiveFormId:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  // Save superscouterNotes for a specific team in a competition
+  saveSuperscouterNotes: async (req, res) => {
+    try {
+      const { teamNumber, notes } = req.body;
+      const competitionId = req.params.id;
+
+      if (!teamNumber) {
+        return res.status(400).json({ message: 'Team number is required' });
+      }
+
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      if (!competition) {
+        return res.status(404).json({ message: 'Competition not found' });
+      }
+
+      // Update the superscouterNotes object
+      const updatedNotes = competition.superscouterNotes || {};
+      updatedNotes[teamNumber] = notes || '';
+
+      const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
+        superscouterNotes: updatedNotes,
+      });
+
+      res.json(updatedCompetition);
+    } catch (error) {
+      console.error('Error in saveSuperscouterNotes:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  // Get superscouterNotes for a specific team in a competition
+  getSuperscouterNotes: async (req, res) => {
+    try {
+      const { teamNumber } = req.query;
+      const competitionId = req.params.id;
+
+      if (!teamNumber) {
+        return res.status(400).json({ message: 'Team number is required' });
+      }
+
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      if (!competition) {
+        return res.status(404).json({ message: 'Competition not found' });
+      }
+
+      const notes = competition.superscouterNotes?.[teamNumber] || '';
+      res.json({ teamNumber, notes });
+    } catch (error) {
+      console.error('Error in getSuperscouterNotes:', error);
       res.status(500).json({ message: error.message });
     }
   },
