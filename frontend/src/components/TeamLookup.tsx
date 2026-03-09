@@ -174,16 +174,16 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   if (!selectedCompetition) return <div className="p-10 text-center text-gray-400">No active competition selected</div>;
 
   return (
-    <div className="space-y-6 pb-20">
+    <div className="space-y-4 sm:space-y-6 pb-20">
       {/* Team search */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-3 sm:gap-4 items-stretch md:items-center">
         <input
           placeholder="Team number..."
           value={teamQuery}
           onChange={e => setTeamQuery(e.target.value)}
           className="flex-1 border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium"
         />
-        <button onClick={handleSearch} className="px-6 py-3 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition-all">
+        <button onClick={handleSearch} className="w-full md:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition-all">
           Search
         </button>
       </div>
@@ -245,10 +245,10 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
                           const percentage = totalResponses > 0 ? (count / totalResponses * 100).toFixed(1) : '0';
                           
                           return (
-                            <div key={item} className="flex items-center justify-between">
-                              <span className="text-sm flex-1 pr-2">{item}</span>
-                              <div className="flex items-center gap-2">
-                                <div className="w-24 bg-gray-200 rounded-full h-2">
+                            <div key={item} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+                              <span className="text-sm break-words">{item}</span>
+                              <div className="flex items-center gap-2 sm:min-w-[11rem]">
+                                <div className="flex-1 sm:flex-none sm:w-24 bg-gray-200 rounded-full h-2">
                                   <div 
                                     className="bg-blue-600 h-2 rounded-full" 
                                     style={{ width: `${percentage}%` }}

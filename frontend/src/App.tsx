@@ -70,54 +70,55 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-semibold text-gray-900">Scouting App</h1>
-            <div className="flex gap-2 items-center">
-              <span className="text-sm text-gray-600 mr-2">
+        <div className="max-w-4xl mx-auto px-4 py-3 sm:py-4">
+          <div className="flex flex-col gap-3 sm:gap-4 mb-3 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
+            <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Scouting App</h1>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+              <span className="text-xs sm:text-sm text-gray-600 sm:mr-2 break-all">
                 {currentUser.email} {isAdmin && <span className="text-xs font-bold text-blue-600 ml-1">(ADMIN)</span>}
               </span>
-              
-              {isAdmin && (
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                {isAdmin && (
+                  <button
+                    onClick={() => setMode('admin')}
+                    className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${
+                      mode === 'admin'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    <Edit2 size={16} />
+                    Admin
+                  </button>
+                )}
+
                 <button
-                  onClick={() => setMode('admin')}
-                  className={`px-4 py-2 rounded-md flex items-center gap-2 ${
-                    mode === 'admin'
+                  onClick={() => setMode('user')}
+                  className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${
+                    mode === 'user'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }`}
                 >
-                  <Edit2 size={16} />
-                  Admin
+                  <Eye size={16} />
+                  Scout
                 </button>
-              )}
 
-              <button
-                onClick={() => setMode('user')}
-                className={`px-4 py-2 rounded-md flex items-center gap-2 ${
-                  mode === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                <Eye size={16} />
-                Scout
-              </button>
-              
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 rounded-md flex items-center gap-2 bg-red-600 text-white hover:bg-red-700"
-              >
-                <LogOut size={16} />
-                Logout
-              </button>
+                <button
+                  onClick={handleLogout}
+                  className="px-3 py-2 rounded-md flex items-center justify-center gap-2 bg-red-600 text-white hover:bg-red-700 text-sm"
+                >
+                  <LogOut size={16} />
+                  Logout
+                </button>
+              </div>
             </div>
           </div>
 
           {mode === 'user' && selectedCompetition && (
             <div className="flex items-center gap-2">
               <Calendar size={16} className="text-gray-500" />
-              <span className="text-sm text-gray-700 font-medium">
+              <span className="text-xs sm:text-sm text-gray-700 font-medium">
                 {selectedCompetition.name} ({selectedCompetition.season})
               </span>
             </div>
@@ -125,7 +126,7 @@ function App() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto px-3 sm:px-4 py-5 sm:py-8">
         {mode === 'admin' && isAdmin ? (
           <AdminMode onCompetitionUpdate={() => loadCompetitions()} />
         ) : (
