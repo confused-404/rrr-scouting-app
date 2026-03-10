@@ -125,8 +125,13 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
             filteredSubs.forEach(sub => {
               const val = sub.data?.[field.id];
               if (Array.isArray(val) && val.length > 0) {
-                const rankingString = val.join(' > ');
-                counts[rankingString] = (counts[rankingString] || 0) + 1;
+                const compact = val
+                  .map((item) => String(item ?? '').trim())
+                  .filter((item) => item !== '');
+                if (compact.length > 0) {
+                  const rankingString = compact.join(' > ');
+                  counts[rankingString] = (counts[rankingString] || 0) + 1;
+                }
               }
             });
             summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
