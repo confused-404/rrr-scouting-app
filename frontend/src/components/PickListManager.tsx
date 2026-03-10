@@ -28,6 +28,14 @@ type CategoryRanking = {
 };
 
 type PickListTab = 'manual' | 'automatic';
+type QuantAggregateMode = 'average' | 'total' | 'max';
+type SortDirection = 'desc' | 'asc';
+
+type QuantitativeAutoRow = {
+  team: string;
+  submissionCount: number;
+  value: number;
+};
 
 const teamFieldRegex = /team|team number|team #/i;
 
@@ -98,6 +106,9 @@ export const PickListManager: React.FC<{
 
   const [selectedQualCategory, setSelectedQualCategory] = useState('');
   const [activePickListTab, setActivePickListTab] = useState<PickListTab>('manual');
+  const [selectedQuantField, setSelectedQuantField] = useState('');
+  const [quantAggregateMode, setQuantAggregateMode] = useState<QuantAggregateMode>('average');
+  const [quantSortDirection, setQuantSortDirection] = useState<SortDirection>('desc');
 
   useEffect(() => {
     if (!selectedCompetition) return;
@@ -225,6 +236,14 @@ export const PickListManager: React.FC<{
     return Array.from(set).sort();
   }, [teamAggregates]);
 
+  const quantitativeFieldOptions = useMemo(() => {
+    const set = new Set<string>();
+    teamAggregates.forEach((team) => {
+      Object.keys(team.quantitative).forEach((key) => set.add(key));
+    });
+    return Array.from(set).sort();
+  }, [teamAggregates]);
+
   useEffect(() => {
     if (!selectedQualCategory && qualitativeCategories.length > 0) {
       setSelectedQualCategory(qualitativeCategories[0]);
@@ -233,6 +252,15 @@ export const PickListManager: React.FC<{
       setSelectedQualCategory(qualitativeCategories[0] || '');
     }
   }, [qualitativeCategories, selectedQualCategory]);
+
+  useEffect(() => {
+    if (!selectedQuantField && quantitativeFieldOptions.length > 0) {
+      setSelectedQuantField(quantitativeFieldOptions[0]);
+    }
+    if (selectedQuantField && !quantitativeFieldOptions.includes(selectedQuantField)) {
+      setSelectedQuantField(quantitativeFieldOptions[0] || '');
+    }
+  }, [quantitativeFieldOptions, selectedQuantField]);
 
   const qualitativeRankings = useMemo(() => {
     if (!selectedQualCategory) return [] as CategoryRanking[];
@@ -264,6 +292,41 @@ export const PickListManager: React.FC<{
     rows.sort((a, b) => b.hitRate - a.hitRate || b.hitCount - a.hitCount);
     return rows;
   }, [selectedQualCategory, teamAggregates]);
+
+  const quantitativeAutoRankings = useMemo(() => {
+    if (!selectedQuantField) return [] as QuantitativeAutoRow[];
+
+    const rows: QuantitativeAutoRow[] = teamAggregates
+      .map((team) => {
+        const values = team.quantitative[selectedQuantField] || [];
+        if (values.length === 0) return null;
+
+        let value = 0;
+        if (quantAggregateMode === 'total') {
+          value = values.reduce((sum, n) => sum + n, 0);
+        } else if (quantAggregateMode === 'max') {
+          value = Math.max(...values);
+        } else {
+          value = values.reduce((sum, n) => sum + n, 0) / values.length;
+        }
+
+        return {
+          team: team.team,
+          submissionCount: team.submissionCount,
+          value,
+        };
+      })
+      .filter(Boolean) as QuantitativeAutoRow[];
+
+    rows.sort((a, b) => {
+      const direction = quantSortDirection === 'desc' ? 1 : -1;
+      const byValue = direction * (b.value - a.value);
+      if (byValue !== 0) return byValue;
+      return direction * (b.submissionCount - a.submissionCount);
+    });
+
+    return rows;
+  }, [quantAggregateMode, quantSortDirection, selectedQuantField, teamAggregates]);
 
   const selectedManualList = useMemo(
     () => manualLists.find((list) => list.id === selectedManualId) || null,
@@ -456,6 +519,78 @@ export const PickListManager: React.FC<{
                         <td className="px-3 py-2">#{idx + 1}</td>
                         <td className="px-3 py-2 font-semibold">{row.team}</td>
                         <td className="px-3 py-2">{row.value.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 space-y-4">
+            <div className="flex items-center gap-2 text-gray-900 font-bold">
+              <ClipboardList size={18} />
+              Quantitative Auto Pick List
+            </div>
+
+            {quantitativeFieldOptions.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="text-sm text-gray-600">Metric</label>
+                <select
+                  value={selectedQuantField}
+                  onChange={(e) => setSelectedQuantField(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  {quantitativeFieldOptions.map((field) => (
+                    <option key={field} value={field}>
+                      {field}
+                    </option>
+                  ))}
+                </select>
+
+                <label className="text-sm text-gray-600">Aggregate</label>
+                <select
+                  value={quantAggregateMode}
+                  onChange={(e) => setQuantAggregateMode(e.target.value as QuantAggregateMode)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="average">Average</option>
+                  <option value="total">Total</option>
+                  <option value="max">Max</option>
+                </select>
+
+                <label className="text-sm text-gray-600">Sort</label>
+                <select
+                  value={quantSortDirection}
+                  onChange={(e) => setQuantSortDirection(e.target.value as SortDirection)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="desc">High to Low</option>
+                  <option value="asc">Low to High</option>
+                </select>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No quantitative fields found in submissions yet.</p>
+            )}
+
+            {selectedQuantField && quantitativeAutoRankings.length > 0 && (
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-700">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Rank</th>
+                      <th className="px-3 py-2 text-left">Team</th>
+                      <th className="px-3 py-2 text-left">Value</th>
+                      <th className="px-3 py-2 text-left">Submissions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quantitativeAutoRankings.map((row, idx) => (
+                      <tr key={`${row.team}-${idx}`} className="border-t border-gray-100">
+                        <td className="px-3 py-2">#{idx + 1}</td>
+                        <td className="px-3 py-2 font-semibold">{row.team}</td>
+                        <td className="px-3 py-2">{row.value.toFixed(2)}</td>
+                        <td className="px-3 py-2">{row.submissionCount}</td>
                       </tr>
                     ))}
                   </tbody>
