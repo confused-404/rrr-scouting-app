@@ -4,7 +4,7 @@ import { competitionApi, formApi, statboticsApi, tbaApi } from '../services/api'
 import type { Competition, ManualPickList } from '../types/competition.types';
 import type { Form, Submission } from '../types/form.types';
 
-type AutoSource = 'statbotics' | 'tba';
+type AutoSource = 'tba' | 'statbotics';
 
 type AutoRankedTeam = {
   team: string;
@@ -82,7 +82,7 @@ export const PickListManager: React.FC<{
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loadingData, setLoadingData] = useState(false);
 
-  const [autoSource, setAutoSource] = useState<AutoSource>('statbotics');
+  const [autoSource, setAutoSource] = useState<AutoSource>('tba');
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoRankings, setAutoRankings] = useState<AutoRankedTeam[]>([]);
   const [autoError, setAutoError] = useState('');
@@ -420,8 +420,8 @@ export const PickListManager: React.FC<{
                 onChange={(e) => setAutoSource(e.target.value as AutoSource)}
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
               >
-                <option value="statbotics">Statbotics (EPA)</option>
-                <option value="tba">The Blue Alliance (OPR fallback)</option>
+                <option value="tba">The Blue Alliance (OPR)</option>
+                <option value="statbotics">Statbotics (EPA fallback)</option>
               </select>
               <button
                 onClick={fetchAutomaticRankings}
