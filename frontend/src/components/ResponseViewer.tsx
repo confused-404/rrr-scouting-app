@@ -9,6 +9,16 @@ type FilterOp = 'contains' | 'equals' | 'gt' | 'lt';
 // Helper for filtering
 const toNumber = (v: any) => (v === '' || v === null || v === undefined) ? null : Number(v);
 
+const toDisplayValue = (raw: any): string => {
+  if (raw === undefined || raw === null || raw === '') return '—';
+  if (Array.isArray(raw)) return raw.join(', ');
+  if (typeof raw === 'object') {
+    if (typeof raw.url === 'string') return raw.url;
+    return JSON.stringify(raw);
+  }
+  return String(raw);
+};
+
 export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
   const [forms, setForms] = useState<Form[]>([]);
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
@@ -89,7 +99,7 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
         teamSubs.forEach(sub => {
           const raw = sub.data?.[field.id];
           if (raw !== undefined && raw !== null && raw !== '') {
-            const text = Array.isArray(raw) ? raw.join(', ') : String(raw);
+            const text = toDisplayValue(raw);
             values.add(text);
           }
         });
@@ -114,7 +124,7 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
     const q = filterValue.trim().toLowerCase();
     return submissions.filter(sub => {
       const raw = sub.data?.[filterFieldId];
-      const v = String(raw ?? '').toLowerCase();
+      const v = toDisplayValue(raw).toLowerCase();
       if (filterOp === 'gt' || filterOp === 'lt') {
         const numV = toNumber(raw);
         const numQ = toNumber(q);
@@ -178,7 +188,18 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
                       <div key={f.id} className="space-y-1">
                         <div className="text-[9px] uppercase font-black text-blue-500 tracking-tighter opacity-70">{f.label}</div>
                         <div className="text-sm font-bold text-gray-800">
-                          {Array.isArray(sub.data?.[f.id]) ? sub.data[f.id].join(', ') : String(sub.data?.[f.id] ?? '—')}
+                          {f.type === 'picture' && typeof sub.data?.[f.id]?.url === 'string' ? (
+                            <a href={sub.data[f.id].url} target="_blank" rel="noreferrer" className="inline-block">
+                              <img
+                                src={sub.data[f.id].url}
+                                alt={f.label || 'Uploaded image'}
+                                className="w-24 h-24 object-cover rounded-md border border-gray-200"
+                                loading="lazy"
+                              />
+                            </a>
+                          ) : (
+                            toDisplayValue(sub.data?.[f.id])
+                          )}
                         </div>
                       </div>
                     ))}

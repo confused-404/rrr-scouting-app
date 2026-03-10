@@ -4,7 +4,15 @@ export type FormFieldType =
   | 'rank_order'
   | 'text'
   | 'multiple_choice'
-  | 'multiple_select';
+  | 'multiple_select'
+  | 'picture';
+
+export type PictureResponse = {
+  url: string;
+  name: string;
+  size: number;
+  type: string;
+};
 
 export type FormField = {
   id: number;

@@ -1,14 +1,45 @@
 // FormField.tsx
-import React from 'react';
-import type { FormField as FormFieldType } from '../types/form.types';
+import React, { useState } from 'react';
+import { Camera, Trash2 } from 'lucide-react';
+import type { FormField as FormFieldType, PictureResponse } from '../types/form.types';
+import { uploadScoutingImage } from '../services/imageUpload';
 
 interface FormFieldProps {
   field: FormFieldType;
   value: any;
   onChange: (value: any) => void;
+  competitionId?: string;
+  formId?: string;
 }
 
-export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange }) => {
+export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, competitionId, formId }) => {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handlePictureSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+
+    if (!file) return;
+
+    setUploading(true);
+    setUploadError(null);
+
+    try {
+      const uploaded = await uploadScoutingImage(file, {
+        competitionId,
+        formId,
+        fieldId: field.id,
+      });
+      onChange(uploaded);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to upload image.';
+      setUploadError(message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   switch (field.type) {
     case 'text':
       return (
@@ -205,6 +236,58 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange }) 
               </div>
             </div>
           )}
+        </div>
+      );
+    }
+
+    case 'picture': {
+      const imageValue: PictureResponse | null =
+        value && typeof value === 'object' && typeof value.url === 'string'
+          ? (value as PictureResponse)
+          : null;
+
+      return (
+        <div className="space-y-3">
+          <label className="block">
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handlePictureSelect}
+              disabled={uploading}
+              className="hidden"
+            />
+            <div className="w-full border border-dashed border-blue-300 rounded-lg p-4 bg-blue-50/40 text-blue-800 text-sm font-medium flex items-center justify-center gap-2 min-h-12">
+              <Camera size={16} />
+              {uploading ? 'Uploading photo...' : imageValue ? 'Retake / Replace Photo' : 'Take Photo or Upload from Gallery'}
+            </div>
+          </label>
+
+          {uploadError ? <p className="text-sm text-red-600">{uploadError}</p> : null}
+
+          {imageValue ? (
+            <div className="border border-gray-200 rounded-lg p-3 bg-white space-y-3">
+              <img
+                src={imageValue.url}
+                alt={field.label || 'Uploaded scouting image'}
+                className="w-full max-h-72 object-contain rounded-md bg-gray-100"
+                loading="lazy"
+              />
+              <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
+                <span className="truncate">{imageValue.name}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUploadError(null);
+                    onChange(undefined);
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100"
+                >
+                  <Trash2 size={14} /> Remove
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       );
     }

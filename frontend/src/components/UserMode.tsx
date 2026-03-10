@@ -194,6 +194,18 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
           if (arr.length === 0) nextErrors[field.id] = 'Please select and rank at least one option.';
           break;
         }
+
+        case 'picture': {
+          const hasUrl =
+            value &&
+            typeof value === 'object' &&
+            typeof (value as { url?: unknown }).url === 'string' &&
+            (value as { url: string }).url.trim() !== '';
+          if (!hasUrl) {
+            nextErrors[field.id] = 'Please upload a picture.';
+          }
+          break;
+        }
       }
     }
 
@@ -400,6 +412,8 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
                   field={field}
                   value={responses[String(field.id)]}
                   onChange={(value) => handleInputChange(field.id, value)}
+                  competitionId={selectedCompetition?.id}
+                  formId={currentFormId || undefined}
                 />
 
                 {errors[field.id] ? (

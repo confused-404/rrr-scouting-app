@@ -453,6 +453,12 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
                             >
                                 + Multiple Select
                             </button>
+                            <button
+                                onClick={() => addField('picture')}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                            >
+                                + Picture Upload
+                            </button>
                         </div>
                     </div>
 
