@@ -88,7 +88,7 @@ export const PickListManager: React.FC<{
 }> = ({ selectedCompetition, onCompetitionUpdate }) => {
   const [forms, setForms] = useState<Form[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [loadingData, setLoadingData] = useState(false);
+  const [, setLoadingData] = useState(false);
 
   const [autoSource, setAutoSource] = useState<AutoSource>('tba');
   const [autoLoading, setAutoLoading] = useState(false);
@@ -193,40 +193,6 @@ export const PickListManager: React.FC<{
 
     return Array.from(byTeam.values());
   }, [forms, submissions]);
-
-  const statisticalRankings = useMemo(() => {
-    const rows = teamAggregates
-      .map((team) => {
-        const averages: Record<string, number> = {};
-        const avgValues: number[] = [];
-
-        Object.entries(team.quantitative).forEach(([fieldLabel, values]) => {
-          if (values.length === 0) return;
-          const avg = values.reduce((a, b) => a + b, 0) / values.length;
-          averages[fieldLabel] = avg;
-          avgValues.push(avg);
-        });
-
-        if (avgValues.length === 0) return null;
-
-        const overallScore = avgValues.reduce((a, b) => a + b, 0) / avgValues.length;
-        return {
-          team: team.team,
-          submissionCount: team.submissionCount,
-          overallScore,
-          averages,
-        };
-      })
-      .filter(Boolean) as Array<{
-      team: string;
-      submissionCount: number;
-      overallScore: number;
-      averages: Record<string, number>;
-    }>;
-
-    rows.sort((a, b) => b.overallScore - a.overallScore);
-    return rows;
-  }, [teamAggregates]);
 
   const qualitativeCategories = useMemo(() => {
     const set = new Set<string>();
@@ -591,50 +557,6 @@ export const PickListManager: React.FC<{
                         <td className="px-3 py-2 font-semibold">{row.team}</td>
                         <td className="px-3 py-2">{row.value.toFixed(2)}</td>
                         <td className="px-3 py-2">{row.submissionCount}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 space-y-4">
-            <div className="flex items-center gap-2 text-gray-900 font-bold">
-              <ClipboardList size={18} />
-              Statistical Rankings
-            </div>
-
-            {loadingData ? (
-              <p className="text-sm text-gray-500">Loading form responses...</p>
-            ) : statisticalRankings.length === 0 ? (
-              <p className="text-sm text-gray-500">No quantitative submission data found yet.</p>
-            ) : (
-              <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50 text-gray-700">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Rank</th>
-                      <th className="px-3 py-2 text-left">Team</th>
-                      <th className="px-3 py-2 text-left">Overall Avg</th>
-                      <th className="px-3 py-2 text-left">Stat Averages</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {statisticalRankings.map((row, idx) => (
-                      <tr key={row.team} className="border-t border-gray-100 align-top">
-                        <td className="px-3 py-2">#{idx + 1}</td>
-                        <td className="px-3 py-2 font-semibold">{row.team}</td>
-                        <td className="px-3 py-2">{row.overallScore.toFixed(2)}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex flex-wrap gap-2">
-                            {Object.entries(row.averages).map(([label, avg]) => (
-                              <span key={label} className="text-xs bg-blue-50 text-blue-800 rounded px-2 py-1">
-                                {label}: {avg.toFixed(2)}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
