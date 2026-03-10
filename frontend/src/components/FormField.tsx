@@ -127,84 +127,107 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange }) 
 
     case 'rank_order': {
       const options = field.options ?? [];
-      const selectedOptions: string[] = Array.isArray(value) ? value : [];
+      const ranked: string[] = Array.isArray(value)
+        ? value.map((item) => String(item ?? '').trim()).filter((item) => item !== '')
+        : [];
 
-      const toggleOption = (option: string) => {
-        if (selectedOptions.includes(option)) {
-          // Remove option
-          onChange(selectedOptions.filter(o => o !== option));
-        } else {
-          // Add option at the end
-          onChange([...selectedOptions, option]);
-        }
+      const addOptionToEnd = (option: string) => {
+        onChange([...ranked, option]);
       };
 
-      const moveUp = (index: number) => {
-        if (index === 0) return;
-        const newOrder = [...selectedOptions];
-        [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
-        onChange(newOrder);
+      const removeAt = (index: number) => {
+        const next = [...ranked];
+        next.splice(index, 1);
+        onChange(next);
       };
 
-      const moveDown = (index: number) => {
-        if (index === selectedOptions.length - 1) return;
-        const newOrder = [...selectedOptions];
-        [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
-        onChange(newOrder);
+      const moveItem = (fromIndex: number, toIndex: number) => {
+        if (fromIndex === toIndex) return;
+        if (fromIndex < 0 || toIndex < 0) return;
+        if (fromIndex >= ranked.length || toIndex >= ranked.length) return;
+
+        const next = [...ranked];
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, moved);
+        onChange(next);
       };
 
       return (
         <div className="space-y-4">
           <div>
-            <p className="text-sm text-gray-600 mb-3">First, select the locations/paths that apply to this robot:</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <p className="text-sm text-gray-600 mb-2">Options (click to add to end)</p>
+            <div className="flex flex-wrap gap-2">
               {options.length > 0 ? options.map((option) => (
-                <label key={option} className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedOptions.includes(option)}
-                    onChange={() => toggleOption(option)}
-                    className="text-blue-600"
-                  />
-                  <span>{option}</span>
-                </label>
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => addOptionToEnd(option)}
+                  className="px-3 py-1.5 text-sm rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                >
+                  {option}
+                </button>
               )) : (
                 <p className="text-sm text-gray-500">No options configured for this field.</p>
               )}
             </div>
           </div>
 
-          {selectedOptions.length > 0 && (
-            <div>
-              <p className="text-sm text-gray-600 mb-3">Now rank them from most preferred (top) to least preferred (bottom):</p>
-              <div className="space-y-2">
-                {selectedOptions.map((option, index) => (
-                  <div key={option} className="flex items-center gap-2 p-2 bg-blue-50 rounded-md">
-                    <span className="text-sm font-medium text-blue-700 w-6">{index + 1}.</span>
-                    <span className="flex-1">{option}</span>
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => moveUp(index)}
-                        disabled={index === 0}
-                        className="px-2 py-1 text-xs bg-blue-500 text-white rounded disabled:bg-gray-300 disabled:cursor-not-allowed"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveDown(index)}
-                        disabled={index === selectedOptions.length - 1}
-                        className="px-2 py-1 text-xs bg-blue-500 text-white rounded disabled:bg-gray-300 disabled:cursor-not-allowed"
-                      >
-                        ↓
-                      </button>
-                    </div>
+          <div>
+            <p className="text-sm text-gray-600 mb-3">Ranked List (drag to reorder)</p>
+            <div className="space-y-2">
+              {ranked.length > 0 ? (
+                ranked.map((option, index) => (
+                  <div
+                    key={`${option}-${index}`}
+                    className="flex items-center gap-2 p-2 bg-blue-50 rounded-md border border-blue-100"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('text/plain', String(index));
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const from = Number(e.dataTransfer.getData('text/plain'));
+                      if (Number.isNaN(from)) return;
+                      moveItem(from, index);
+                    }}
+                  >
+                    <span className="w-7 text-sm font-semibold text-gray-700">{index + 1}.</span>
+                    <span className="flex-1 text-sm">{option}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeAt(index)}
+                      className="px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200"
+                    >
+                      Remove
+                    </button>
                   </div>
-                ))}
-              </div>
+                ))
+              ) : (
+                <p className="text-sm text-gray-500">No ranked items yet. Click an option to add one.</p>
+              )}
+
+              {ranked.length > 1 && (
+                <div
+                  className="p-2 text-xs text-gray-500 border border-dashed border-gray-300 rounded-md"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const from = Number(e.dataTransfer.getData('text/plain'));
+                    if (Number.isNaN(from)) return;
+                    moveItem(from, ranked.length - 1);
+                  }}
+                >
+                  Drag items onto another row to reorder.
+                </div>
+              )}
             </div>
-          )}
+            <p className="text-xs text-gray-500 mt-2">Options can be reused and added multiple times.</p>
+          </div>
         </div>
       );
     }

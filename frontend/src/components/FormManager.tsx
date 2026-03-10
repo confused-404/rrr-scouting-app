@@ -520,7 +520,6 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
                                         </div>
                                     )}
 
-
                                     {/* Options editor */}
                                     {(field.type === 'multiple_choice' || field.type === 'multiple_select' || field.type === 'rank_order') && (
                                         <div className="space-y-2 mb-4">

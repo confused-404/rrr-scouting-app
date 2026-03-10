@@ -191,7 +191,10 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
 
         case 'rank_order': {
           const arr = Array.isArray(value) ? value : [];
-          if (arr.length === 0) nextErrors[field.id] = 'Please select and rank at least one option.';
+          const filled = arr.filter((item) => typeof item === 'string' && item.trim() !== '');
+          if (filled.length === 0) {
+            nextErrors[field.id] = 'Please add at least one ranked option.';
+          }
           break;
         }
       }
@@ -252,7 +255,20 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
 
     setLoading(true);
     try {
-      await formApi.createSubmission(currentFormId, selectedCompetition.id, responses);
+      const normalizedResponses: Record<string, any> = { ...responses };
+
+      // Keep rank_order payloads compact and clean before submit.
+      formFields.forEach((field) => {
+        if (field.type !== 'rank_order') return;
+        const key = String(field.id);
+        const raw = normalizedResponses[key];
+        if (!Array.isArray(raw)) return;
+        normalizedResponses[key] = raw
+          .map((item) => String(item ?? '').trim())
+          .filter((item) => item !== '');
+      });
+
+      await formApi.createSubmission(currentFormId, selectedCompetition.id, normalizedResponses);
       setResponses({});
       setErrors({});
       alert('Form submitted successfully!');
