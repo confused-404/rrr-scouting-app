@@ -52,6 +52,17 @@ export const authApi = {
     const response = await api.get('/auth/me');
     return response.data;
   },
+
+  // password reset helpers
+  forgotPassword: async (email: string) => {
+    const response = await api.post('/auth/forgot-password', { email });
+    return response.data;
+  },
+
+  resetPassword: async (email: string, code: string, newPassword: string) => {
+    const response = await api.post('/auth/reset-password', { email, code, newPassword });
+    return response.data;
+  },
 };
 
 export const competitionApi = {

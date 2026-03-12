@@ -1,4 +1,6 @@
 import { auth, db } from '../config/firebase.js';
+import admin from 'firebase-admin';
+import { sendMail } from '../config/mailer.js';
 
 /**
  * SIGNUP
@@ -97,5 +99,101 @@ export const getAdminEmails = async (req, res) => {
     res.status(200).json(adminEmails);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching admins' });
+  }
+};
+
+/**
+ * FORGOT PASSWORD
+ * Generate a one‑time code, store it in Firestore with expiration,
+ * and email it to the user using the configured mailer.
+ */
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    // verify that user exists in Firebase Auth
+    let userRecord;
+    try {
+      userRecord = await auth.getUserByEmail(email);
+    } catch (e) {
+      // don't leak whether email exists; respond success anyway
+      console.warn('forgotPassword lookup failed:', e.message);
+      return res.status(200).json({ message: 'If an account exists for that email you will receive a code shortly.' });
+    }
+
+    // create a 6‑digit numeric code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = Date.now() + 1000 * 60 * 60; // one hour
+
+    // store on user document
+    await db.collection('users').doc(userRecord.uid).set({
+      resetCode: code,
+      resetExpires: expires
+    }, { merge: true });
+
+    // log code for development / fallback
+    console.log(`password reset code for ${email}: ${code}`);
+
+    // send email
+    const text = `Your password reset code is: ${code}\n\nThis code will expire in one hour.`;
+    try {
+      await sendMail({
+        to: email,
+        subject: 'Password Reset Code',
+        text
+      });
+    } catch (mailError) {
+      console.error('mailError while sending reset code:', mailError);
+      // do not fail the request; we still respond success so callers
+      // cannot probe for existing accounts
+    }
+
+    res.status(200).json({ message: 'If an account exists for that email you will receive a code shortly.' });
+  } catch (error) {
+    console.error('forgotPassword error:', error);
+    res.status(500).json({ message: 'Error generating reset code' });
+  }
+};
+
+/**
+ * RESET PASSWORD
+ * Verify the code and expiration, then update the password via
+ * the Admin SDK and clean up the temporary fields in Firestore.
+ */
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword) {
+      return res.status(400).json({ message: 'Email, code and new password are required' });
+    }
+
+    const userRecord = await auth.getUserByEmail(email);
+    const userDoc = await db.collection('users').doc(userRecord.uid).get();
+    const data = userDoc.data() || {};
+
+    if (
+      data.resetCode !== code ||
+      !data.resetExpires ||
+      data.resetExpires < Date.now()
+    ) {
+      return res.status(400).json({ message: 'Invalid or expired code' });
+    }
+
+    // update password
+    await auth.updateUser(userRecord.uid, { password: newPassword });
+
+    // remove the code fields
+    await db.collection('users').doc(userRecord.uid).update({
+      resetCode: admin.firestore.FieldValue.delete(),
+      resetExpires: admin.firestore.FieldValue.delete()
+    });
+
+    res.json({ message: 'Password has been reset successfully' });
+  } catch (error) {
+    console.error('resetPassword error:', error);
+    res.status(500).json({ message: error.message });
   }
 };
