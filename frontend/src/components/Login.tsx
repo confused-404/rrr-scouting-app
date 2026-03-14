@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { ForgotPassword } from './ForgotPassword';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -7,6 +8,7 @@ export const Login: React.FC = () => {
   const [isSignup, setIsSignup] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
   const { signup, login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -26,6 +28,10 @@ export const Login: React.FC = () => {
       setLoading(false);
     }
   };
+
+  if (forgotMode) {
+    return <ForgotPassword onBack={() => setForgotMode(false)} />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -71,21 +77,38 @@ export const Login: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
           >
             {loading ? 'Processing...' : isSignup ? 'Sign Up' : 'Login'}
           </button>
         </form>
 
-        <div className="mt-4 text-center">
-          <button
-            onClick={() => setIsSignup(!isSignup)}
-            className="text-blue-600 hover:text-blue-700 text-sm"
-          >
-            {isSignup
-              ? 'Already have an account? Login'
-              : "Don't have an account? Sign up"}
-          </button>
+        <div className="mt-6 text-center space-y-3">
+          {/* Sign Up / Login Toggle */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setIsSignup(!isSignup)}
+              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            >
+              {isSignup
+                ? 'Already have an account? Login'
+                : "Don't have an account? Sign up"}
+            </button>
+          </div>
+
+          {/* Forgot Password Toggle - Only shows on Login mode */}
+          {!isSignup && (
+            <div className="border-top pt-2">
+              <button
+                type="button"
+                onClick={() => setForgotMode(true)}
+                className="text-gray-500 hover:text-gray-700 text-sm"
+              >
+                Forgot password?
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

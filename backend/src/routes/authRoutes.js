@@ -1,10 +1,12 @@
 import express from 'express';
-import { 
+import {
   signup, 
   getMe, 
   makeAdmin, 
   getAdminEmails,
-  initializeFirstAdmin 
+  initializeFirstAdmin,
+  forgotPassword,
+  resetPassword
 } from '../controllers/authController.js';
 import { verifyToken, isAdmin } from '../middleware/userAuth.js';
 
@@ -15,6 +17,8 @@ router.post('/initialize-admin', initializeFirstAdmin);
 
 // PUBLIC
 router.post('/signup', signup);
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password', resetPassword);
 
 // AUTHENTICATED
 router.get('/me', verifyToken, getMe);
