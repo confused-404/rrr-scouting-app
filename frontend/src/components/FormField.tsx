@@ -1,14 +1,129 @@
-// FormField.tsx
-import React from 'react';
+import React, { useId, useRef, useState } from 'react';
+import { Camera, ImagePlus, Trash2 } from 'lucide-react';
+import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
+import { storage } from '../config/firebase';
 import type { FormField as FormFieldType } from '../types/form.types';
+import { compressImageFile } from '../utils/imageUpload';
+import { isPictureFieldValue } from '../utils/formValues';
 
 interface FormFieldProps {
   field: FormFieldType;
   value: any;
   onChange: (value: any) => void;
+  uploadContext?: {
+    competitionId: string;
+    formId: string;
+  };
 }
 
-export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange }) => {
+const sanitizeFileName = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '') || 'photo.jpg';
+
+export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, uploadContext }) => {
+  const fileInputId = useId();
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState('');
+
+  const pictureValue = isPictureFieldValue(value) ? value : null;
+
+  const uploadPicture = async (file: File) => {
+    if (!uploadContext) {
+      setUploadError('Upload context is missing for this form.');
+      return;
+    }
+
+    if (!storage.app.options.storageBucket) {
+      setUploadError('Firebase Storage is not configured. Add VITE_FIREBASE_STORAGE_BUCKET.');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+    setUploadError('');
+
+    try {
+      const compressedFile = await compressImageFile(file);
+      const uniqueId = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}`;
+      const storedFileName = `${Date.now()}-${uniqueId}-${sanitizeFileName(compressedFile.name)}`;
+      const storagePath = [
+        'form-submissions',
+        uploadContext.competitionId,
+        uploadContext.formId,
+        String(field.id),
+        storedFileName,
+      ].join('/');
+
+      const storageRef = ref(storage, storagePath);
+      const uploadTask = uploadBytesResumable(storageRef, compressedFile, {
+        contentType: compressedFile.type,
+        customMetadata: {
+          originalName: file.name,
+          fieldId: String(field.id),
+        },
+      });
+
+      await new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            const percent = snapshot.totalBytes > 0
+              ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
+              : 0;
+            setUploadProgress(percent);
+          },
+          reject,
+          () => resolve(undefined)
+        );
+      });
+
+      const url = await getDownloadURL(uploadTask.snapshot.ref);
+
+      if (pictureValue?.path && pictureValue.path !== storagePath) {
+        deleteObject(ref(storage, pictureValue.path)).catch((error) => {
+          console.warn('Failed to delete replaced picture upload:', error);
+        });
+      }
+
+      onChange({
+        url,
+        path: storagePath,
+        name: file.name,
+        contentType: compressedFile.type,
+        size: compressedFile.size,
+        bucket: String(storage.app.options.storageBucket || ''),
+        uploadedAt: new Date().toISOString(),
+      });
+      setUploadProgress(100);
+    } catch (error) {
+      console.error('Picture upload failed:', error);
+      setUploadError(error instanceof Error ? error.message : 'Picture upload failed.');
+    } finally {
+      setIsUploading(false);
+      if (galleryInputRef.current) galleryInputRef.current.value = '';
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+    }
+  };
+
+  const handleRemovePicture = async () => {
+    setUploadError('');
+    if (pictureValue?.path) {
+      deleteObject(ref(storage, pictureValue.path)).catch((error) => {
+        console.warn('Failed to delete picture upload:', error);
+      });
+    }
+    setUploadProgress(0);
+    onChange(undefined);
+  };
+
   switch (field.type) {
     case 'text':
       return (
@@ -228,6 +343,125 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange }) 
             </div>
             <p className="text-xs text-gray-500 mt-2">Options can be reused and added multiple times.</p>
           </div>
+        </div>
+      );
+    }
+
+    case 'picture': {
+      return (
+        <div className="space-y-3">
+          <input
+            id={`${fileInputId}-gallery`}
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                uploadPicture(file);
+              }
+            }}
+          />
+
+          <input
+            id={`${fileInputId}-camera`}
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                uploadPicture(file);
+              }
+            }}
+          />
+
+          {pictureValue ? (
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <img
+                src={pictureValue.url}
+                alt={field.label}
+                className="h-56 w-full bg-gray-100 object-cover sm:h-72"
+              />
+              <div className="space-y-3 p-4">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{pictureValue.name || 'Uploaded picture'}</p>
+                  <p className="text-xs text-gray-500">Tap upload again to replace this image.</p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => galleryInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <ImagePlus size={18} />
+                    Replace Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemovePicture}
+                    disabled={isUploading}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Trash2 size={18} />
+                    Remove Photo
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 sm:p-5">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Add a photo</p>
+                  <p className="text-xs leading-relaxed text-gray-500">
+                    Mobile users can open the camera directly or pick from the gallery. Images are compressed before upload.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Camera size={18} />
+                    Take Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => galleryInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-800 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <ImagePlus size={18} />
+                    Choose From Gallery
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isUploading && (
+            <div className="space-y-2">
+              <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+                <div
+                  className="h-full rounded-full bg-blue-600 transition-all"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500">Uploading image... {uploadProgress}%</p>
+            </div>
+          )}
+
+          {uploadError && (
+            <p className="text-sm text-red-600">{uploadError}</p>
+          )}
         </div>
       );
     }

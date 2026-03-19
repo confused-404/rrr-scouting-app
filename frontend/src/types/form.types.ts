@@ -1,10 +1,21 @@
 export type FormFieldType =
   | 'number'
+  | 'picture'
   | 'ranking'
   | 'rank_order'
   | 'text'
   | 'multiple_choice'
   | 'multiple_select';
+
+export type PictureFieldValue = {
+  url: string;
+  path: string;
+  name: string;
+  contentType: string;
+  size: number;
+  bucket?: string;
+  uploadedAt?: string;
+};
 
 export type FormField = {
   id: number;
@@ -41,5 +52,5 @@ export type Submission = {
   formId: string;
   competitionId: string;
   timestamp: string;
-  data: Record<string, any>;
+  data: Record<string, string | number | string[] | PictureFieldValue>;
 };
