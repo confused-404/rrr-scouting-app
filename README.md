@@ -70,6 +70,22 @@ in the backend environment (see `.env.example`).
 > * Alternatively, set `BREVO_API_KEY` instead of the SMTP variables; the
 >   mailer will automatically use Brevo's REST API.
 
+## Picture uploads
+
+Form picture fields upload directly from the frontend to Firebase Storage and
+store the resulting file metadata in submission records. Add these variables:
+
+```env
+# backend/.env.local
+FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+
+# frontend/.env.local
+VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+```
+
+Keep using the existing Firebase project/auth variables already required by the
+app; the storage bucket is the only new value for picture uploads.
+
 ## Project Structure
 
 ```

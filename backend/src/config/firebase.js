@@ -15,8 +15,12 @@ try {
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  projectId: process.env.FIREBASE_PROJECT_ID
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  ...(process.env.FIREBASE_STORAGE_BUCKET
+    ? { storageBucket: process.env.FIREBASE_STORAGE_BUCKET }
+    : {}),
 });
 
 export const db = admin.firestore();
 export const auth = admin.auth();
+export const storageBucketName = admin.app().options.storageBucket || '';

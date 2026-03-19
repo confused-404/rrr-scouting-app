@@ -3,6 +3,7 @@ import type { Competition } from '../types/competition.types';
 import type { Form, Submission, FormField } from '../types/form.types';
 import { formApi, tbaApi } from '../services/api';
 import { BarChart3, ClipboardList } from 'lucide-react';
+import { submissionValueToText } from '../utils/formValues';
 
 // reuse helpers from ResponseViewer
 const isQuantitative = (field: FormField) => field.type === 'number' || field.type === 'ranking';
@@ -63,7 +64,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     return allSubmissions.filter(sub => {
       return Object.values(sub.data).some(val => {
         if (val === undefined || val === null) return false;
-        return String(val).toLowerCase().includes(q);
+        return submissionValueToText(val).toLowerCase().includes(q);
       });
     });
   }, [allSubmissions, teamQuery]);
@@ -94,7 +95,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     
     forms.forEach(form => {
       form.fields.forEach(field => {
-        if (!isQuantitative(field)) {
+        if (!isQuantitative(field) && field.type !== 'picture') {
           const fieldKey = `${field.label}|${field.id}`;
           
           if (field.type === 'multiple_choice') {
@@ -141,7 +142,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
             filteredSubs.forEach(sub => {
               const raw = sub.data?.[field.id];
               if (raw !== undefined && raw !== null && raw !== '') {
-                const text = Array.isArray(raw) ? raw.join(', ') : String(raw);
+                const text = submissionValueToText(raw);
                 values.add(text);
               }
             });

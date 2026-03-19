@@ -3,6 +3,7 @@ import type { Competition } from '../types/competition.types';
 import type { Submission, Form } from '../types/form.types';
 import { formApi } from '../services/api';
 import { Filter, X, Download} from 'lucide-react';
+import { isPictureFieldValue, submissionValueToText } from '../utils/formValues';
 
 type FilterOp = 'contains' | 'equals' | 'gt' | 'lt';
 
@@ -89,7 +90,7 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
         teamSubs.forEach(sub => {
           const raw = sub.data?.[field.id];
           if (raw !== undefined && raw !== null && raw !== '') {
-            const text = Array.isArray(raw) ? raw.join(', ') : String(raw);
+            const text = submissionValueToText(raw);
             values.add(text);
           }
         });
@@ -114,7 +115,7 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
     const q = filterValue.trim().toLowerCase();
     return submissions.filter(sub => {
       const raw = sub.data?.[filterFieldId];
-      const v = String(raw ?? '').toLowerCase();
+      const v = submissionValueToText(raw).toLowerCase();
       if (filterOp === 'gt' || filterOp === 'lt') {
         const numV = toNumber(raw);
         const numQ = toNumber(q);
@@ -178,7 +179,30 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
                       <div key={f.id} className="space-y-1">
                         <div className="text-[9px] uppercase font-black text-blue-500 tracking-tighter opacity-70">{f.label}</div>
                         <div className="text-sm font-bold text-gray-800">
-                          {Array.isArray(sub.data?.[f.id]) ? sub.data[f.id].join(', ') : String(sub.data?.[f.id] ?? '—')}
+                          {(() => {
+                            const fieldValue = sub.data?.[f.id];
+                            if (!isPictureFieldValue(fieldValue)) {
+                              return submissionValueToText(fieldValue) || '—';
+                            }
+
+                            return (
+                            <a
+                              href={fieldValue.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block space-y-2"
+                            >
+                              <img
+                                src={fieldValue.url}
+                                alt={f.label}
+                                className="h-28 w-full rounded-lg border border-gray-200 bg-gray-50 object-cover"
+                              />
+                              <span className="block break-words text-xs font-medium text-blue-600">
+                                {fieldValue.name || 'Open uploaded image'}
+                              </span>
+                            </a>
+                            );
+                          })()}
                         </div>
                       </div>
                     ))}
