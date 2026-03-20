@@ -73,7 +73,7 @@ if (process.env.BREVO_API_KEY) {
 const sendViaBrevo = async (options) => {
   const url = 'https://api.brevo.com/v3/smtp/email';
   const payload = {
-    sender: { email: process.env.EMAIL_FROM || process.env.EMAIL_USER || 'no-reply@localhost' },
+    sender: { email: FROM || 'no-reply@localhost' },
     to: [{ email: options.to }],
     subject: options.subject,
     textContent: options.text,
