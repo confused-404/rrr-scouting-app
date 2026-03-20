@@ -18,18 +18,26 @@ export const CompetitionManager: React.FC = () => {
         eventKey: '',
     });
 
-    useEffect(() => {
-        loadCompetitions();
-    }, []);
-
     const loadCompetitions = async () => {
         try {
             const data = await competitionApi.getAll();
+
+            if (!Array.isArray(data)) {
+                console.warn('Expected competitions to be an array, got:', data);
+                setCompetitions([]);
+                return;
+            }
+
             setCompetitions(data);
         } catch (error) {
             console.error('Error loading competitions:', error);
+            setCompetitions([]);
         }
     };
+
+    useEffect(() => {
+        loadCompetitions();
+    }, []);
 
     const handleConfirmDelete = async () => {
         if (!deleteConfirmId) return;
