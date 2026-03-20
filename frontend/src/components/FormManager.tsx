@@ -1,11 +1,13 @@
 // FormManager.tsx
-import React, { useState, useEffect } from 'react';
-import { Trash2, Layout, Plus, Edit2, Star, Check, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Trash2, Layout, Plus, Edit2, Star, Check, X, GripVertical } from 'lucide-react';
 import type { FormField as FormFieldType, Form } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { formApi, competitionApi } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 export const FormManager: React.FC<{ selectedCompetition?: Competition | null, onCompetitionUpdate?: () => void }> = ({ selectedCompetition, onCompetitionUpdate }) => {
+    const { isAdmin } = useAuth();
     const [forms, setForms] = useState<Form[]>([]);
     const [selectedForm, setSelectedForm] = useState<Form | null>(null);
     const [formFields, setFormFields] = useState<FormFieldType[]>([]);
@@ -21,12 +23,27 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [newFormName, setNewFormName] = useState('');
 
+    // Drag and drop state
+    const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const autoScrollRef = useRef<NodeJS.Timeout | null>(null);
+
     useEffect(() => {
         if (selectedCompetition) {
             loadForms();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedCompetition]);
+
+    // Cleanup autoscroll on unmount
+    useEffect(() => {
+        return () => {
+            if (autoScrollRef.current) {
+                clearInterval(autoScrollRef.current);
+            }
+        };
+    }, []);
 
     const loadForms = async () => {
         if (!selectedCompetition) return;
@@ -244,6 +261,100 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
                 return field;
             })
         );
+    };
+
+    // Drag and drop handlers
+    const handleDragStart = (e: React.DragEvent, index: number) => {
+        if (!isAdmin) return;
+        setDraggedIndex(index);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', e.currentTarget.outerHTML);
+        (e.currentTarget as HTMLElement).style.opacity = '0.5';
+    };
+
+    const handleDragEnd = (e: React.DragEvent) => {
+        if (!isAdmin) return;
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+        (e.currentTarget as HTMLElement).style.opacity = '1';
+        
+        // Clear autoscroll
+        if (autoScrollRef.current) {
+            clearInterval(autoScrollRef.current);
+            autoScrollRef.current = null;
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent, index: number) => {
+        if (!isAdmin) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setDragOverIndex(index);
+        
+        // Autoscroll logic
+        const container = containerRef.current;
+        if (container) {
+            const rect = container.getBoundingClientRect();
+            const y = e.clientY - rect.top;
+            const threshold = 50; // pixels from top/bottom to trigger scroll
+            
+            if (y < threshold) {
+                // Scroll up
+                if (!autoScrollRef.current) {
+                    autoScrollRef.current = setInterval(() => {
+                        container.scrollTop -= 10;
+                    }, 16); // ~60fps
+                }
+            } else if (y > rect.height - threshold) {
+                // Scroll down
+                if (!autoScrollRef.current) {
+                    autoScrollRef.current = setInterval(() => {
+                        container.scrollTop += 10;
+                    }, 16); // ~60fps
+                }
+            } else {
+                // Stop scrolling
+                if (autoScrollRef.current) {
+                    clearInterval(autoScrollRef.current);
+                    autoScrollRef.current = null;
+                }
+            }
+        }
+    };
+
+    const handleDragLeave = () => {
+        if (!isAdmin) return;
+        setDragOverIndex(null);
+        
+        // Stop autoscroll when leaving
+        if (autoScrollRef.current) {
+            clearInterval(autoScrollRef.current);
+            autoScrollRef.current = null;
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+        if (!isAdmin || draggedIndex === null) return;
+        e.preventDefault();
+        
+        // Stop autoscroll
+        if (autoScrollRef.current) {
+            clearInterval(autoScrollRef.current);
+            autoScrollRef.current = null;
+        }
+        
+        const newFields = [...formFields];
+        const draggedField = newFields[draggedIndex];
+        
+        // Remove from old position
+        newFields.splice(draggedIndex, 1);
+        
+        // Insert at new position
+        newFields.splice(dropIndex, 0, draggedField);
+        
+        setFormFields(newFields);
+        setDraggedIndex(null);
+        setDragOverIndex(null);
     };
 
     if (!selectedCompetition) {
@@ -468,9 +579,32 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
                             <p>No fields yet. Add some fields above!</p>
                         </div>
                     ) : (
-                        <div className="space-y-4">
-                            {formFields.map((field) => (
-                                <div key={field.id} className="bg-white rounded-lg shadow-sm p-6">
+                        <div ref={containerRef} className="space-y-4 max-h-96 overflow-y-auto">
+                            {formFields.map((field, index) => (
+                                <div 
+                                    key={field.id} 
+                                    className={`bg-white rounded-lg shadow-sm p-6 transition-all duration-200 select-none ${
+                                        draggedIndex === index ? 'opacity-50 scale-95' : ''
+                                    } ${
+                                        dragOverIndex === index ? 'border-2 border-blue-500 bg-blue-50 shadow-lg' : 'border border-gray-200'
+                                    } ${
+                                        isAdmin ? 'cursor-move' : ''
+                                    }`}
+                                    draggable={isAdmin}
+                                    onDragStart={(e) => handleDragStart(e, index)}
+                                    onDragEnd={handleDragEnd}
+                                    onDragOver={(e) => handleDragOver(e, index)}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={(e) => handleDrop(e, index)}
+                                >
+                                    {isAdmin && (
+                                        <div className="flex items-center gap-3 mb-4 cursor-move select-none p-2 -m-2 rounded hover:bg-gray-50">
+                                            <div className="text-gray-400 hover:text-gray-600 transition-colors">
+                                                <GripVertical size={20} />
+                                            </div>
+                                            <span className="text-sm text-gray-500">Question {index + 1}</span>
+                                        </div>
+                                    )}
                                     <div className="flex items-start justify-between mb-4">
                                         <div className="flex-1">
                                             <input
