@@ -329,24 +329,16 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, up
                   <div className="flex-1 p-4 border-b lg:border-b-0 lg:border-r border-gray-200">
                     <h4 className="text-sm font-medium text-gray-700 mb-3">Available Options</h4>
                     <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {options.length > 0 ? options.map((option) => {
-                        const isRanked = ranked.includes(option);
-                        return (
-                          <button
-                            key={option}
-                            type="button"
-                            onClick={() => addOptionToEnd(option)}
-                            disabled={isRanked}
-                            className={`w-full text-left px-3 py-2 rounded-md border transition-colors ${
-                              isRanked
-                                ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                            }`}
-                          >
-                            {option}
-                          </button>
-                        );
-                      }) : (
+                      {options.length > 0 ? options.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => addOptionToEnd(option)}
+                          className="w-full text-left px-3 py-2 rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                        >
+                          {option}
+                        </button>
+                      )) : (
                         <p className="text-sm text-gray-500">No options configured for this field.</p>
                       )}
                     </div>
