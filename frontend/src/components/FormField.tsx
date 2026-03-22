@@ -246,6 +246,8 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, up
         ? value.map((item) => String(item ?? '').trim()).filter((item) => item !== '')
         : [];
 
+      const [showPopup, setShowPopup] = useState(false);
+
       const addOptionToEnd = (option: string) => {
         onChange([...ranked, option]);
       };
@@ -267,82 +269,157 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, up
         onChange(next);
       };
 
+      const moveUp = (index: number) => {
+        if (index > 0) {
+          moveItem(index, index - 1);
+        }
+      };
+
+      const moveDown = (index: number) => {
+        if (index < ranked.length - 1) {
+          moveItem(index, index + 1);
+        }
+      };
+
       return (
-        <div className="space-y-4">
-          <div>
-            <p className="text-sm text-gray-600 mb-2">Options (click to add to end)</p>
-            <div className="flex flex-wrap gap-2">
-              {options.length > 0 ? options.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => addOptionToEnd(option)}
-                  className="px-3 py-1.5 text-sm rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                >
-                  {option}
-                </button>
-              )) : (
-                <p className="text-sm text-gray-500">No options configured for this field.</p>
-              )}
+        <div>
+          {/* Question display - clickable to open popup */}
+          <button
+            type="button"
+            onClick={() => setShowPopup(true)}
+            className="w-full text-left p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors"
+          >
+            <div className="text-sm font-medium text-gray-700 mb-1">{field.label}</div>
+            <div className="text-sm text-gray-500">
+              {ranked.length === 0 ? 'Click to rank options' : `${ranked.length} item${ranked.length === 1 ? '' : 's'} ranked`}
             </div>
-          </div>
+            {ranked.length > 0 && (
+              <div className="mt-2 text-xs text-gray-600">
+                {ranked.slice(0, 3).map((item, i) => (
+                  <span key={i} className="inline-block mr-2">
+                    {i + 1}. {item}
+                  </span>
+                ))}
+                {ranked.length > 3 && <span>...and {ranked.length - 3} more</span>}
+              </div>
+            )}
+          </button>
 
-          <div>
-            <p className="text-sm text-gray-600 mb-3">Ranked List (drag to reorder)</p>
-            <div className="space-y-2">
-              {ranked.length > 0 ? (
-                ranked.map((option, index) => (
-                  <div
-                    key={`${option}-${index}`}
-                    className="flex items-center gap-2 p-2 bg-blue-50 rounded-md border border-blue-100"
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData('text/plain', String(index));
-                      e.dataTransfer.effectAllowed = 'move';
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const from = Number(e.dataTransfer.getData('text/plain'));
-                      if (Number.isNaN(from)) return;
-                      moveItem(from, index);
-                    }}
+          {/* Popup Modal */}
+          {showPopup && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">{field.label}</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowPopup(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
                   >
-                    <span className="w-7 text-sm font-semibold text-gray-700">{index + 1}.</span>
-                    <span className="flex-1 text-sm">{option}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeAt(index)}
-                      className="px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-gray-500">No ranked items yet. Click an option to add one.</p>
-              )}
-
-              {ranked.length > 1 && (
-                <div
-                  className="p-2 text-xs text-gray-500 border border-dashed border-gray-300 rounded-md"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const from = Number(e.dataTransfer.getData('text/plain'));
-                    if (Number.isNaN(from)) return;
-                    moveItem(from, ranked.length - 1);
-                  }}
-                >
-                  Drag items onto another row to reorder.
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
-              )}
+
+                {/* Content */}
+                <div className="flex flex-col lg:flex-row h-[calc(90vh-80px)]">
+                  {/* Left side - Options */}
+                  <div className="flex-1 p-4 border-b lg:border-b-0 lg:border-r border-gray-200">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Available Options</h4>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {options.length > 0 ? options.map((option) => {
+                        const isRanked = ranked.includes(option);
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => addOptionToEnd(option)}
+                            disabled={isRanked}
+                            className={`w-full text-left px-3 py-2 rounded-md border transition-colors ${
+                              isRanked
+                                ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                            }`}
+                          >
+                            {option}
+                          </button>
+                        );
+                      }) : (
+                        <p className="text-sm text-gray-500">No options configured for this field.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right side - Ranked List */}
+                  <div className="flex-1 p-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Ranked Order</h4>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {ranked.length > 0 ? (
+                        ranked.map((option, index) => (
+                          <div
+                            key={`${option}-${index}`}
+                            className="flex items-center gap-2 p-3 bg-blue-50 rounded-md border border-blue-100"
+                          >
+                            <span className="w-8 text-sm font-semibold text-gray-700">{index + 1}.</span>
+                            <span className="flex-1 text-sm">{option}</span>
+                            <div className="flex gap-1">
+                              <button
+                                type="button"
+                                onClick={() => moveUp(index)}
+                                disabled={index === 0}
+                                className="p-1 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Move up"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveDown(index)}
+                                disabled={index === ranked.length - 1}
+                                className="p-1 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Move down"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeAt(index)}
+                                className="p-1 text-red-500 hover:text-red-700"
+                                title="Remove"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-gray-500 text-center py-8">No items ranked yet. Click an option to add one.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex justify-end gap-2 p-4 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => setShowPopup(false)}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-gray-500 mt-2">Options can be reused and added multiple times.</p>
-          </div>
+          )}
         </div>
       );
     }
