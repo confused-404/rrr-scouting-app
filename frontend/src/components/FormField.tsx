@@ -324,11 +324,11 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, up
                 </div>
 
                 {/* Content */}
-                <div className="flex flex-col lg:flex-row h-[calc(90vh-80px)]">
+                <div className="flex flex-col lg:flex-row h-[calc(90vh-120px)]">
                   {/* Left side - Options */}
-                  <div className="flex-1 p-4 border-b lg:border-b-0 lg:border-r border-gray-200">
+                  <div className="flex-1 p-4 border-b lg:border-b-0 lg:border-r border-gray-200 overflow-hidden">
                     <h4 className="text-sm font-medium text-gray-700 mb-3">Available Options</h4>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <div className="space-y-2 h-full overflow-y-auto">
                       {options.length > 0 ? options.map((option) => (
                         <button
                           key={option}
@@ -345,9 +345,9 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, up
                   </div>
 
                   {/* Right side - Ranked List */}
-                  <div className="flex-1 p-4">
+                  <div className="flex-1 p-4 overflow-hidden">
                     <h4 className="text-sm font-medium text-gray-700 mb-3">Ranked Order</h4>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <div className="space-y-2 h-full overflow-y-auto">
                       {ranked.length > 0 ? (
                         ranked.map((option, index) => (
                           <div
