@@ -6,9 +6,12 @@ import { Login } from './components/Login';
 import { useAuth } from './contexts/AuthContext';
 import type { Competition } from './types/competition.types';
 import { competitionApi } from './services/api';
+import { createLogger, formatErrorForLogging } from './utils/logger';
 import './App.css';
 
 type AppMode = 'admin' | 'user';
+
+const appLogger = createLogger('App');
 
 function App() {
   const [mode, setMode] = useState<AppMode>('user');
@@ -19,33 +22,53 @@ function App() {
   const { currentUser, logout, isAdmin } = useAuth();
 
   const loadCompetitions = async () => {
+    appLogger.debug('Loading active competition', {
+      currentUserId: currentUser?.uid,
+    });
+
     try {
       const data = await competitionApi.getActive();
 
       if (data) {
         setSelectedCompetition(data);
+        appLogger.info('Active competition loaded', {
+          competitionId: data.id,
+          competitionName: data.name,
+        });
       } else {
         setSelectedCompetition(null);
+        appLogger.warn('No active competition returned from API');
       }
     } catch (error) {
-      console.error('Error loading competitions:', error);
+      appLogger.error('Failed to load active competition', {
+        error: formatErrorForLogging(error),
+      });
       setSelectedCompetition(null);
     }
   };
 
   useEffect(() => {
     if (currentUser) {
+      appLogger.info('Authenticated user detected', {
+        email: currentUser.email,
+        uid: currentUser.uid,
+      });
       loadCompetitions();
+    } else {
+      appLogger.info('No authenticated user, rendering login screen');
     }
   }, [currentUser]);
 
   // Security check: if a user is not an admin but somehow set mode to admin, kick them back to user mode
   useEffect(() => {
     if (!isAdmin && mode === 'admin') {
+      appLogger.warn('Non-admin attempted to access admin mode; reverting to scout mode', {
+        uid: currentUser?.uid,
+      });
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode('user');
     }
-  }, [mode, isAdmin]);
+  }, [mode, isAdmin, currentUser?.uid]);
 
   // Reload competitions when switching to user mode
   useEffect(() => {
@@ -55,11 +78,24 @@ function App() {
     }
   }, [mode, currentUser]);
 
+  useEffect(() => {
+    appLogger.info('App mode changed', {
+      mode,
+      isAdmin,
+    });
+  }, [mode, isAdmin]);
+
   const handleLogout = async () => {
+    appLogger.info('Logout requested', {
+      uid: currentUser?.uid,
+    });
+
     try {
       await logout();
     } catch (error) {
-      console.error('Logout error:', error);
+      appLogger.error('Logout failed', {
+        error: formatErrorForLogging(error),
+      });
     }
   };
 

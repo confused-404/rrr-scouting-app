@@ -1,5 +1,26 @@
 # React + TypeScript + Vite
 
+## Frontend Logging
+
+The frontend now includes centralized structured logging with these features:
+
+- Global capture for uncaught browser errors and unhandled promise rejections.
+- React render error capture through an app-level error boundary.
+- Axios request and response logging with request IDs and timing.
+- Session log buffering in `sessionStorage` for fast debugging during a browser session.
+- Existing `console.log`, `console.warn`, and `console.error` calls are preserved and also captured in the rolling log buffer.
+
+Use the browser console to inspect logs:
+
+```js
+window.__SCOUT_LOGGER__.getLogs()
+window.__SCOUT_LOGGER__.clearLogs()
+window.__SCOUT_LOGGER__.exportLogs()
+window.__SCOUT_LOGGER__.setLevel('debug')
+```
+
+You can also set `VITE_LOG_LEVEL=debug` in your frontend environment to print debug-level logs by default.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
