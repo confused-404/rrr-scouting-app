@@ -1,10 +1,11 @@
 import React, { useId, useRef, useState } from 'react';
 import { Camera, ImagePlus, Trash2 } from 'lucide-react';
 import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
-import { storage } from '../config/firebase';
+import { auth, storage } from '../config/firebase';
 import type { FormField as FormFieldType } from '../types/form.types';
 import { compressImageFile } from '../utils/imageUpload';
 import { isPictureFieldValue } from '../utils/formValues';
+import { createLogger, formatErrorForLogging } from '../utils/logger';
 
 interface FormFieldProps {
   field: FormFieldType;
@@ -23,6 +24,8 @@ const sanitizeFileName = (name: string) =>
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '') || 'photo.jpg';
 
+const formFieldLogger = createLogger('FormField');
+
 export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, uploadContext }) => {
   const fileInputId = useId();
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
@@ -39,6 +42,17 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, up
       return;
     }
 
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      setUploadError('You must be logged in before uploading a picture.');
+      formFieldLogger.warn('Picture upload blocked because no Firebase user is authenticated', {
+        fieldId: field.id,
+        competitionId: uploadContext.competitionId,
+        formId: uploadContext.formId,
+      });
+      return;
+    }
+
     if (!storage.app.options.storageBucket) {
       setUploadError('Firebase Storage is not configured. Add VITE_FIREBASE_STORAGE_BUCKET.');
       return;
@@ -49,6 +63,8 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, up
     setUploadError('');
 
     try {
+      await currentUser.getIdToken();
+
       const compressedFile = await compressImageFile(file);
       const uniqueId = typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
@@ -58,15 +74,31 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, up
         'form-submissions',
         uploadContext.competitionId,
         uploadContext.formId,
+        currentUser.uid,
         String(field.id),
         storedFileName,
       ].join('/');
+
+      formFieldLogger.info('Starting picture upload', {
+        fieldId: field.id,
+        competitionId: uploadContext.competitionId,
+        formId: uploadContext.formId,
+        uid: currentUser.uid,
+        path: storagePath,
+        originalName: file.name,
+        contentType: compressedFile.type,
+        size: compressedFile.size,
+      });
 
       const storageRef = ref(storage, storagePath);
       const uploadTask = uploadBytesResumable(storageRef, compressedFile, {
         contentType: compressedFile.type,
         customMetadata: {
           originalName: file.name,
+          ownerUid: currentUser.uid,
+          ownerEmail: currentUser.email || '',
+          competitionId: uploadContext.competitionId,
+          formId: uploadContext.formId,
           fieldId: String(field.id),
         },
       });
@@ -103,9 +135,32 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, up
         uploadedAt: new Date().toISOString(),
       });
       setUploadProgress(100);
+      formFieldLogger.info('Picture upload completed', {
+        fieldId: field.id,
+        competitionId: uploadContext.competitionId,
+        formId: uploadContext.formId,
+        uid: currentUser.uid,
+        path: storagePath,
+      });
     } catch (error) {
-      console.error('Picture upload failed:', error);
-      setUploadError(error instanceof Error ? error.message : 'Picture upload failed.');
+      const errorCode = typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code?: unknown }).code || '')
+        : '';
+
+      formFieldLogger.error('Picture upload failed', {
+        fieldId: field.id,
+        competitionId: uploadContext.competitionId,
+        formId: uploadContext.formId,
+        uid: currentUser.uid,
+        bucket: storage.app.options.storageBucket,
+        error: formatErrorForLogging(error),
+      });
+
+      if (errorCode === 'storage/unauthorized') {
+        setUploadError('Upload blocked by Firebase Storage rules for this signed-in user. The app now uploads to a user-scoped path, but your Storage rules must allow this user to write form submissions.');
+      } else {
+        setUploadError(error instanceof Error ? error.message : 'Picture upload failed.');
+      }
     } finally {
       setIsUploading(false);
       if (galleryInputRef.current) galleryInputRef.current.value = '';
