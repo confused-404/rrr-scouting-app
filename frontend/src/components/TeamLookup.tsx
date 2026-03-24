@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import type { Competition } from '../types/competition.types';
-import type { Form, Submission, FormField } from '../types/form.types';
+import type { Form, Submission, FormField, PictureFieldValue } from '../types/form.types';
 import { formApi, tbaApi } from '../services/api';
 import { BarChart3, ClipboardList } from 'lucide-react';
-import { submissionValueToText } from '../utils/formValues';
+import { submissionValueToText, isPictureFieldValue } from '../utils/formValues';
 
 // reuse helpers from ResponseViewer
 const isQuantitative = (field: FormField) => field.type === 'number' || field.type === 'ranking';
@@ -95,10 +95,20 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     
     forms.forEach(form => {
       form.fields.forEach(field => {
-        if (!isQuantitative(field) && field.type !== 'picture') {
+        if (!isQuantitative(field)) {
           const fieldKey = `${field.label}|${field.id}`;
           
-          if (field.type === 'multiple_choice') {
+          if (field.type === 'picture') {
+            const photos: PictureFieldValue[] = [];
+            filteredSubs.forEach(sub => {
+              const val = sub.data?.[field.id];
+              if (isPictureFieldValue(val)) {
+                photos.push(val);
+              }
+            });
+            summary[fieldKey] = { type: field.type, data: photos };
+            
+          } else if (field.type === 'multiple_choice') {
             const counts: Record<string, number> = {};
             filteredSubs.forEach(sub => {
               const val = sub.data?.[field.id];
@@ -235,7 +245,43 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
               {Object.entries(qualitativeSummary).map(([fieldKey, summary]) => {
                 const [label] = fieldKey.split('|');
                 
-                if (summary.type === 'multiple_choice' || summary.type === 'multiple_select' || summary.type === 'rank_order') {
+                if (summary.type === 'picture') {
+                  const photos = summary.data as PictureFieldValue[];
+                  return (
+                    <div key={fieldKey} className="bg-white p-4 rounded-lg shadow">
+                      <div className="font-black text-sm mb-3">{label}</div>
+                      <div className="text-sm text-gray-600 mb-3">
+                        {photos.length} photo{photos.length !== 1 ? 's' : ''} uploaded
+                      </div>
+                      {photos.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                          {photos.map((photo, index) => (
+                            <div key={index} className="relative group">
+                              <img
+                                src={photo.url}
+                                alt={photo.name || `Photo ${index + 1}`}
+                                className="w-full h-24 object-cover rounded-lg border border-gray-200 hover:shadow-md transition-shadow cursor-pointer"
+                                onClick={() => {
+                                  // Open full-size image in new tab
+                                  window.open(photo.url, '_blank');
+                                }}
+                              />
+                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity rounded-lg flex items-center justify-center">
+                                <div className="opacity-0 group-hover:opacity-100 text-white text-xs font-medium">
+                                  Click to view full size
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500 text-center py-8">
+                          No photos uploaded yet
+                        </div>
+                      )}
+                    </div>
+                  );
+                } else if (summary.type === 'multiple_choice' || summary.type === 'multiple_select' || summary.type === 'rank_order') {
                   const { counts, options } = summary.data;
                   const totalResponses = filteredSubs.length;
                   const displayItems = summary.type === 'rank_order' 
