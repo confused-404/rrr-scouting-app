@@ -7,6 +7,7 @@ import {
   type User
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
+import { createLogger, formatErrorForLogging } from '../utils/logger';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -18,6 +19,7 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const authLogger = createLogger('AuthContext');
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -33,20 +35,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   const signup = async (email: string, password: string) => {
-    await createUserWithEmailAndPassword(auth, email, password);
+    authLogger.info('Signup requested', { email });
+
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      authLogger.info('Signup completed', { email });
+    } catch (error) {
+      authLogger.error('Signup failed', {
+        email,
+        error: formatErrorForLogging(error),
+      });
+      throw error;
+    }
   };
 
   const login = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    authLogger.info('Login requested', { email });
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      authLogger.info('Login completed', { email });
+    } catch (error) {
+      authLogger.error('Login failed', {
+        email,
+        error: formatErrorForLogging(error),
+      });
+      throw error;
+    }
   };
 
   const logout = async () => {
-    await signOut(auth);
+    authLogger.info('Logout requested', {
+      uid: auth.currentUser?.uid,
+    });
+
+    try {
+      await signOut(auth);
+      authLogger.info('Logout completed');
+    } catch (error) {
+      authLogger.error('Logout failed', {
+        error: formatErrorForLogging(error),
+      });
+      throw error;
+    }
   };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
+      authLogger.info('Auth state changed', {
+        uid: user?.uid,
+        email: user?.email,
+      });
       
       if (user) {
         try {
@@ -54,8 +94,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Using true forces a refresh to ensure we get the latest claims
           const tokenResult = await user.getIdTokenResult(true);
           setIsAdmin(!!tokenResult.claims.admin);
+          authLogger.info('User claims loaded', {
+            uid: user.uid,
+            isAdmin: !!tokenResult.claims.admin,
+          });
         } catch (error) {
-          console.error("Error fetching claims:", error);
+          authLogger.error('Failed to fetch auth claims', {
+            uid: user.uid,
+            error: formatErrorForLogging(error),
+          });
           setIsAdmin(false);
         }
       } else {

@@ -1,18 +1,34 @@
-import axios from 'axios';
+import axios, { AxiosHeaders } from 'axios';
 import { auth } from '../config/firebase';
 import type { Form, FormField, Submission } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
+import { createLogger, formatErrorForLogging, sanitizeForLogging } from '../utils/logger';
+
+type RequestMetadata = {
+  requestId: string;
+  startedAt: number;
+};
+
+type LoggingConfig = {
+  metadata?: RequestMetadata;
+};
+
+type TbaEventOprsResponse = {
+  oprs?: Record<string, number>;
+};
+
+const apiLogger = createLogger('api');
 
 // Use environment variable for API URL, fallback to current domain in production
 const getApiUrl = (): string => {
-  const envUrl = (import.meta as any).env?.VITE_API_URL;
+  const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl) {
     return envUrl;
   }
 
   // For development, use relative /api path
   // For production, construct from current domain
-  if ((import.meta as any).env?.DEV) {
+  if (import.meta.env.DEV) {
     return '/api';
   }
 
@@ -22,7 +38,7 @@ const getApiUrl = (): string => {
 const API_BASE_URL = getApiUrl();
 
 // Get API key from environment (should match backend API_KEY)
-const API_KEY = (import.meta as any).env?.VITE_API_KEY || 'dev-key-for-local-testing';
+const API_KEY = import.meta.env.VITE_API_KEY || 'dev-key-for-local-testing';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -32,15 +48,83 @@ const api = axios.create({
   },
 });
 
+apiLogger.info('Configured API client', {
+  baseUrl: API_BASE_URL,
+  hasApiKey: Boolean(API_KEY),
+});
+
 // Add auth token to requests
 api.interceptors.request.use(async (config) => {
+  const requestId = globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const nextConfig = config as typeof config & LoggingConfig;
+  const headers = AxiosHeaders.from(nextConfig.headers);
+  nextConfig.metadata = {
+    requestId,
+    startedAt: Date.now(),
+  };
+  headers.set('X-Request-ID', requestId);
+
   const user = auth.currentUser;
   if (user) {
-    const token = await user.getIdToken();
-    config.headers.Authorization = `Bearer ${token}`;
+    try {
+      const token = await user.getIdToken();
+      headers.set('Authorization', `Bearer ${token}`);
+    } catch (error) {
+      apiLogger.error('Failed to attach Firebase auth token', {
+        requestId,
+        url: nextConfig.url,
+        error: formatErrorForLogging(error),
+      });
+      throw error;
+    }
   }
-  return config;
+
+  nextConfig.headers = headers;
+
+  apiLogger.debug('API request started', {
+    requestId,
+    method: nextConfig.method,
+    url: nextConfig.url,
+    params: sanitizeForLogging(nextConfig.params),
+    data: sanitizeForLogging(nextConfig.data),
+  });
+
+  return nextConfig;
 });
+
+api.interceptors.response.use(
+  (response) => {
+    const config = response.config as typeof response.config & LoggingConfig;
+    const durationMs = config.metadata ? Date.now() - config.metadata.startedAt : undefined;
+
+    apiLogger.debug('API request completed', {
+      requestId: config.metadata?.requestId,
+      method: config.method,
+      url: config.url,
+      status: response.status,
+      durationMs,
+    });
+
+    return response;
+  },
+  (error) => {
+    const config = error.config as (typeof error.config & LoggingConfig) | undefined;
+    const durationMs = config?.metadata ? Date.now() - config.metadata.startedAt : undefined;
+
+    apiLogger.error('API request failed', {
+      requestId: config?.metadata?.requestId,
+      method: config?.method,
+      url: config?.url,
+      status: error.response?.status,
+      durationMs,
+      code: error.code,
+      error: formatErrorForLogging(error),
+      responseData: sanitizeForLogging(error.response?.data),
+    });
+
+    return Promise.reject(error);
+  },
+);
 
 export const authApi = {
   signup: async (email: string, password: string) => {
@@ -161,51 +245,51 @@ export const formApi = {
     return response.data;
   },
 
-  createSubmission: async (formId: string, competitionId: string, data: Record<string, any>): Promise<Submission> => {
+  createSubmission: async (formId: string, competitionId: string, data: Record<string, unknown>): Promise<Submission> => {
     const response = await api.post('/forms/submissions', { formId, competitionId, data });
     return response.data;
   },
 };
 
 export const tbaApi = {
-  getTeam: async (teamKey: string): Promise<any> => {
+  getTeam: async (teamKey: string): Promise<unknown> => {
     const response = await api.get(`/tba/team/${teamKey}`);
     return response.data;
   },
 
-  getTeamsSimple: async (year: string): Promise<any[]> => {
+  getTeamsSimple: async (year: string): Promise<unknown[]> => {
     const response = await api.get(`/tba/teams/${year}/simple`);
     return response.data;
   },
 
-  getEvents: async (year: string): Promise<any[]> => {
+  getEvents: async (year: string): Promise<unknown[]> => {
     const response = await api.get(`/tba/events/${year}`);
     return response.data;
   },
 
-  getEventMatches: async (eventKey: string): Promise<any[]> => {
+  getEventMatches: async (eventKey: string): Promise<unknown[]> => {
     const response = await api.get(`/tba/event/${eventKey}/matches`);
     return response.data;
   },
 
-  getEventOPRs: async (eventKey: string): Promise<any> => {
+  getEventOPRs: async (eventKey: string): Promise<TbaEventOprsResponse> => {
     const response = await api.get(`/tba/event/${eventKey}/oprs`);
     return response.data;
   },
 };
 
 export const statboticsApi = {
-  getEventMatches: async (eventKey: string): Promise<any[]> => {
+  getEventMatches: async (eventKey: string): Promise<unknown[]> => {
     const response = await api.get(`/statbotics/event/${eventKey}/matches`);
     return response.data;
   },
 
-  getTeamEvent: async (team: string, event: string): Promise<any> => {
+  getTeamEvent: async (team: string, event: string): Promise<unknown> => {
     const response = await api.get(`/statbotics/team_event/${team}/${event}`);
     return response.data;
   },
 
-  getTeamEvents: async (params?: { team?: string; year?: string; event?: string; limit?: number; offset?: number }): Promise<any[]> => {
+  getTeamEvents: async (params?: { team?: string; year?: string; event?: string; limit?: number; offset?: number }): Promise<unknown[]> => {
     const response = await api.get('/statbotics/team_events', { params });
     return response.data;
   },

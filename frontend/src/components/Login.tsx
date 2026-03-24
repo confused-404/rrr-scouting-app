@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { ForgotPassword } from './ForgotPassword';
+import { createLogger, formatErrorForLogging } from '../utils/logger';
+
+const loginLogger = createLogger('Login');
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -16,14 +19,24 @@ export const Login: React.FC = () => {
     setError('');
     setLoading(true);
 
+    loginLogger.info('Authentication form submitted', {
+      email,
+      mode: isSignup ? 'signup' : 'login',
+    });
+
     try {
       if (isSignup) {
         await signup(email, password);
       } else {
         await login(email, password);
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to authenticate');
+    } catch (err: unknown) {
+      loginLogger.error('Authentication form failed', {
+        email,
+        mode: isSignup ? 'signup' : 'login',
+        error: formatErrorForLogging(err),
+      });
+      setError(err instanceof Error ? err.message : 'Failed to authenticate');
     } finally {
       setLoading(false);
     }
