@@ -104,6 +104,12 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
     if (onCompetitionUpdate) onCompetitionUpdate();
   };
 
+  const handlePickListTeamSelect = (team: string) => {
+    setTargetTeam(team);
+    setActiveTab('analytics');
+    setAnalyticsTab('teamLookup');
+  };
+
   return (
     <div className="space-y-6">
       {/* Main Navigation */}
@@ -132,7 +138,13 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
         {activeTab === 'competitions' && <CompetitionManager />}
         {activeTab === 'forms' && <FormManager selectedCompetition={activeCompetition} onCompetitionUpdate={handleCompetitionUpdate} />}
         {activeTab === 'scoutingTeams' && <ScoutingTeams selectedCompetition={activeCompetition} />}
-        {activeTab === 'picklists' && <PickListManager selectedCompetition={activeCompetition} onCompetitionUpdate={handleCompetitionUpdate} />}
+        {activeTab === 'picklists' && (
+          <PickListManager
+            selectedCompetition={activeCompetition}
+            onCompetitionUpdate={handleCompetitionUpdate}
+            onTeamSelect={handlePickListTeamSelect}
+          />
+        )}
 
         {/* --- SUPERSCOUTER TAB --- */}
         {activeTab === 'superscout' && (

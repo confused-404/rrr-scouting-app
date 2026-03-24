@@ -85,7 +85,8 @@ const parseStatboticsEPA = (row: any): number | null => {
 export const PickListManager: React.FC<{
   selectedCompetition?: Competition | null;
   onCompetitionUpdate?: () => void;
-}> = ({ selectedCompetition, onCompetitionUpdate }) => {
+  onTeamSelect?: (team: string) => void;
+}> = ({ selectedCompetition, onCompetitionUpdate, onTeamSelect }) => {
   const [forms, setForms] = useState<Form[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [, setLoadingData] = useState(false);
@@ -336,6 +337,12 @@ export const PickListManager: React.FC<{
     });
   };
 
+  const handleTeamSelect = (team: string) => {
+    if (!onTeamSelect) return;
+    const normalized = normalizeTeamNumber(team);
+    onTeamSelect(normalized || team.trim());
+  };
+
   const fetchAutomaticRankings = async () => {
     if (!selectedCompetition?.eventKey) {
       setAutoError('Set an event key in competition settings first.');
@@ -483,7 +490,15 @@ export const PickListManager: React.FC<{
                     {autoRankings.slice(0, 50).map((row, idx) => (
                       <tr key={`${row.team}-${idx}`} className="border-t border-gray-100">
                         <td className="px-3 py-2">#{idx + 1}</td>
-                        <td className="px-3 py-2 font-semibold">{row.team}</td>
+                        <td className="px-3 py-2 font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => handleTeamSelect(row.team)}
+                            className="text-blue-700 hover:text-blue-900 hover:underline"
+                          >
+                            {row.team}
+                          </button>
+                        </td>
                         <td className="px-3 py-2">{row.value.toFixed(2)}</td>
                       </tr>
                     ))}
@@ -554,7 +569,15 @@ export const PickListManager: React.FC<{
                     {quantitativeAutoRankings.map((row, idx) => (
                       <tr key={`${row.team}-${idx}`} className="border-t border-gray-100">
                         <td className="px-3 py-2">#{idx + 1}</td>
-                        <td className="px-3 py-2 font-semibold">{row.team}</td>
+                        <td className="px-3 py-2 font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => handleTeamSelect(row.team)}
+                            className="text-blue-700 hover:text-blue-900 hover:underline"
+                          >
+                            {row.team}
+                          </button>
+                        </td>
                         <td className="px-3 py-2">{row.value.toFixed(2)}</td>
                         <td className="px-3 py-2">{row.submissionCount}</td>
                       </tr>
@@ -605,7 +628,15 @@ export const PickListManager: React.FC<{
                     {qualitativeRankings.map((row, idx) => (
                       <tr key={row.team} className="border-t border-gray-100">
                         <td className="px-3 py-2">#{idx + 1}</td>
-                        <td className="px-3 py-2 font-semibold">{row.team}</td>
+                        <td className="px-3 py-2 font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => handleTeamSelect(row.team)}
+                            className="text-blue-700 hover:text-blue-900 hover:underline"
+                          >
+                            {row.team}
+                          </button>
+                        </td>
                         <td className="px-3 py-2">
                           {(row.hitRate * 100).toFixed(1)}% ({row.hitCount}/{row.submissionCount})
                         </td>
@@ -716,7 +747,13 @@ export const PickListManager: React.FC<{
                         <div className="space-y-2 max-h-64 overflow-y-auto">
                           {section.values.map((team, index) => (
                             <div key={`${team}-${index}`} className="flex items-center justify-between text-sm bg-gray-50 rounded px-2 py-1.5">
-                              <span>#{index + 1} Team {team}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleTeamSelect(team)}
+                                className="text-left text-blue-700 hover:text-blue-900 hover:underline"
+                              >
+                                #{index + 1} Team {team}
+                              </button>
                               <button
                                 onClick={() => removeFromRound(section.key as 'first' | 'second' | 'third', index)}
                                 className="text-red-600 hover:text-red-800"
