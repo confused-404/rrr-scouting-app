@@ -27,6 +27,28 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   const [teamQuery, setTeamQuery] = useState('');
   const [teamInfo, setTeamInfo] = useState<any | null>(null);
 
+  const searchTeam = async (rawTeam: string) => {
+    const q = rawTeam.trim();
+    if (!q) {
+      setTeamInfo(null);
+      return;
+    }
+
+    if (!/^\d+$/.test(q)) {
+      alert('Please enter a numeric team number');
+      return;
+    }
+
+    try {
+      const key = `frc${q}`;
+      const data = await tbaApi.getTeam(key);
+      setTeamInfo(data);
+    } catch (err) {
+      console.error('team lookup error', err);
+      setTeamInfo(null);
+    }
+  };
+
   useEffect(() => {
     if (selectedCompetition) {
       loadAllData();
@@ -155,24 +177,17 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   }, [forms, filteredSubs]);
 
   const handleSearch = async () => {
-    const q = teamQuery.trim();
-    if (!q) {
-      setTeamInfo(null);
-      return;
-    }
-    try {
-      if (!/^\d+$/.test(q)) {
-        alert('Please enter a numeric team number');
-        return;
-      }
-      const key = `frc${q}`;
-      const data = await tbaApi.getTeam(key);
-      setTeamInfo(data);
-    } catch (err) {
-      console.error('team lookup error', err);
-      setTeamInfo(null);
-    }
+    await searchTeam(teamQuery);
   };
+
+  useEffect(() => {
+    const incomingTeam = targetTeam?.trim() || '';
+    if (!incomingTeam) return;
+    if (incomingTeam === teamQuery.trim()) return;
+
+    setTeamQuery(incomingTeam);
+    searchTeam(incomingTeam);
+  }, [targetTeam]);
 
   // Only show notes if the current search query matches the team the notes belong to
   const showNotes = superscoutNotes && teamQuery.trim() === targetTeam?.trim();
