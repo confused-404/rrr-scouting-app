@@ -10,6 +10,10 @@ const router = express.Router();
 // GET /api/statbotics/team_event/254/2024casj
 router.get('/team_event/:team/:event', statboticsController.getTeamEvent);
 
+// Teleop balls breakdown for a team at a single event
+// GET /api/statbotics/team_event/254/2024casj/teleop_balls
+router.get('/team_event/:team/:event/teleop_balls', statboticsController.getTeamEventTeleopBalls);
+
 // List of team_events with optional filters
 // GET /api/statbotics/team_events?team=254&year=2024
 // GET /api/statbotics/team_events?event=2024casj

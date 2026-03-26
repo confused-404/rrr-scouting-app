@@ -17,6 +17,14 @@ type TbaEventOprsResponse = {
   oprs?: Record<string, number>;
 };
 
+export type TeleopBallsResponse = {
+  team: string;
+  event: string;
+  year: number | null;
+  epa: number | null;
+  teleopBalls: Record<string, number> | null;
+};
+
 const apiLogger = createLogger('api');
 
 // Use environment variable for API URL, fallback to current domain in production
@@ -291,6 +299,16 @@ export const statboticsApi = {
 
   getTeamEvents: async (params?: { team?: string; year?: string; event?: string; limit?: number; offset?: number }): Promise<unknown[]> => {
     const response = await api.get('/statbotics/team_events', { params });
+    return response.data;
+  },
+
+  /**
+   * Fetch teleop ball-scoring breakdown for a team at a specific event.
+   * Returns year-specific fields (e.g. teleopAmpNoteCount for 2024,
+   * teleopCargoPoints for 2022, etc.) parsed from Statbotics breakdowns.
+   */
+  getTeamEventTeleopBalls: async (team: string, event: string): Promise<TeleopBallsResponse> => {
+    const response = await api.get(`/statbotics/team_event/${team}/${event}/teleop_balls`);
     return response.data;
   },
 };
