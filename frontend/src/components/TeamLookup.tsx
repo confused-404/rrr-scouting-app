@@ -1,31 +1,79 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission, FormField, PictureFieldValue } from '../types/form.types';
-import { formApi, tbaApi } from '../services/api';
-import { BarChart3, ClipboardList } from 'lucide-react';
+import type { TeleopBallsResponse } from '../services/api';
+import { formApi, tbaApi, statboticsApi } from '../services/api';
+import { BarChart3, ClipboardList, Zap } from 'lucide-react';
 import { submissionValueToText, isPictureFieldValue } from '../utils/formValues';
 
 // reuse helpers from ResponseViewer
 const isQuantitative = (field: FormField) => field.type === 'number' || field.type === 'ranking';
-const toNumber = (v: any) => (v === '' || v === null || v === undefined) ? null : Number(v);
+const toNumber = (v: unknown) => (v === '' || v === null || v === undefined) ? null : Number(v);
+
+/** Human-readable labels for known Statbotics breakdown field names */
+const TELEOP_BALL_LABELS: Record<string, string> = {
+  // 2024 Crescendo
+  teleopAmpNoteCount: 'Amp Notes (Teleop)',
+  teleopSpeakerNoteCount: 'Speaker Notes (Teleop)',
+  teleopSpeakerNoteAmplifiedCount: 'Amplified Speaker Notes (Teleop)',
+  // 2022 Rapid React
+  teleopCargoPoints: 'Cargo Points (Teleop)',
+  teleopCargoLower: 'Lower Cargo (Teleop)',
+  teleopCargoUpper: 'Upper Cargo (Teleop)',
+  // 2020/2021 Infinite Recharge
+  teleopCellsBottom: 'Power Cells – Bottom (Teleop)',
+  teleopCellsOuter: 'Power Cells – Outer (Teleop)',
+  teleopCellsInner: 'Power Cells – Inner (Teleop)',
+  // Generics
+  teleopBallPoints: 'Ball Points (Teleop)',
+  teleopGamePiecePoints: 'Game Piece Points (Teleop)',
+  teleopPoints: 'Teleop Points',
+};
+
+/** Pick the most meaningful subset to display (prefer specific counts over aggregates) */
+const prioritizeTeleopFields = (balls: Record<string, number>): Array<{ key: string; label: string; value: number }> => {
+  const keys = Object.keys(balls);
+
+  // If we have note-level counts (2024), prefer those over totals
+  const noteCounts = keys.filter(k =>
+    k === 'teleopAmpNoteCount' || k === 'teleopSpeakerNoteCount' || k === 'teleopSpeakerNoteAmplifiedCount'
+  );
+  if (noteCounts.length > 0) {
+    return noteCounts.map(k => ({ key: k, label: TELEOP_BALL_LABELS[k] ?? k, value: balls[k] }));
+  }
+
+  // 2022 cargo — prefer piece counts over point totals when available
+  const cargoCounts = keys.filter(k => k === 'teleopCargoLower' || k === 'teleopCargoUpper');
+  if (cargoCounts.length > 0) {
+    return cargoCounts.map(k => ({ key: k, label: TELEOP_BALL_LABELS[k] ?? k, value: balls[k] }));
+  }
+
+  // Fall back to all available fields
+  return keys.map(k => ({ key: k, label: TELEOP_BALL_LABELS[k] ?? k, value: balls[k] }));
+};
 
 interface TeamLookupProps {
   selectedCompetition?: Competition | null;
   superscoutNotes?: string;
-  targetTeam?: string; // To ensure notes only show for the active team
+  targetTeam?: string;
 }
 
-export const TeamLookup: React.FC<TeamLookupProps> = ({ 
-  selectedCompetition, 
-  superscoutNotes, 
-  targetTeam 
+export const TeamLookup: React.FC<TeamLookupProps> = ({
+  selectedCompetition,
+  superscoutNotes,
+  targetTeam,
 }) => {
   const [forms, setForms] = useState<Form[]>([]);
   const [allSubmissions, setAllSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [teamQuery, setTeamQuery] = useState('');
-  const [teamInfo, setTeamInfo] = useState<any | null>(null);
+  const [teamInfo, setTeamInfo] = useState<unknown | null>(null);
+
+  // Teleop balls state
+  const [teleopBalls, setTeleopBalls] = useState<TeleopBallsResponse | null>(null);
+  const [teleopBallsLoading, setTeleopBallsLoading] = useState(false);
+  const [teleopBallsError, setTeleopBallsError] = useState('');
 
   const searchTeam = async (rawTeam: string) => {
     const q = rawTeam.trim();
@@ -47,12 +95,44 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
       console.error('team lookup error', err);
       setTeamInfo(null);
     }
+
+    // Also fetch teleop balls if we have an event key
+    await fetchTeleopBalls(q);
+  };
+
+  const fetchTeleopBalls = async (teamNum: string) => {
+    const eventKey = selectedCompetition?.eventKey;
+    if (!eventKey || !teamNum) {
+      setTeleopBalls(null);
+      setTeleopBallsError('');
+      return;
+    }
+
+    setTeleopBallsLoading(true);
+    setTeleopBallsError('');
+    setTeleopBalls(null);
+
+    try {
+      const data = await statboticsApi.getTeamEventTeleopBalls(teamNum, eventKey);
+      setTeleopBalls(data);
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404) {
+        setTeleopBallsError('No Statbotics data found for this team at the current event.');
+      } else {
+        setTeleopBallsError('Could not load teleop ball data from Statbotics.');
+      }
+      setTeleopBalls(null);
+    } finally {
+      setTeleopBallsLoading(false);
+    }
   };
 
   useEffect(() => {
     if (selectedCompetition) {
       loadAllData();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCompetition?.id]);
 
   const loadAllData = async () => {
@@ -78,6 +158,8 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   useEffect(() => {
     setTeamQuery('');
     setTeamInfo(null);
+    setTeleopBalls(null);
+    setTeleopBallsError('');
   }, [selectedCompetition?.id]);
 
   const filteredSubs = useMemo(() => {
@@ -113,13 +195,13 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   }, [forms, filteredSubs]);
 
   const qualitativeSummary = useMemo(() => {
-    const summary: Record<string, { type: FormField['type']; data: any }> = {};
-    
+    const summary: Record<string, { type: FormField['type']; data: unknown }> = {};
+
     forms.forEach(form => {
       form.fields.forEach(field => {
         if (!isQuantitative(field)) {
           const fieldKey = `${field.label}|${field.id}`;
-          
+
           if (field.type === 'picture') {
             const photos: PictureFieldValue[] = [];
             filteredSubs.forEach(sub => {
@@ -129,7 +211,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
               }
             });
             summary[fieldKey] = { type: field.type, data: photos };
-            
+
           } else if (field.type === 'multiple_choice') {
             const counts: Record<string, number> = {};
             filteredSubs.forEach(sub => {
@@ -140,19 +222,19 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
               }
             });
             summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
-            
+
           } else if (field.type === 'multiple_select') {
             const counts: Record<string, number> = {};
             filteredSubs.forEach(sub => {
               const val = sub.data?.[field.id];
               if (Array.isArray(val)) {
                 val.forEach(option => {
-                  counts[option] = (counts[option] || 0) + 1;
+                  counts[String(option)] = (counts[String(option)] || 0) + 1;
                 });
               }
             });
             summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
-            
+
           } else if (field.type === 'rank_order') {
             const counts: Record<string, number> = {};
             filteredSubs.forEach(sub => {
@@ -168,7 +250,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
               }
             });
             summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
-            
+
           } else {
             const values = new Set<string>();
             filteredSubs.forEach(sub => {
@@ -197,12 +279,21 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
 
     setTeamQuery(incomingTeam);
     searchTeam(incomingTeam);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetTeam]);
 
   // Only show notes if the current search query matches the team the notes belong to
   const showNotes = superscoutNotes && teamQuery.trim() === targetTeam?.trim();
 
+  // Derived teleop ball display rows
+  const teleopBallRows = useMemo(() => {
+    if (!teleopBalls?.teleopBalls) return [];
+    return prioritizeTeleopFields(teleopBalls.teleopBalls);
+  }, [teleopBalls]);
+
   if (!selectedCompetition) return <div className="p-10 text-center text-gray-400">No active competition selected</div>;
+
+  const teamInfoTyped = teamInfo as { nickname?: string; team_number?: number; city?: string; state_prov?: string; country?: string } | null;
 
   return (
     <div className="space-y-4 sm:space-y-6 pb-20">
@@ -212,6 +303,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
           placeholder="Team number..."
           value={teamQuery}
           onChange={e => setTeamQuery(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
           className="flex-1 border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium"
         />
         <button onClick={handleSearch} className="w-full md:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition-all">
@@ -219,11 +311,66 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
         </button>
       </div>
 
-      {teamInfo && (
+      {teamInfoTyped && (
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="font-black text-lg">{teamInfo.nickname || teamInfo.team_number}</div>
-          <div className="text-sm text-gray-600">{teamInfo.team_number && `#${teamInfo.team_number}`}</div>
-          {teamInfo.city && <div className="text-sm text-gray-600">{teamInfo.city}, {teamInfo.state_prov || teamInfo.country}</div>}
+          <div className="font-black text-lg">{teamInfoTyped.nickname || teamInfoTyped.team_number}</div>
+          <div className="text-sm text-gray-600">{teamInfoTyped.team_number && `#${teamInfoTyped.team_number}`}</div>
+          {teamInfoTyped.city && (
+            <div className="text-sm text-gray-600">
+              {teamInfoTyped.city}, {teamInfoTyped.state_prov || teamInfoTyped.country}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── TELEOP BALLS (Statbotics) ── */}
+      {teamQuery.trim() && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3 bg-orange-50 border-b border-orange-100">
+            <Zap size={16} className="text-orange-500" />
+            <span className="font-black text-xs uppercase tracking-widest text-orange-700">
+              Teleop Balls — Statbotics
+            </span>
+            {teleopBalls?.year && (
+              <span className="ml-auto text-[10px] font-bold text-orange-400">{teleopBalls.year} Season</span>
+            )}
+          </div>
+
+          <div className="p-5">
+            {!selectedCompetition.eventKey ? (
+              <p className="text-sm text-gray-500 italic">
+                Set an event key on this competition to enable Statbotics lookups.
+              </p>
+            ) : teleopBallsLoading ? (
+              <p className="text-sm text-gray-400 animate-pulse">Loading teleop data…</p>
+            ) : teleopBallsError ? (
+              <p className="text-sm text-amber-700">{teleopBallsError}</p>
+            ) : teleopBallRows.length === 0 ? (
+              <p className="text-sm text-gray-500 italic">
+                No teleop ball breakdown available for this team / event.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {teleopBallRows.map(({ key, label, value }) => (
+                  <div
+                    key={key}
+                    className="bg-orange-600 text-white p-5 rounded-2xl shadow-lg border-b-4 border-orange-800"
+                  >
+                    <div className="flex items-center gap-2 mb-2 opacity-80 uppercase text-[10px] font-black tracking-widest">
+                      <Zap size={12} />
+                      {label}
+                    </div>
+                    <div className="text-3xl font-black">
+                      {Number.isInteger(value) ? value : value.toFixed(2)}
+                    </div>
+                    <div className="text-[10px] mt-1 opacity-60 font-bold uppercase tracking-tight">
+                      via Statbotics EPA breakdown
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -242,14 +389,18 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
       {loading ? (
         <div className="py-20 text-center font-black text-gray-300 animate-pulse tracking-widest uppercase">Fetching Data...</div>
       ) : (
-        <>          
+        <>
           {/* Stats Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {stats.map(s => (
               <div key={s.field.id} className="bg-blue-600 text-white p-5 rounded-2xl shadow-lg border-b-4 border-blue-800">
-                <div className="flex items-center gap-2 mb-2 opacity-80 uppercase text-[10px] font-black tracking-widest"><BarChart3 size={14}/> {s.field.label}</div>
+                <div className="flex items-center gap-2 mb-2 opacity-80 uppercase text-[10px] font-black tracking-widest">
+                  <BarChart3 size={14} /> {s.field.label}
+                </div>
                 <div className="text-3xl font-black">{s.mean}</div>
-                <div className="text-[10px] mt-1 opacity-60 font-bold uppercase tracking-tight">Average of {s.count} responses</div>
+                <div className="text-[10px] mt-1 opacity-60 font-bold uppercase tracking-tight">
+                  Average of {s.count} responses
+                </div>
               </div>
             ))}
           </div>
@@ -259,7 +410,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
             <div className="space-y-4">
               {Object.entries(qualitativeSummary).map(([fieldKey, summary]) => {
                 const [label] = fieldKey.split('|');
-                
+
                 if (summary.type === 'picture') {
                   const photos = summary.data as PictureFieldValue[];
                   return (
@@ -276,10 +427,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
                                 src={photo.url}
                                 alt={photo.name || `Photo ${index + 1}`}
                                 className="w-full h-24 object-cover rounded-lg border border-gray-200 hover:shadow-md transition-shadow cursor-pointer"
-                                onClick={() => {
-                                  // Open full-size image in new tab
-                                  window.open(photo.url, '_blank');
-                                }}
+                                onClick={() => window.open(photo.url, '_blank')}
                               />
                               <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity rounded-lg flex items-center justify-center">
                                 <div className="opacity-0 group-hover:opacity-100 text-white text-xs font-medium">
@@ -290,36 +438,43 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
                           ))}
                         </div>
                       ) : (
-                        <div className="text-sm text-gray-500 text-center py-8">
-                          No photos uploaded yet
-                        </div>
+                        <div className="text-sm text-gray-500 text-center py-8">No photos uploaded yet</div>
                       )}
                     </div>
                   );
-                } else if (summary.type === 'multiple_choice' || summary.type === 'multiple_select' || summary.type === 'rank_order') {
-                  const { counts, options } = summary.data;
+                } else if (
+                  summary.type === 'multiple_choice' ||
+                  summary.type === 'multiple_select' ||
+                  summary.type === 'rank_order'
+                ) {
+                  const { counts, options } = summary.data as { counts: Record<string, number>; options: string[] };
                   const totalResponses = filteredSubs.length;
-                  const displayItems = summary.type === 'rank_order' 
-                    ? Object.keys(counts).sort((a, b) => counts[b] - counts[a])
-                    : options;
-                  
+                  const displayItems =
+                    summary.type === 'rank_order'
+                      ? Object.keys(counts).sort((a, b) => counts[b] - counts[a])
+                      : options;
+
                   return (
                     <div key={fieldKey} className="bg-white p-4 rounded-lg shadow">
                       <div className="font-black text-sm mb-3">{label}</div>
                       <div className="space-y-2">
                         {displayItems.map((item: string) => {
                           const count = counts[item] || 0;
-                          const percentage = totalResponses > 0 ? (count / totalResponses * 100).toFixed(1) : '0';
-                          
+                          const percentage =
+                            totalResponses > 0 ? ((count / totalResponses) * 100).toFixed(1) : '0';
+
                           return (
-                            <div key={item} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+                            <div
+                              key={item}
+                              className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2"
+                            >
                               <span className="text-sm break-words">{item}</span>
                               <div className="flex items-center gap-2 sm:min-w-[11rem]">
                                 <div className="flex-1 sm:flex-none sm:w-24 bg-gray-200 rounded-full h-2">
-                                  <div 
-                                    className="bg-blue-600 h-2 rounded-full" 
+                                  <div
+                                    className="bg-blue-600 h-2 rounded-full"
                                     style={{ width: `${percentage}%` }}
-                                  ></div>
+                                  />
                                 </div>
                                 <span className="text-sm font-medium text-gray-600 min-w-[3rem] text-right">
                                   {count} ({percentage}%)
