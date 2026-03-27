@@ -6,12 +6,15 @@ import type { Competition } from '../types/competition.types';
 import { formApi, competitionApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
+const teamFieldRegex = /team|team number|team #/i;
+
 export const FormManager: React.FC<{ selectedCompetition?: Competition | null, onCompetitionUpdate?: () => void }> = ({ selectedCompetition, onCompetitionUpdate }) => {
     const { isAdmin } = useAuth();
     const [forms, setForms] = useState<Form[]>([]);
     const [selectedForm, setSelectedForm] = useState<Form | null>(null);
     const [formFields, setFormFields] = useState<FormFieldType[]>([]);
     const [formName, setFormName] = useState('');
+    const [teamNumberFieldId, setTeamNumberFieldId] = useState<number | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(false);
 
@@ -72,11 +75,12 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
 
         setLoading(true);
         try {
-            const newForm = await formApi.createForm(selectedCompetition.id, [], newFormName);
+            const newForm = await formApi.createForm(selectedCompetition.id, [], newFormName, null);
             await loadForms();
             setSelectedForm(newForm);
             setFormFields([]);
             setFormName(newForm.name);
+            setTeamNumberFieldId(newForm.teamNumberFieldId ?? null);
             setIsEditing(true);
             setShowCreateDialog(false);
             setNewFormName('');
@@ -94,6 +98,7 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
             setSelectedForm(form);
             setFormFields([...form.fields]);
             setFormName(form.name);
+            setTeamNumberFieldId(form.teamNumberFieldId ?? null);
             setIsEditing(true);
         }
     };
@@ -101,9 +106,15 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
     const handleSaveForm = async () => {
         if (!selectedForm) return;
 
+        const hasConfiguredTeamField = teamNumberFieldId === null || formFields.some((field) => field.id === teamNumberFieldId);
+        if (!hasConfiguredTeamField) {
+            alert('Selected team number field no longer exists. Choose another team number field or clear the selection.');
+            return;
+        }
+
         setLoading(true);
         try {
-            await formApi.updateForm(selectedForm.id, formFields, formName);
+            await formApi.updateForm(selectedForm.id, formFields, formName, teamNumberFieldId);
             await loadForms();
             alert('Form saved successfully!');
         } catch (error) {
@@ -177,7 +188,7 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
         try {
             const form = forms.find((f) => f.id === formId);
             if (form) {
-                await formApi.updateForm(formId, form.fields, editingFormName);
+                await formApi.updateForm(formId, form.fields, editingFormName, form.teamNumberFieldId ?? null);
                 await loadForms();
                 setEditingFormId(null);
                 setEditingFormName('');
@@ -223,7 +234,20 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
 
     const deleteField = (id: number) => {
         setFormFields(formFields.filter((field) => field.id !== id));
+        if (teamNumberFieldId === id) {
+            setTeamNumberFieldId(null);
+        }
     };
+
+    useEffect(() => {
+        if (teamNumberFieldId === null) return;
+        const stillExists = formFields.some((field) => field.id === teamNumberFieldId);
+        if (!stillExists) {
+            setTeamNumberFieldId(null);
+        }
+    }, [formFields, teamNumberFieldId]);
+
+    const suggestedTeamFieldId = formFields.find((field) => teamFieldRegex.test(field.label))?.id ?? null;
 
     const addOption = (fieldId: number) => {
         setFormFields(
@@ -506,6 +530,34 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
                                     className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     placeholder="Enter form name"
                                 />
+
+                                <div className="mt-4 max-w-md">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Team Number Field</label>
+                                    <select
+                                        value={teamNumberFieldId ?? ''}
+                                        onChange={(e) => setTeamNumberFieldId(e.target.value ? Number(e.target.value) : null)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="">Not set</option>
+                                        {formFields.map((field) => (
+                                            <option key={field.id} value={field.id}>
+                                                {field.label || `Field ${field.id}`} ({field.type})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs text-gray-500 mt-2">
+                                        Team-based lookup and aggregation use only this field.
+                                        {!teamNumberFieldId && suggestedTeamFieldId !== null && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setTeamNumberFieldId(suggestedTeamFieldId)}
+                                                className="ml-1 text-blue-600 hover:text-blue-700"
+                                            >
+                                                Use suggested field
+                                            </button>
+                                        )}
+                                    </p>
+                                </div>
                             </div>
                             <div className="flex gap-2">
                                 <button

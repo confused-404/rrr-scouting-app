@@ -39,6 +39,18 @@ type QuantitativeAutoRow = {
 
 const teamFieldRegex = /team|team number|team #/i;
 
+const resolveTeamFieldId = (form: Form): number | null => {
+  if (
+    Number.isInteger(form.teamNumberFieldId)
+    && form.fields.some((field) => field.id === form.teamNumberFieldId)
+  ) {
+    return form.teamNumberFieldId as number;
+  }
+
+  const fallbackField = form.fields.find((field) => teamFieldRegex.test(field.label));
+  return fallbackField?.id ?? null;
+};
+
 const normalizeTeamNumber = (raw: unknown): string | null => {
   if (raw === null || raw === undefined) return null;
   const text = String(raw).trim();
@@ -144,12 +156,12 @@ export const PickListManager: React.FC<{
     const byTeam = new Map<string, TeamAggregate>();
 
     for (const form of forms) {
-      const teamField = form.fields.find((field) => teamFieldRegex.test(field.label));
-      if (!teamField) continue;
+      const teamFieldId = resolveTeamFieldId(form);
+      if (teamFieldId === null) continue;
 
       const formSubs = submissions.filter((sub) => sub.formId === form.id);
       for (const sub of formSubs) {
-        const team = normalizeTeamNumber(sub.data?.[teamField.id]);
+        const team = normalizeTeamNumber(sub.data?.[teamFieldId]);
         if (!team) continue;
 
         if (!byTeam.has(team)) {

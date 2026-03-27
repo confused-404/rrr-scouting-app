@@ -6,6 +6,19 @@ import { Filter, X, Download} from 'lucide-react';
 import { isPictureFieldValue, submissionValueToText } from '../utils/formValues';
 
 type FilterOp = 'contains' | 'equals' | 'gt' | 'lt';
+const teamFieldRegex = /team|team number|team #/i;
+
+const resolveTeamFieldId = (form: Form): number | null => {
+  if (
+    Number.isInteger(form.teamNumberFieldId)
+    && form.fields.some((field) => field.id === form.teamNumberFieldId)
+  ) {
+    return form.teamNumberFieldId as number;
+  }
+
+  const fallbackField = form.fields.find((field) => teamFieldRegex.test(field.label));
+  return fallbackField?.id ?? null;
+};
 
 // Helper for filtering
 const toNumber = (v: any) => (v === '' || v === null || v === undefined) ? null : Number(v);
@@ -49,9 +62,8 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
     if (!selectedForm || submissions.length === 0) return;
     setIsExporting(true);
 
-    // Find team field (case insensitive search for "team" in label)
-    const teamField = selectedForm.fields.find(f => f.label.toLowerCase().includes('team'));
-    if (!teamField) {
+    const teamFieldId = resolveTeamFieldId(selectedForm);
+    if (teamFieldId === null) {
       alert('No team field found in form. Cannot export analyzed data.');
       setIsExporting(false);
       return;
@@ -60,7 +72,7 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
     // Group submissions by team
     const teamGroups: Record<string, Submission[]> = {};
     submissions.forEach(sub => {
-      const teamValue = String(sub.data?.[teamField.id] ?? '').trim();
+      const teamValue = String(sub.data?.[teamFieldId] ?? '').trim();
       if (teamValue) {
         if (!teamGroups[teamValue]) teamGroups[teamValue] = [];
         teamGroups[teamValue].push(sub);

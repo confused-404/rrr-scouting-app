@@ -229,13 +229,13 @@ export const formApi = {
     return response.data;
   },
 
-  createForm: async (competitionId: string, fields: FormField[], name?: string): Promise<Form> => {
-    const response = await api.post('/forms', { competitionId, fields, name });
+  createForm: async (competitionId: string, fields: FormField[], name?: string, teamNumberFieldId?: number | null): Promise<Form> => {
+    const response = await api.post('/forms', { competitionId, fields, name, teamNumberFieldId });
     return response.data;
   },
 
-  updateForm: async (id: string, fields: FormField[], name?: string): Promise<Form> => {
-    const response = await api.put(`/forms/${id}`, { fields, name });
+  updateForm: async (id: string, fields: FormField[], name?: string, teamNumberFieldId?: number | null): Promise<Form> => {
+    const response = await api.put(`/forms/${id}`, { fields, name, teamNumberFieldId });
     return response.data;
   },
 

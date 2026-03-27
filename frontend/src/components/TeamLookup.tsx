@@ -9,6 +9,32 @@ import { submissionValueToText, isPictureFieldValue } from '../utils/formValues'
 // reuse helpers from ResponseViewer
 const isQuantitative = (field: FormField) => field.type === 'number' || field.type === 'ranking';
 const toNumber = (v: unknown) => (v === '' || v === null || v === undefined) ? null : Number(v);
+const teamFieldRegex = /team|team number|team #/i;
+
+const normalizeTeamNumber = (raw: unknown): string | null => {
+  if (raw === null || raw === undefined) return null;
+  const text = String(raw).trim();
+  if (!text) return null;
+
+  if (text.startsWith('frc')) {
+    return text.replace(/^frc/i, '').trim();
+  }
+
+  const digits = text.match(/\d+/)?.[0];
+  return digits || null;
+};
+
+const resolveTeamFieldId = (form: Form): number | null => {
+  if (
+    Number.isInteger(form.teamNumberFieldId)
+    && form.fields.some((field) => field.id === form.teamNumberFieldId)
+  ) {
+    return form.teamNumberFieldId as number;
+  }
+
+  const fallbackField = form.fields.find((field) => teamFieldRegex.test(field.label));
+  return fallbackField?.id ?? null;
+};
 
 /** Human-readable labels for known Statbotics breakdown field names */
 const TELEOP_BALL_LABELS: Record<string, string> = {
@@ -163,34 +189,46 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   }, [selectedCompetition?.id]);
 
   const filteredSubs = useMemo(() => {
-    if (!teamQuery.trim()) return [];
-    const q = teamQuery.trim().toLowerCase();
-    return allSubmissions.filter(sub => {
-      return Object.values(sub.data).some(val => {
-        if (val === undefined || val === null) return false;
-        return submissionValueToText(val).toLowerCase().includes(q);
+    const normalizedQuery = normalizeTeamNumber(teamQuery);
+    if (!normalizedQuery) return [];
+
+    const matched: Submission[] = [];
+    forms.forEach((form) => {
+      const teamFieldId = resolveTeamFieldId(form);
+      if (teamFieldId === null) return;
+
+      const formSubs = allSubmissions.filter((sub) => sub.formId === form.id);
+      formSubs.forEach((sub) => {
+        const teamValue = normalizeTeamNumber(sub.data?.[teamFieldId]);
+        if (teamValue === normalizedQuery) {
+          matched.push(sub);
+        }
       });
     });
-  }, [allSubmissions, teamQuery]);
+
+    return matched;
+  }, [allSubmissions, forms, teamQuery]);
 
   const stats = useMemo(() => {
-    const fieldStats: Record<string, { field: FormField; vals: number[] }> = {};
+    const fieldStats: Record<string, { key: string; field: FormField; vals: number[] }> = {};
     forms.forEach(form => {
+      const formSubs = filteredSubs.filter((sub) => sub.formId === form.id);
       form.fields.filter(isQuantitative).forEach(field => {
-        if (!fieldStats[field.label]) {
-          fieldStats[field.label] = { field, vals: [] };
+        const statKey = `${form.id}:${field.id}`;
+        if (!fieldStats[statKey]) {
+          fieldStats[statKey] = { key: statKey, field, vals: [] };
         }
-        filteredSubs.forEach(sub => {
+        formSubs.forEach(sub => {
           const val = toNumber(sub.data?.[field.id]);
           if (val !== null && !isNaN(val)) {
-            fieldStats[field.label].vals.push(val);
+            fieldStats[statKey].vals.push(val);
           }
         });
       });
     });
-    return Object.values(fieldStats).map(({ field, vals }) => {
+    return Object.values(fieldStats).map(({ key, field, vals }) => {
       const avg = vals.length === 0 ? 0 : vals.reduce((a, b) => a + b, 0) / vals.length;
-      return { field, mean: avg.toFixed(2), count: vals.length };
+      return { key, field, mean: avg.toFixed(2), count: vals.length };
     });
   }, [forms, filteredSubs]);
 
@@ -198,13 +236,14 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     const summary: Record<string, { type: FormField['type']; data: unknown }> = {};
 
     forms.forEach(form => {
+      const formSubs = filteredSubs.filter((sub) => sub.formId === form.id);
       form.fields.forEach(field => {
         if (!isQuantitative(field)) {
-          const fieldKey = `${field.label}|${field.id}`;
+          const fieldKey = `${form.id}|${field.label}|${field.id}`;
 
           if (field.type === 'picture') {
             const photos: PictureFieldValue[] = [];
-            filteredSubs.forEach(sub => {
+            formSubs.forEach(sub => {
               const val = sub.data?.[field.id];
               if (isPictureFieldValue(val)) {
                 photos.push(val);
@@ -214,18 +253,18 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
 
           } else if (field.type === 'multiple_choice') {
             const counts: Record<string, number> = {};
-            filteredSubs.forEach(sub => {
+            formSubs.forEach(sub => {
               const val = sub.data?.[field.id];
               if (val !== undefined && val !== null && val !== '') {
                 const key = String(val);
                 counts[key] = (counts[key] || 0) + 1;
               }
             });
-            summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
+            summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [], totalResponses: formSubs.length } };
 
           } else if (field.type === 'multiple_select') {
             const counts: Record<string, number> = {};
-            filteredSubs.forEach(sub => {
+            formSubs.forEach(sub => {
               const val = sub.data?.[field.id];
               if (Array.isArray(val)) {
                 val.forEach(option => {
@@ -233,11 +272,11 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
                 });
               }
             });
-            summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
+            summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [], totalResponses: formSubs.length } };
 
           } else if (field.type === 'rank_order') {
             const counts: Record<string, number> = {};
-            filteredSubs.forEach(sub => {
+            formSubs.forEach(sub => {
               const val = sub.data?.[field.id];
               if (Array.isArray(val) && val.length > 0) {
                 const compact = val
@@ -249,11 +288,11 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
                 }
               }
             });
-            summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [] } };
+            summary[fieldKey] = { type: field.type, data: { counts, options: field.options || [], totalResponses: formSubs.length } };
 
           } else {
             const values = new Set<string>();
-            filteredSubs.forEach(sub => {
+            formSubs.forEach(sub => {
               const raw = sub.data?.[field.id];
               if (raw !== undefined && raw !== null && raw !== '') {
                 const text = submissionValueToText(raw);
@@ -393,7 +432,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
           {/* Stats Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {stats.map(s => (
-              <div key={s.field.id} className="bg-blue-600 text-white p-5 rounded-2xl shadow-lg border-b-4 border-blue-800">
+              <div key={s.key} className="bg-blue-600 text-white p-5 rounded-2xl shadow-lg border-b-4 border-blue-800">
                 <div className="flex items-center gap-2 mb-2 opacity-80 uppercase text-[10px] font-black tracking-widest">
                   <BarChart3 size={14} /> {s.field.label}
                 </div>
@@ -409,7 +448,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
           {Object.keys(qualitativeSummary).length > 0 && (
             <div className="space-y-4">
               {Object.entries(qualitativeSummary).map(([fieldKey, summary]) => {
-                const [label] = fieldKey.split('|');
+                const [, label] = fieldKey.split('|');
 
                 if (summary.type === 'picture') {
                   const photos = summary.data as PictureFieldValue[];
@@ -447,8 +486,11 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
                   summary.type === 'multiple_select' ||
                   summary.type === 'rank_order'
                 ) {
-                  const { counts, options } = summary.data as { counts: Record<string, number>; options: string[] };
-                  const totalResponses = filteredSubs.length;
+                  const { counts, options, totalResponses } = summary.data as {
+                    counts: Record<string, number>;
+                    options: string[];
+                    totalResponses: number;
+                  };
                   const displayItems =
                     summary.type === 'rank_order'
                       ? Object.keys(counts).sort((a, b) => counts[b] - counts[a])
