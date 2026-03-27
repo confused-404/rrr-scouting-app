@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, Search, X, Star, ChevronDown, ChevronUp, Trophy } from 'lucide-react';
+import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, X, Star, ChevronDown, ChevronUp, Trophy } from 'lucide-react';
 import { CompetitionManager } from './CompetitionManager';
 import { FormManager } from './FormManager';
 import { ResponseViewer } from './ResponseViewer';
@@ -40,7 +40,6 @@ const normalizeTeam = (raw: unknown): string | null => {
 
 const teamFieldRegex = /team|team number|team #/i;
 const climbWhereRegex = /where did they climb|climb level|climb position/i;
-const didClimbRegex = /did they climb/i;
 
 // ─── types ───────────────────────────────────────────────────────────────────
 interface TeamSuperscoutData {
