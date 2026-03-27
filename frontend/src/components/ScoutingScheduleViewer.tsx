@@ -118,19 +118,6 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
     );
   }
 
-  const uniqueTeams = useMemo(() => {
-    const teamMap = new Map<string, GeneratedAssignment[]>();
-    assignments.forEach(assignment => {
-      if (!teamMap.has(assignment.teamId)) teamMap.set(assignment.teamId, []);
-      teamMap.get(assignment.teamId)!.push(assignment);
-    });
-    return Array.from(teamMap.entries()).map(([teamId, teamAssignments]) => ({
-      teamId,
-      teamName: teamAssignments[0].teamName,
-      assignments: teamAssignments.sort((a, b) => a.matchNumber - b.matchNumber),
-    }));
-  }, [assignments]);
-
   const getPositionBg = (position: string) =>
     position.startsWith('red') ? 'bg-red-100 text-red-800 border-red-200' : 'bg-blue-100 text-blue-800 border-blue-200';
 
