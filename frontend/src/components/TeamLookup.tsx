@@ -59,7 +59,6 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   const [teleopPerMatch, setTeleopPerMatch] = useState<Array<{ value: number; matchNum: string; isCompleted: boolean }>>([]);
   const [teleopBallsLoading, setTeleopBallsLoading] = useState(false);
   const [teleopBallsError, setTeleopBallsError] = useState('');
-  const [teleopLastN, setTeleopLastN] = useState<number>(0); // 0 = all matches
 
   const searchTeam = async (rawTeam: string) => {
     const q = rawTeam.trim();
@@ -97,7 +96,6 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     setTeleopBallsLoading(true);
     setTeleopBallsError('');
     setTeleopPerMatch([]);
-    setTeleopLastN(0); // Reset to all matches when fetching new team
 
     try {
       // Fetch per-match data
@@ -172,7 +170,6 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     setTeamInfo(null);
     setTeleopPerMatch([]);
     setTeleopBallsError('');
-    setTeleopLastN(0);
   }, [selectedCompetition?.id]);
 
   const filteredSubs = useMemo(() => {
@@ -311,15 +308,6 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   // Only show notes if the current search query matches the team the notes belong to
   const showNotes = superscoutNotes && teamQuery.trim() === targetTeam?.trim();
 
-  // Compute average teleop per match based on filter (only completed matches)
-  const teleopAverage = useMemo(() => {
-    const completed = teleopPerMatch.filter(m => m.isCompleted);
-    if (completed.length === 0) return null;
-    const slice = teleopLastN === 0 ? completed : completed.slice(-teleopLastN);
-    if (slice.length === 0) return null;
-    return slice.reduce((sum, m) => sum + m.value, 0) / slice.length;
-  }, [teleopPerMatch, teleopLastN]);
-
   if (!selectedCompetition) return <div className="p-10 text-center text-gray-400">No active competition selected</div>;
 
   const teamInfoTyped = teamInfo as { nickname?: string; team_number?: number; city?: string; state_prov?: string; country?: string } | null;
@@ -386,73 +374,6 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
               </p>
             ) : (
               <>
-                {/* Filter Controls */}
-                <div className="flex flex-wrap gap-2 items-center">
-                  <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">View:</span>
-                  <button
-                    onClick={() => setTeleopLastN(0)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                      teleopLastN === 0
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    All
-                  </button>
-                  <button
-                    onClick={() => setTeleopLastN(1)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                      teleopLastN === 1
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    Last
-                  </button>
-                  {teleopPerMatch.length >= 3 && (
-                    <button
-                      onClick={() => setTeleopLastN(3)}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                        teleopLastN === 3
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      Last 3
-                    </button>
-                  )}
-                  {teleopPerMatch.length >= 5 && (
-                    <button
-                      onClick={() => setTeleopLastN(5)}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                        teleopLastN === 5
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      Last 5
-                    </button>
-                  )}
-                </div>
-
-                {/* Average Display */}
-                {teleopAverage !== null && (
-                  <div className="bg-orange-600 text-white p-5 rounded-2xl shadow-lg border-b-4 border-orange-800">
-                    <div className="flex items-center gap-2 mb-2 opacity-80 uppercase text-[10px] font-black tracking-widest">
-                      <Zap size={12} />
-                      Teleop EPA Average
-                    </div>
-                    <div className="text-3xl font-black">{teleopAverage.toFixed(2)}</div>
-                    <div className="text-[10px] mt-1 opacity-60 font-bold uppercase tracking-tight">
-                      {(() => {
-                        const completed = teleopPerMatch.filter(m => m.isCompleted);
-                        const countDisplay = teleopLastN === 0 ? completed.length : Math.min(teleopLastN, completed.length);
-                        return `Average of ${countDisplay} completed match${countDisplay !== 1 ? 'es' : ''}`;
-                      })()}
-                    </div>
-                  </div>
-                )}
-
                 {/* Per-Match Breakdown */}
                 <div className="space-y-2">
                   <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Per-Match Breakdown:</p>

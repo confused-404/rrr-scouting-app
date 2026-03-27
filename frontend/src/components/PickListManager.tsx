@@ -37,6 +37,8 @@ type QuantitativeAutoRow = {
   value: number;
 };
 
+const TELEOP_EPA_PER_MATCH_METRIC = 'Statbotics: Teleop EPA (Calculated)';
+
 const teamFieldRegex = /team|team number|team #/i;
 
 const resolveTeamFieldId = (form: Form): number | null => {
@@ -94,6 +96,28 @@ const parseStatboticsEPA = (row: any): number | null => {
   return null;
 };
 
+const parseStatboticsTeleopCalculated = (row: Record<string, unknown>): number | null => {
+  const topBreakdown = row.breakdown as Record<string, unknown> | undefined;
+  const epaObj = row.epa as Record<string, unknown> | undefined;
+  const epaBreakdown = epaObj?.breakdown as Record<string, unknown> | undefined;
+  const unitlessObj = row.unitless_epa as Record<string, unknown> | undefined;
+  const unitlessBreakdown = unitlessObj?.breakdown as Record<string, unknown> | undefined;
+
+  const candidates = [
+    topBreakdown?.teleop_points,
+    epaBreakdown?.teleop_points,
+    unitlessBreakdown?.teleop_points,
+    row.teleop_points,
+  ];
+
+  for (const value of candidates) {
+    const n = toFiniteNumber(value);
+    if (n !== null) return n;
+  }
+
+  return null;
+};
+
 export const PickListManager: React.FC<{
   selectedCompetition?: Competition | null;
   onCompetitionUpdate?: () => void;
@@ -122,6 +146,7 @@ export const PickListManager: React.FC<{
   const [selectedQuantField, setSelectedQuantField] = useState('');
   const [quantAggregateMode, setQuantAggregateMode] = useState<QuantAggregateMode>('average');
   const [quantSortDirection, setQuantSortDirection] = useState<SortDirection>('desc');
+  const [teleopCalculatedByTeam, setTeleopCalculatedByTeam] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!selectedCompetition) return;
@@ -151,6 +176,37 @@ export const PickListManager: React.FC<{
 
     loadSubmissionData();
   }, [selectedCompetition?.id]);
+
+  useEffect(() => {
+    const loadTeleopPerMatchMetric = async () => {
+      if (!selectedCompetition?.eventKey) {
+        setTeleopCalculatedByTeam({});
+        return;
+      }
+
+      try {
+        const rows = await statboticsApi.getTeamEvents({ event: selectedCompetition.eventKey, limit: 999 }) as Array<Record<string, unknown>>;
+        const byTeam: Record<string, number> = {};
+
+        rows.forEach((row) => {
+          const team = normalizeTeamNumber(row.team);
+          if (!team) return;
+
+          const teleop = parseStatboticsTeleopCalculated(row);
+          if (teleop === null) return;
+
+          byTeam[team] = teleop;
+        });
+
+        setTeleopCalculatedByTeam(byTeam);
+      } catch (error) {
+        console.error('Error loading Statbotics teleop calculated metric:', error);
+        setTeleopCalculatedByTeam({});
+      }
+    };
+
+    loadTeleopPerMatchMetric();
+  }, [selectedCompetition?.eventKey]);
 
   const teamAggregates = useMemo(() => {
     const byTeam = new Map<string, TeamAggregate>();
@@ -220,8 +276,12 @@ export const PickListManager: React.FC<{
     teamAggregates.forEach((team) => {
       Object.keys(team.quantitative).forEach((key) => set.add(key));
     });
+    // Keep the Statbotics metric visible whenever the competition has an event key.
+    if (selectedCompetition?.eventKey) {
+      set.add(TELEOP_EPA_PER_MATCH_METRIC);
+    }
     return Array.from(set).sort();
-  }, [teamAggregates]);
+  }, [teamAggregates, selectedCompetition?.eventKey]);
 
   useEffect(() => {
     if (!selectedQualCategory && qualitativeCategories.length > 0) {
@@ -275,6 +335,40 @@ export const PickListManager: React.FC<{
   const quantitativeAutoRankings = useMemo(() => {
     if (!selectedQuantField) return [] as QuantitativeAutoRow[];
 
+    if (selectedQuantField === TELEOP_EPA_PER_MATCH_METRIC) {
+      const submissionCountByTeam = new Map<string, number>();
+      teamAggregates.forEach((team) => {
+        submissionCountByTeam.set(team.team, team.submissionCount);
+      });
+
+      const teams = new Set<string>([
+        ...teamAggregates.map((team) => team.team),
+        ...Object.keys(teleopCalculatedByTeam),
+      ]);
+
+      const rows: QuantitativeAutoRow[] = Array.from(teams)
+        .map((team) => {
+          const value = teleopCalculatedByTeam[team];
+          if (value === undefined) return null;
+
+          return {
+            team,
+            submissionCount: submissionCountByTeam.get(team) || 0,
+            value,
+          };
+        })
+        .filter(Boolean) as QuantitativeAutoRow[];
+
+      rows.sort((a, b) => {
+        const direction = quantSortDirection === 'desc' ? 1 : -1;
+        const byValue = direction * (b.value - a.value);
+        if (byValue !== 0) return byValue;
+        return direction * (b.submissionCount - a.submissionCount);
+      });
+
+      return rows;
+    }
+
     const rows: QuantitativeAutoRow[] = teamAggregates
       .map((team) => {
         const values = team.quantitative[selectedQuantField] || [];
@@ -305,7 +399,7 @@ export const PickListManager: React.FC<{
     });
 
     return rows;
-  }, [quantAggregateMode, quantSortDirection, selectedQuantField, teamAggregates]);
+  }, [quantAggregateMode, quantSortDirection, selectedQuantField, teamAggregates, teleopCalculatedByTeam]);
 
   const selectedManualList = useMemo(
     () => manualLists.find((list) => list.id === selectedManualId) || null,
