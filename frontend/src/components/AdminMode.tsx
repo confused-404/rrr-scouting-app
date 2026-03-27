@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, X, Star, ChevronDown, ChevronUp, Trophy, UserCog } from 'lucide-react';
+import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, X, Star, ChevronDown, ChevronUp, Trophy, UserCog, Search } from 'lucide-react';
 import { CompetitionManager } from './CompetitionManager';
 import { FormManager } from './FormManager';
 import { ResponseViewer } from './ResponseViewer';
@@ -141,6 +141,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
   const [epaLoadingTeams] = useState<Set<string>>(new Set());
   const [localRating, setLocalRating] = useState<string>('');
+  const [superscoutSearch, setSuperscoutSearch] = useState('');
 
   // ── load active competition ───────────────────────────────────────────────
   useEffect(() => {
@@ -329,6 +330,12 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
     });
   }, [superscoutTeams, lastN]);
 
+  const filteredTeams = useMemo(() => {
+    const q = superscoutSearch.trim().toLowerCase();
+    if (!q) return rankedTeams;
+    return rankedTeams.filter(t => t.team.toLowerCase().includes(q));
+  }, [rankedTeams, superscoutSearch]);
+
   // ── save superscouter notes + rating ─────────────────────────────────────
   const saveTeamSuperscout = async (team: string, notes: string, rating: number | null) => {
     if (!activeCompetition) return;
@@ -500,12 +507,32 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
                     Teams ranked by Teleop EPA + Auto EPA + Avg Climb Points
                   </p>
                 </div>
-                <button
-                  onClick={loadSuperscoutData}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-all"
-                >
-                  Refresh
-                </button>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={superscoutSearch}
+                      onChange={e => setSuperscoutSearch(e.target.value)}
+                      placeholder="Search team…"
+                      className="pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-40"
+                    />
+                    {superscoutSearch && (
+                      <button
+                        onClick={() => setSuperscoutSearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    onClick={loadSuperscoutData}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-all"
+                  >
+                    Refresh
+                  </button>
+                </div>
               </div>
 
               {/* Last-N control */}
@@ -559,15 +586,22 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
               <div className="bg-white rounded-xl p-16 text-center text-gray-300 font-black uppercase tracking-widest animate-pulse">
                 Loading teams…
               </div>
-            ) : rankedTeams.length === 0 ? (
+            ) : filteredTeams.length === 0 ? (
               <div className="bg-white rounded-xl p-16 text-center text-gray-400 border-2 border-dashed">
                 <ClipboardList size={40} className="mx-auto mb-3 opacity-20" />
-                <p className="font-bold">No scouted teams yet.</p>
-                <p className="text-sm text-gray-400">Submit scouting forms or add notes below to populate this list.</p>
+                {superscoutSearch ? (
+                  <p className="font-bold">No teams match &ldquo;{superscoutSearch}&rdquo;.</p>
+                ) : (
+                  <>
+                    <p className="font-bold">No scouted teams yet.</p>
+                    <p className="text-sm text-gray-400">Submit scouting forms or add notes below to populate this list.</p>
+                  </>
+                )}
               </div>
             ) : (
               <div className="space-y-3">
-                {rankedTeams.map((td, idx) => {
+                {filteredTeams.map((td) => {
+                  const rank = rankedTeams.findIndex(t => t.team === td.team);
                   const score = computeScore(td, lastN);
                   const allScore = computeScore(td, 0);
                   const isExpanded = expandedTeam === td.team;
@@ -585,12 +619,12 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
                       <div className="flex items-center gap-3 p-4">
                         {/* Rank badge */}
                         <div className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm ${
-                          idx === 0 ? 'bg-yellow-400 text-yellow-900' :
-                          idx === 1 ? 'bg-gray-300 text-gray-700' :
-                          idx === 2 ? 'bg-amber-600 text-white' :
+                          rank === 0 ? 'bg-yellow-400 text-yellow-900' :
+                          rank === 1 ? 'bg-gray-300 text-gray-700' :
+                          rank === 2 ? 'bg-amber-600 text-white' :
                           'bg-gray-100 text-gray-500'
                         }`}>
-                          {idx === 0 ? <Trophy size={16} /> : `#${idx + 1}`}
+                          {rank === 0 ? <Trophy size={16} /> : `#${rank + 1}`}
                         </div>
 
                         {/* Team number */}
