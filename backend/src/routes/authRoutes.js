@@ -6,7 +6,9 @@ import {
   getAdminEmails,
   initializeFirstAdmin,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  getAllUsers,
+  updateScouterName,
 } from '../controllers/authController.js';
 import { verifyToken, isAdmin } from '../middleware/userAuth.js';
 
@@ -26,5 +28,7 @@ router.get('/me', verifyToken, getMe);
 // ADMIN ONLY
 router.post('/make-admin', verifyToken, isAdmin, makeAdmin);
 router.get('/admins', verifyToken, isAdmin, getAdminEmails);
+router.get('/users', verifyToken, isAdmin, getAllUsers);
+router.put('/users/:uid/scouter', verifyToken, isAdmin, updateScouterName);
 
 export default router;

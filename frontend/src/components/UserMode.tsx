@@ -4,6 +4,7 @@ import type { FormField as FormFieldType } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { FormField } from './FormField';
 import { formApi } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import { TeamLookup } from './TeamLookup';
 import { MatchSchedule } from './MatchSchedule';
 import { ScoutingScheduleViewer } from './ScoutingScheduleViewer';
@@ -17,6 +18,7 @@ type UserTab = 'scout' | 'teamLookup' | 'schedule' | 'scoutingSchedule' | 'pitMa
 type FieldErrors = Record<number, string>;
 
 export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
+  const { scouterName } = useAuth();
   const [formFields, setFormFields] = useState<FormFieldType[]>([]);
   const [forms, setForms] = useState<{ id: string; name: string }[]>([]);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
@@ -447,7 +449,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
           </div>
         </div>
       ) : activeTab === 'scoutingSchedule' ? (
-        <ScoutingScheduleViewer selectedCompetition={selectedCompetition} />
+        <ScoutingScheduleViewer selectedCompetition={selectedCompetition} scouterName={scouterName} />
       ) : activeTab === 'pitMap' ? (
         <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6 space-y-4">
           <div>

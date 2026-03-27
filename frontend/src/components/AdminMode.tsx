@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, X, Star, ChevronDown, ChevronUp, Trophy } from 'lucide-react';
+import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, X, Star, ChevronDown, ChevronUp, Trophy, UserCog } from 'lucide-react';
 import { CompetitionManager } from './CompetitionManager';
 import { FormManager } from './FormManager';
 import { ResponseViewer } from './ResponseViewer';
@@ -7,11 +7,12 @@ import { TeamLookup } from './TeamLookup';
 import { MatchSchedule } from './MatchSchedule';
 import { ScoutingTeams } from './ScoutingTeams';
 import { PickListManager } from './PickListManager';
+import { ManageUsers } from './ManageUsers';
 import { competitionApi, formApi, statboticsApi } from '../services/api';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission } from '../types/form.types';
 
-type AdminTab = 'competitions' | 'forms' | 'scoutingTeams' | 'analytics' | 'superscout' | 'picklists';
+type AdminTab = 'competitions' | 'forms' | 'scoutingTeams' | 'analytics' | 'superscout' | 'picklists' | 'manageUsers';
 type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule';
 
 // ─── climbing points by answer ───────────────────────────────────────────────
@@ -450,6 +451,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
             ['analytics', BarChart, 'Analytics'],
             ['superscout', ClipboardList, 'Superscouter'],
             ['picklists', ClipboardList, 'Pick Lists'],
+            ['manageUsers', UserCog, 'Manage Users'],
           ] as const
         ).map(([tab, Icon, label]) => (
           <button
@@ -478,6 +480,9 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
             onCompetitionUpdate={handleCompetitionUpdate}
             onTeamSelect={handlePickListTeamSelect}
           />
+        )}
+        {activeTab === 'manageUsers' && (
+          <ManageUsers selectedCompetition={activeCompetition} />
         )}
 
         {/* ══════════════════════════════════════════════════════════

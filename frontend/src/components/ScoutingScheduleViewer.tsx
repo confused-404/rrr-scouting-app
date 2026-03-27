@@ -5,6 +5,7 @@ import { tbaApi } from '../services/api';
 
 interface ScoutingScheduleViewerProps {
   selectedCompetition: Competition | null;
+  scouterName?: string | null;
 }
 
 /** Map "red1" → { alliance: 'red', slot: 0 } */
@@ -14,9 +15,17 @@ const parsePosition = (pos: string): { alliance: 'red' | 'blue'; slot: number } 
   return { alliance: m[1].toLowerCase() as 'red' | 'blue', slot: parseInt(m[2]) - 1 };
 };
 
-export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ selectedCompetition }) => {
+export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ selectedCompetition, scouterName }) => {
   const [viewMode, setViewMode] = useState<'all' | 'myMatches'>('all');
-  const [searchQuery, setSearchQuery] = useState(''); // Add this line
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // When scouterName becomes known (after login + profile fetch), auto-switch to My Assignments
+  useEffect(() => {
+    if (scouterName) {
+      setViewMode('myMatches');
+      setSearchQuery(scouterName);
+    }
+  }, [scouterName]); // Add this line
 
   // TBA match data: match_number → { red: string[3], blue: string[3] }
   const [tbaMatches, setTbaMatches] = useState<Map<number, { red: string[]; blue: string[] }>>(new Map());
@@ -89,9 +98,14 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
   const now = new Date();
 
   const getNextMatch = () => {
-    if (!selectedCompetition?.scoutingAssignments) return null;
+    if (!selectedCompetition?.scoutingAssignments || !scouterName) return null;
+    // Only show "Your Next Match" when we know who the user is
     return selectedCompetition.scoutingAssignments
-      .filter(a => a.matchTime && a.matchTime * 1000 > now.getTime())
+      .filter(a =>
+        a.matchTime &&
+        a.matchTime * 1000 > now.getTime() &&
+        a.scouts.some(s => s.toLowerCase() === scouterName.toLowerCase())
+      )
       .sort((a, b) => a.matchTime! - b.matchTime!)[0] || null;
   };
 

@@ -133,6 +133,13 @@ export const authApi = {
     const response = await api.post('/auth/reset-password', { email, code, newPassword });
     return response.data;
   },
+  getAllUsers: async (): Promise<Array<{ uid: string; email: string; role: string; scouterName: string | null }>> => {
+    const response = await api.get('/auth/users');
+    return response.data;
+  },
+  updateScouterName: async (uid: string, scouterName: string | null): Promise<void> => {
+    await api.put(`/auth/users/${uid}/scouter`, { scouterName });
+  },
 };
 
 export const competitionApi = {
