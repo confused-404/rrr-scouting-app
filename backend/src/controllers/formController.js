@@ -126,24 +126,6 @@ const sanitizeFields = (fields) => {
   });
 };
 
-const sanitizeTeamNumberFieldId = (teamNumberFieldId, fields) => {
-  if (teamNumberFieldId === undefined || teamNumberFieldId === null || teamNumberFieldId === '') {
-    return null;
-  }
-
-  const normalizedId = Number(teamNumberFieldId);
-  if (!Number.isInteger(normalizedId)) {
-    throw createValidationError('Team number field must be a valid field ID.');
-  }
-
-  const hasField = fields.some((field) => field.id === normalizedId);
-  if (!hasField) {
-    throw createValidationError('Selected team number field was not found in this form.');
-  }
-
-  return normalizedId;
-};
-
 const shouldIncludeField = (field, values) => {
   if (!field.condition) return true;
 
@@ -338,9 +320,7 @@ export const formController = {
   // Get all forms
   getForms: async (req, res) => {
     try {
-      // console.log('Getting all forms...');
       const forms = await formModel.getAllForms();
-      // console.log('Forms retrieved:', forms.length);
       res.json(forms);
     } catch (error) {
       console.error('Error in getForms:', error);
@@ -376,20 +356,18 @@ export const formController = {
   // Create form
   createForm: async (req, res) => {
     try {
-      const { fields, competitionId, name, teamNumberFieldId } = req.body;
+      const { fields, competitionId, name } = req.body;
 
       if (!competitionId) {
         return res.status(400).json({ message: 'Competition ID is required' });
       }
 
       const sanitizedFields = sanitizeFields(fields);
-      const sanitizedTeamNumberFieldId = sanitizeTeamNumberFieldId(teamNumberFieldId, sanitizedFields);
 
       const newForm = await formModel.createForm({
         fields: sanitizedFields,
         competitionId,
-        name: normalizeString(name) || 'Untitled Form',
-        teamNumberFieldId: sanitizedTeamNumberFieldId,
+        name: normalizeString(name) || 'Untitled Form'
       });
 
       // Add the form ID to the competition's formIds array
@@ -411,15 +389,11 @@ export const formController = {
   // Update form
   updateForm: async (req, res) => {
     try {
-      const { fields, name, teamNumberFieldId } = req.body;
+      const { fields, name } = req.body;
 
       const sanitizedFields = sanitizeFields(fields);
-      const sanitizedTeamNumberFieldId = sanitizeTeamNumberFieldId(teamNumberFieldId, sanitizedFields);
 
-      const updateData = {
-        fields: sanitizedFields,
-        teamNumberFieldId: sanitizedTeamNumberFieldId,
-      };
+      const updateData = { fields: sanitizedFields };
       if (name !== undefined) {
         updateData.name = normalizeString(name) || 'Untitled Form';
       }
@@ -459,7 +433,6 @@ export const formController = {
         const updatedFormIds = (competition.formIds || []).filter(id => id !== req.params.id);
         const updateData = { formIds: updatedFormIds };
 
-        // remove from activeFormIds if present (supports legacy activeFormId too)
         let activeIds = competition.activeFormIds || [];
         if (!Array.isArray(activeIds) && competition.activeFormId) {
           activeIds = [competition.activeFormId];
@@ -524,5 +497,43 @@ export const formController = {
       console.error('Error in createSubmission:', error);
       res.status(error.status || 500).json({ message: error.message });
     }
-  }
+  },
+
+  /**
+   * Update an existing submission in-place (admin only).
+   * Validates the incoming data against the original form's field definitions,
+   * then writes only the `data` field back to Firestore without touching
+   * formId, competitionId, or the original timestamp.
+   */
+  updateSubmission: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { data } = req.body;
+
+      if (!data) {
+        return res.status(400).json({ message: 'Submission data is required' });
+      }
+
+      // Fetch the existing submission so we know which form to validate against
+      const existingSubmission = await formModel.getSubmissionById(id);
+      if (!existingSubmission) {
+        return res.status(404).json({ message: 'Submission not found' });
+      }
+
+      // Load the form to get field definitions for validation
+      const form = await formModel.getFormById(existingSubmission.formId);
+      if (!form) {
+        return res.status(404).json({ message: 'Form definition not found' });
+      }
+
+      // Sanitize & validate using the same logic as createSubmission
+      const sanitizedData = sanitizeSubmissionData(form, data);
+
+      const updatedSubmission = await formModel.updateSubmission(id, sanitizedData);
+      res.json(updatedSubmission);
+    } catch (error) {
+      console.error('Error in updateSubmission:', error);
+      res.status(error.status || 500).json({ message: error.message });
+    }
+  },
 };

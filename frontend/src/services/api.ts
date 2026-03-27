@@ -27,25 +27,14 @@ export type TeleopBallsResponse = {
 
 const apiLogger = createLogger('api');
 
-// Use environment variable for API URL, fallback to current domain in production
 const getApiUrl = (): string => {
   const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl) {
-    return envUrl;
-  }
-
-  // For development, use relative /api path
-  // For production, construct from current domain
-  if (import.meta.env.DEV) {
-    return '/api';
-  }
-
+  if (envUrl) return envUrl;
+  if (import.meta.env.DEV) return '/api';
   return `${window.location.protocol}//${window.location.host}/api`;
 };
 
 const API_BASE_URL = getApiUrl();
-
-// Get API key from environment (should match backend API_KEY)
 const API_KEY = import.meta.env.VITE_API_KEY || 'dev-key-for-local-testing';
 
 const api = axios.create({
@@ -61,15 +50,14 @@ apiLogger.info('Configured API client', {
   hasApiKey: Boolean(API_KEY),
 });
 
-// Add auth token to requests
 api.interceptors.request.use(async (config) => {
-  const requestId = globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const requestId =
+    (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const nextConfig = config as typeof config & LoggingConfig;
   const headers = AxiosHeaders.from(nextConfig.headers);
-  nextConfig.metadata = {
-    requestId,
-    startedAt: Date.now(),
-  };
+  nextConfig.metadata = { requestId, startedAt: Date.now() };
   headers.set('X-Request-ID', requestId);
 
   const user = auth.currentUser;
@@ -88,7 +76,6 @@ api.interceptors.request.use(async (config) => {
   }
 
   nextConfig.headers = headers;
-
   apiLogger.debug('API request started', {
     requestId,
     method: nextConfig.method,
@@ -96,7 +83,6 @@ api.interceptors.request.use(async (config) => {
     params: sanitizeForLogging(nextConfig.params),
     data: sanitizeForLogging(nextConfig.data),
   });
-
   return nextConfig;
 });
 
@@ -104,7 +90,6 @@ api.interceptors.response.use(
   (response) => {
     const config = response.config as typeof response.config & LoggingConfig;
     const durationMs = config.metadata ? Date.now() - config.metadata.startedAt : undefined;
-
     apiLogger.debug('API request completed', {
       requestId: config.metadata?.requestId,
       method: config.method,
@@ -112,13 +97,11 @@ api.interceptors.response.use(
       status: response.status,
       durationMs,
     });
-
     return response;
   },
   (error) => {
     const config = error.config as (typeof error.config & LoggingConfig) | undefined;
     const durationMs = config?.metadata ? Date.now() - config.metadata.startedAt : undefined;
-
     apiLogger.error('API request failed', {
       requestId: config?.metadata?.requestId,
       method: config?.method,
@@ -129,7 +112,6 @@ api.interceptors.response.use(
       error: formatErrorForLogging(error),
       responseData: sanitizeForLogging(error.response?.data),
     });
-
     return Promise.reject(error);
   },
 );
@@ -139,18 +121,14 @@ export const authApi = {
     const response = await api.post('/auth/signup', { email, password });
     return response.data;
   },
-
   getCurrentUser: async () => {
     const response = await api.get('/auth/me');
     return response.data;
   },
-
-  // password reset helpers
   forgotPassword: async (email: string) => {
     const response = await api.post('/auth/forgot-password', { email });
     return response.data;
   },
-
   resetPassword: async (email: string, code: string, newPassword: string) => {
     const response = await api.post('/auth/reset-password', { email, code, newPassword });
     return response.data;
@@ -162,51 +140,41 @@ export const competitionApi = {
     const response = await api.get('/competitions');
     return response.data;
   },
-
   getActive: async (): Promise<Competition | null> => {
     const response = await api.get('/competitions/active');
     return response.data;
   },
-
   getById: async (id: string): Promise<Competition> => {
     const response = await api.get(`/competitions/${id}`);
     return response.data;
   },
-
   create: async (competition: Partial<Competition>): Promise<Competition> => {
     const response = await api.post('/competitions', competition);
     return response.data;
   },
-
   update: async (id: string, competition: Partial<Competition>): Promise<Competition> => {
     const response = await api.put(`/competitions/${id}`, competition);
     return response.data;
   },
-
   delete: async (id: string): Promise<void> => {
     await api.delete(`/competitions/${id}`);
   },
-
   addForm: async (competitionId: string, formId: string): Promise<Competition> => {
     const response = await api.post(`/competitions/${competitionId}/forms/add`, { formId });
     return response.data;
   },
-
   removeForm: async (competitionId: string, formId: string): Promise<Competition> => {
     const response = await api.post(`/competitions/${competitionId}/forms/remove`, { formId });
     return response.data;
   },
-
   setActiveForm: async (competitionId: string, formId: string | null): Promise<Competition> => {
     const response = await api.post(`/competitions/${competitionId}/forms/set-active`, { formId });
     return response.data;
   },
-
   saveSuperscouterNotes: async (competitionId: string, teamNumber: string, notes: string): Promise<Competition> => {
     const response = await api.post(`/competitions/${competitionId}/superscouterNotes`, { teamNumber, notes });
     return response.data;
   },
-
   getSuperscouterNotes: async (competitionId: string, teamNumber: string): Promise<{ teamNumber: string; notes: string }> => {
     const response = await api.get(`/competitions/${competitionId}/superscouterNotes`, { params: { teamNumber } });
     return response.data;
@@ -218,43 +186,45 @@ export const formApi = {
     const response = await api.get('/forms');
     return response.data;
   },
-
   getFormsByCompetition: async (competitionId: string): Promise<Form[]> => {
     const response = await api.get(`/forms/competition/${competitionId}`);
     return response.data;
   },
-
   getForm: async (id: string): Promise<Form> => {
     const response = await api.get(`/forms/${id}`);
     return response.data;
   },
-
-  createForm: async (competitionId: string, fields: FormField[], name?: string, teamNumberFieldId?: number | null): Promise<Form> => {
-    const response = await api.post('/forms', { competitionId, fields, name, teamNumberFieldId });
+  createForm: async (competitionId: string, form: { fields: FormField[]; name?: string; teamNumberFieldId?: number | null }): Promise<Form> => {
+    const response = await api.post('/forms', { ...form, competitionId });
     return response.data;
   },
-
-  updateForm: async (id: string, fields: FormField[], name?: string, teamNumberFieldId?: number | null): Promise<Form> => {
-    const response = await api.put(`/forms/${id}`, { fields, name, teamNumberFieldId });
+  updateForm: async (id: string, form: { fields: FormField[]; name: string; teamNumberFieldId?: number | null }): Promise<Form> => {
+    const response = await api.put(`/forms/${id}`, form);
     return response.data;
   },
-
   deleteForm: async (id: string): Promise<void> => {
     await api.delete(`/forms/${id}`);
   },
-
   getSubmissions: async (formId: string): Promise<Submission[]> => {
     const response = await api.get(`/forms/${formId}/submissions`);
     return response.data;
   },
-
   getSubmissionsByCompetition: async (competitionId: string): Promise<Submission[]> => {
     const response = await api.get(`/forms/competition/${competitionId}/submissions`);
     return response.data;
   },
-
   createSubmission: async (formId: string, competitionId: string, data: Record<string, unknown>): Promise<Submission> => {
     const response = await api.post('/forms/submissions', { formId, competitionId, data });
+    return response.data;
+  },
+  /**
+   * Overwrite an existing submission's data in-place (admin only).
+   * Sends PUT /forms/submissions/:id  — the backend validates the data
+   * against the form's field definitions and updates ONLY the data field.
+   * The original document (formId, competitionId, timestamp) is preserved.
+   */
+  updateSubmission: async (submissionId: string, data: Record<string, unknown>): Promise<Submission> => {
+    const response = await api.put(`/forms/submissions/${submissionId}`, { data });
     return response.data;
   },
 };
@@ -264,22 +234,18 @@ export const tbaApi = {
     const response = await api.get(`/tba/team/${teamKey}`);
     return response.data;
   },
-
   getTeamsSimple: async (year: string): Promise<unknown[]> => {
     const response = await api.get(`/tba/teams/${year}/simple`);
     return response.data;
   },
-
   getEvents: async (year: string): Promise<unknown[]> => {
     const response = await api.get(`/tba/events/${year}`);
     return response.data;
   },
-
   getEventMatches: async (eventKey: string): Promise<unknown[]> => {
     const response = await api.get(`/tba/event/${eventKey}/matches`);
     return response.data;
   },
-
   getEventOPRs: async (eventKey: string): Promise<TbaEventOprsResponse> => {
     const response = await api.get(`/tba/event/${eventKey}/oprs`);
     return response.data;
@@ -291,22 +257,14 @@ export const statboticsApi = {
     const response = await api.get(`/statbotics/event/${eventKey}/matches`);
     return response.data;
   },
-
   getTeamEvent: async (team: string, event: string): Promise<unknown> => {
     const response = await api.get(`/statbotics/team_event/${team}/${event}`);
     return response.data;
   },
-
   getTeamEvents: async (params?: { team?: string; year?: string; event?: string; limit?: number; offset?: number }): Promise<unknown[]> => {
     const response = await api.get('/statbotics/team_events', { params });
     return response.data;
   },
-
-  /**
-   * Fetch teleop ball-scoring breakdown for a team at a specific event.
-   * Returns year-specific fields (e.g. teleopAmpNoteCount for 2024,
-   * teleopCargoPoints for 2022, etc.) parsed from Statbotics breakdowns.
-   */
   getTeamEventTeleopBalls: async (team: string, event: string): Promise<TeleopBallsResponse> => {
     const response = await api.get(`/statbotics/team_event/${team}/${event}/teleop_balls`);
     return response.data;

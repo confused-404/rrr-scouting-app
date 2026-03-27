@@ -75,7 +75,11 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
 
         setLoading(true);
         try {
-            const newForm = await formApi.createForm(selectedCompetition.id, [], newFormName, null);
+            const newForm = await formApi.createForm(selectedCompetition.id, {
+                fields: [],
+                name: newFormName,
+                teamNumberFieldId: null
+            });
             await loadForms();
             setSelectedForm(newForm);
             setFormFields([]);
@@ -114,7 +118,11 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
 
         setLoading(true);
         try {
-            await formApi.updateForm(selectedForm.id, formFields, formName, teamNumberFieldId);
+            await formApi.updateForm(selectedForm.id, {
+                fields: formFields,
+                name: formName,
+                teamNumberFieldId: teamNumberFieldId
+            });
             await loadForms();
             alert('Form saved successfully!');
         } catch (error) {
@@ -188,7 +196,11 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
         try {
             const form = forms.find((f) => f.id === formId);
             if (form) {
-                await formApi.updateForm(formId, form.fields, editingFormName, form.teamNumberFieldId ?? null);
+                await formApi.updateForm(formId, {
+                    fields: form.fields,
+                    name: editingFormName,
+                    teamNumberFieldId: form.teamNumberFieldId ?? null
+                });
                 await loadForms();
                 setEditingFormId(null);
                 setEditingFormName('');

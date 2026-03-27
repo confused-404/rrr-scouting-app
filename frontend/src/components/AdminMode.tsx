@@ -44,7 +44,7 @@ const climbWhereRegex = /where did they climb|climb level|climb position/i;
 // ─── types ───────────────────────────────────────────────────────────────────
 interface TeamSuperscoutData {
   team: string;
-  /** Superscouter's manual rating 1–10 */
+  /** Superscouter's manual rating 1–5 */
   rating: number | null;
   notes: string;
   /** Average climb points per match from scouting submissions */
@@ -104,6 +104,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
   const [savingTeam, setSavingTeam] = useState<string | null>(null);
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
   const [epaLoadingTeams, setEpaLoadingTeams] = useState<Set<string>>(new Set());
+  const [localRating, setLocalRating] = useState<string>('');
 
   // ── load active competition ───────────────────────────────────────────────
   useEffect(() => {
@@ -236,6 +237,16 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
     }
   };
 
+  const toggleExpand = (team: string, currentRating: number | null) => {
+    if (expandedTeam === team) {
+      setExpandedTeam(null);
+    } else {
+      setExpandedTeam(team);
+      // Sync the input field to the team's actual rating when opening
+      setLocalRating(currentRating != null ? String(currentRating) : '');
+    }
+  };
+
   const loadEpaForTeam = async (team: string, eventKey: string) => {
     setEpaLoadingTeams(prev => new Set(prev).add(team));
     try {
@@ -324,7 +335,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
 
   const commitEdit = async (team: string) => {
     const rating = draftRating !== '' ? parseFloat(draftRating) : null;
-    const clampedRating = rating != null ? Math.min(10, Math.max(1, rating)) : null;
+    const clampedRating = rating != null ? Math.min(5, Math.max(1, rating)) : null;
     await saveTeamSuperscout(team, draftNotes, clampedRating);
   };
 
@@ -365,7 +376,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
 
     return (
       <div className="flex items-center gap-0.5">
-        {[2, 4, 6, 8, 10].map(val => (
+        {[1, 2, 3, 4, 5].map(val => (
           <button
             key={val}
             type="button"
@@ -374,7 +385,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
             onMouseLeave={() => setHovered(null)}
             onClick={() => !disabled && handleRatingChange(team, rating === val ? null : val)}
             className="focus:outline-none disabled:cursor-not-allowed"
-            title={`Rate ${val}/10`}
+            title={`Rate ${val}/5`}
           >
             <Star
               size={18}
@@ -387,7 +398,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
           </button>
         ))}
         {rating != null && (
-          <span className="ml-1 text-xs font-bold text-gray-500">{rating}/10</span>
+          <span className="ml-1 text-xs font-bold text-gray-500">{rating}/5</span>
         )}
       </div>
     );
@@ -593,7 +604,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
                         <div className="ml-auto flex items-center gap-2 flex-shrink-0">
                           <StarRating team={td.team} rating={td.rating} disabled={isEditing} />
                           <button
-                            onClick={() => setExpandedTeam(isExpanded ? null : td.team)}
+                            onClick={() => toggleExpand(td.team, td.rating)}
                             className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
                           >
                             {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -633,25 +644,28 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
                           {/* Exact rating input */}
                           <div className="flex items-center gap-3">
                             <label className="text-xs font-black text-gray-500 uppercase tracking-widest">
-                              Exact Rating (1–10)
+                              Exact Rating (1-5)
                             </label>
                             <input
                               type="number"
                               min={1}
-                              max={10}
+                              max={5}
                               step={0.1}
-                              value={isEditing ? draftRating : (td.rating ?? '')}
-                              onChange={e => {
-                                if (isEditing) setDraftRating(e.target.value);
-                              }}
-                              onBlur={async e => {
-                                if (!isEditing) {
-                                  const v = parseFloat(e.target.value);
-                                  const r = isNaN(v) ? null : Math.min(10, Math.max(1, v));
-                                  await handleRatingChange(td.team, r);
+                              value={localRating}
+                              onChange={e => setLocalRating(e.target.value)}
+                              onBlur={() => {
+                                if (localRating === '') {
+                                  handleRatingChange(td.team, null);
+                                  return;
+                                }
+
+                                const num = parseFloat(localRating);
+                                if (!isNaN(num)) {
+                                  const clamped = Math.min(5, Math.max(1, num));
+                                  handleRatingChange(td.team, clamped);
                                 }
                               }}
-                              placeholder="e.g. 7.5"
+                              placeholder="e.g. 4.5"
                               className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                           </div>
