@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { UserCog, Save, RefreshCw } from 'lucide-react';
+import { UserCog, Save, RefreshCw, ShieldCheck, ShieldOff, Trash2 } from 'lucide-react';
 import { authApi } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import type { Competition } from '../types/competition.types';
 
 interface UserRecord {
@@ -15,9 +16,11 @@ interface ManageUsersProps {
 }
 
 export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition }) => {
+  const { currentUser } = useAuth();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
+  const [actionPending, setActionPending] = useState<string | null>(null);
   const [draftNames, setDraftNames] = useState<Record<string, string>>({});
 
   const availableScouterNames = useMemo(() => {
@@ -66,6 +69,47 @@ export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition })
     const user = users.find(u => u.uid === uid);
     if (!user) return false;
     return (draftNames[uid] ?? '') !== (user.scouterName ?? '');
+  };
+
+  const promoteUser = async (uid: string) => {
+    setActionPending(uid);
+    try {
+      await authApi.promoteUser(uid);
+      setUsers(prev => prev.map(u => u.uid === uid ? { ...u, role: 'admin' } : u));
+    } catch (err) {
+      console.error('Error promoting user:', err);
+      alert('Failed to promote user. Please try again.');
+    } finally {
+      setActionPending(null);
+    }
+  };
+
+  const demoteUser = async (uid: string) => {
+    setActionPending(uid);
+    try {
+      await authApi.demoteUser(uid);
+      setUsers(prev => prev.map(u => u.uid === uid ? { ...u, role: 'user' } : u));
+    } catch (err) {
+      console.error('Error demoting user:', err);
+      alert('Failed to demote user. Please try again.');
+    } finally {
+      setActionPending(null);
+    }
+  };
+
+  const deleteUser = async (uid: string, email: string) => {
+    if (!window.confirm(`Delete account "${email}"? This cannot be undone.`)) return;
+    setActionPending(uid);
+    try {
+      await authApi.deleteUser(uid);
+      setUsers(prev => prev.filter(u => u.uid !== uid));
+      setDraftNames(prev => { const next = { ...prev }; delete next[uid]; return next; });
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      alert('Failed to delete user. Please try again.');
+    } finally {
+      setActionPending(null);
+    }
   };
 
   return (
@@ -138,6 +182,42 @@ export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition })
                 <Save size={13} />
                 {saving === user.uid ? 'Saving…' : 'Save'}
               </button>
+
+              {/* ── Role & delete actions (disabled for own account) ── */}
+              {currentUser?.uid !== user.uid && (
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {user.role !== 'admin' ? (
+                    <button
+                      onClick={() => promoteUser(user.uid)}
+                      disabled={actionPending === user.uid}
+                      title="Promote to Admin"
+                      className="px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      <ShieldCheck size={13} />
+                      Promote
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => demoteUser(user.uid)}
+                      disabled={actionPending === user.uid}
+                      title="Demote to User"
+                      className="px-2.5 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      <ShieldOff size={13} />
+                      Demote
+                    </button>
+                  )}
+                  <button
+                    onClick={() => deleteUser(user.uid, user.email)}
+                    disabled={actionPending === user.uid}
+                    title="Delete Account"
+                    className="px-2.5 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    <Trash2 size={13} />
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -140,6 +140,15 @@ export const authApi = {
   updateScouterName: async (uid: string, scouterName: string | null): Promise<void> => {
     await api.put(`/auth/users/${uid}/scouter`, { scouterName });
   },
+  promoteUser: async (uid: string): Promise<void> => {
+    await api.post(`/auth/users/${uid}/promote`);
+  },
+  demoteUser: async (uid: string): Promise<void> => {
+    await api.post(`/auth/users/${uid}/demote`);
+  },
+  deleteUser: async (uid: string): Promise<void> => {
+    await api.delete(`/auth/users/${uid}`);
+  },
 };
 
 export const competitionApi = {
