@@ -9,6 +9,9 @@ import {
   resetPassword,
   getAllUsers,
   updateScouterName,
+  promoteUser,
+  demoteUser,
+  deleteUser,
 } from '../controllers/authController.js';
 import { verifyToken, isAdmin } from '../middleware/userAuth.js';
 
@@ -30,5 +33,8 @@ router.post('/make-admin', verifyToken, isAdmin, makeAdmin);
 router.get('/admins', verifyToken, isAdmin, getAdminEmails);
 router.get('/users', verifyToken, isAdmin, getAllUsers);
 router.put('/users/:uid/scouter', verifyToken, isAdmin, updateScouterName);
+router.post('/users/:uid/promote', verifyToken, isAdmin, promoteUser);
+router.post('/users/:uid/demote', verifyToken, isAdmin, demoteUser);
+router.delete('/users/:uid', verifyToken, isAdmin, deleteUser);
 
 export default router;
