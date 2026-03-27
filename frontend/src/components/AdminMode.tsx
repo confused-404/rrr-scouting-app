@@ -104,6 +104,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
   const [savingTeam, setSavingTeam] = useState<string | null>(null);
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
   const [epaLoadingTeams, setEpaLoadingTeams] = useState<Set<string>>(new Set());
+  const [localRating, setLocalRating] = useState<string>('');
 
   // ── load active competition ───────────────────────────────────────────────
   useEffect(() => {
@@ -233,6 +234,16 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
       console.error('Error loading superscouter data:', err);
     } finally {
       setSuperscoutLoading(false);
+    }
+  };
+
+  const toggleExpand = (team: string, currentRating: number | null) => {
+    if (expandedTeam === team) {
+      setExpandedTeam(null);
+    } else {
+      setExpandedTeam(team);
+      // Sync the input field to the team's actual rating when opening
+      setLocalRating(currentRating != null ? String(currentRating) : '');
     }
   };
 
@@ -593,7 +604,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
                         <div className="ml-auto flex items-center gap-2 flex-shrink-0">
                           <StarRating team={td.team} rating={td.rating} disabled={isEditing} />
                           <button
-                            onClick={() => setExpandedTeam(isExpanded ? null : td.team)}
+                            onClick={() => toggleExpand(td.team, td.rating)}
                             className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
                           >
                             {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -640,17 +651,15 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
                               min={1}
                               max={5}
                               step={0.1}
-                              value={td.rating ?? ''}
-                              onChange={e => {
-                                const val = e.target.value;
-
-                                if (val === '') {
+                              value={localRating}
+                              onChange={e => setLocalRating(e.target.value)}
+                              onBlur={() => {
+                                if (localRating === '') {
                                   handleRatingChange(td.team, null);
                                   return;
                                 }
 
-                                const num = parseFloat(val);
-
+                                const num = parseFloat(localRating);
                                 if (!isNaN(num)) {
                                   const clamped = Math.min(5, Math.max(1, num));
                                   handleRatingChange(td.team, clamped);

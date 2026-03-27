@@ -51,7 +51,10 @@ apiLogger.info('Configured API client', {
 });
 
 api.interceptors.request.use(async (config) => {
-  const requestId = globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const requestId =
+    (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const nextConfig = config as typeof config & LoggingConfig;
   const headers = AxiosHeaders.from(nextConfig.headers);
   nextConfig.metadata = { requestId, startedAt: Date.now() };
