@@ -253,20 +253,41 @@ export const tbaApi = {
 };
 
 export const statboticsApi = {
+  normalizeEventKey: (eventKey: string) => eventKey.trim().toLowerCase(),
+  normalizeTeam: (team: string) => team.trim().replace(/^frc/i, ''),
   getEventMatches: async (eventKey: string): Promise<unknown[]> => {
-    const response = await api.get(`/statbotics/event/${eventKey}/matches`);
+    const normalizedEventKey = statboticsApi.normalizeEventKey(eventKey);
+    const response = await api.get(`/statbotics/event/${normalizedEventKey}/matches`);
     return response.data;
   },
   getTeamEvent: async (team: string, event: string): Promise<unknown> => {
-    const response = await api.get(`/statbotics/team_event/${team}/${event}`);
+    const normalizedTeam = statboticsApi.normalizeTeam(team);
+    const normalizedEventKey = statboticsApi.normalizeEventKey(event);
+    const response = await api.get(`/statbotics/team_event/${normalizedTeam}/${normalizedEventKey}`);
     return response.data;
   },
   getTeamEvents: async (params?: { team?: string; year?: string; event?: string; limit?: number; offset?: number }): Promise<unknown[]> => {
-    const response = await api.get('/statbotics/team_events', { params });
+    const normalizedParams = {
+      ...params,
+      team: params?.team ? statboticsApi.normalizeTeam(params.team) : undefined,
+      event: params?.event ? statboticsApi.normalizeEventKey(params.event) : undefined,
+    };
+    const response = await api.get('/statbotics/team_events', { params: normalizedParams });
     return response.data;
   },
   getTeamEventTeleopBalls: async (team: string, event: string): Promise<TeleopBallsResponse> => {
-    const response = await api.get(`/statbotics/team_event/${team}/${event}/teleop_balls`);
+    const normalizedTeam = statboticsApi.normalizeTeam(team);
+    const normalizedEventKey = statboticsApi.normalizeEventKey(event);
+    const response = await api.get(`/statbotics/team_event/${normalizedTeam}/${normalizedEventKey}/teleop_balls`);
+    return response.data;
+  },
+  getTeamMatches: async (params?: { team?: string; year?: string; event?: string; limit?: number; offset?: number }): Promise<unknown[]> => {
+    const normalizedParams = {
+      ...params,
+      team: params?.team ? statboticsApi.normalizeTeam(params.team) : undefined,
+      event: params?.event ? statboticsApi.normalizeEventKey(params.event) : undefined,
+    };
+    const response = await api.get('/statbotics/team_matches', { params: normalizedParams });
     return response.data;
   },
 };

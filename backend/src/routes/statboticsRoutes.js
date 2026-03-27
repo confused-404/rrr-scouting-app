@@ -19,6 +19,10 @@ router.get('/team_event/:team/:event/teleop_balls', statboticsController.getTeam
 // GET /api/statbotics/team_events?event=2024casj
 router.get('/team_events', statboticsController.getTeamEvents);
 
+// Per-team per-match EPA data for an event or team
+// GET /api/statbotics/team_matches?event=2026idbo&limit=999
+router.get('/team_matches', statboticsController.getTeamMatches);
+
 // Single team's overall info and EPA
 // GET /api/statbotics/team/254
 router.get('/team/:team', statboticsController.getTeam);
