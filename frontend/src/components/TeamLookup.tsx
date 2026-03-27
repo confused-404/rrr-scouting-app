@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission, FormField, PictureFieldValue } from '../types/form.types';
-import type { TeleopBallsResponse } from '../services/api';
 import { formApi, tbaApi, statboticsApi } from '../services/api';
 import { BarChart3, ClipboardList, Zap } from 'lucide-react';
 import { submissionValueToText, isPictureFieldValue } from '../utils/formValues';
@@ -37,48 +36,6 @@ const resolveTeamFieldId = (form: Form): number | null => {
   return fallbackField?.id ?? null;
 };
 
-/** Human-readable labels for known Statbotics breakdown field names */
-const TELEOP_BALL_LABELS: Record<string, string> = {
-  // 2024 Crescendo
-  teleopAmpNoteCount: 'Amp Notes (Teleop)',
-  teleopSpeakerNoteCount: 'Speaker Notes (Teleop)',
-  teleopSpeakerNoteAmplifiedCount: 'Amplified Speaker Notes (Teleop)',
-  // 2022 Rapid React
-  teleopCargoPoints: 'Cargo Points (Teleop)',
-  teleopCargoLower: 'Lower Cargo (Teleop)',
-  teleopCargoUpper: 'Upper Cargo (Teleop)',
-  // 2020/2021 Infinite Recharge
-  teleopCellsBottom: 'Power Cells – Bottom (Teleop)',
-  teleopCellsOuter: 'Power Cells – Outer (Teleop)',
-  teleopCellsInner: 'Power Cells – Inner (Teleop)',
-  // Generics
-  teleopBallPoints: 'Ball Points (Teleop)',
-  teleopGamePiecePoints: 'Game Piece Points (Teleop)',
-  teleopPoints: 'Teleop Points',
-};
-
-/** Pick the most meaningful subset to display (prefer specific counts over aggregates) */
-const prioritizeTeleopFields = (balls: Record<string, number>): Array<{ key: string; label: string; value: number }> => {
-  const keys = Object.keys(balls);
-
-  // If we have note-level counts (2024), prefer those over totals
-  const noteCounts = keys.filter(k =>
-    k === 'teleopAmpNoteCount' || k === 'teleopSpeakerNoteCount' || k === 'teleopSpeakerNoteAmplifiedCount'
-  );
-  if (noteCounts.length > 0) {
-    return noteCounts.map(k => ({ key: k, label: TELEOP_BALL_LABELS[k] ?? k, value: balls[k] }));
-  }
-
-  // 2022 cargo — prefer piece counts over point totals when available
-  const cargoCounts = keys.filter(k => k === 'teleopCargoLower' || k === 'teleopCargoUpper');
-  if (cargoCounts.length > 0) {
-    return cargoCounts.map(k => ({ key: k, label: TELEOP_BALL_LABELS[k] ?? k, value: balls[k] }));
-  }
-
-  // Fall back to all available fields
-  return keys.map(k => ({ key: k, label: TELEOP_BALL_LABELS[k] ?? k, value: balls[k] }));
-};
-
 interface TeamLookupProps {
   selectedCompetition?: Competition | null;
   superscoutNotes?: string;
@@ -98,10 +55,11 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   const [teamInfo, setTeamInfo] = useState<unknown | null>(null);
   const [expandedImage, setExpandedImage] = useState<PictureFieldValue | null>(null);
 
-  // Teleop balls state
-  const [teleopBalls, setTeleopBalls] = useState<TeleopBallsResponse | null>(null);
+  // Teleop balls state (per-match data)
+  const [teleopPerMatch, setTeleopPerMatch] = useState<Array<{ value: number; matchNum: string; isCompleted: boolean }>>([]);
   const [teleopBallsLoading, setTeleopBallsLoading] = useState(false);
   const [teleopBallsError, setTeleopBallsError] = useState('');
+  const [teleopLastN, setTeleopLastN] = useState<number>(0); // 0 = all matches
 
   const searchTeam = async (rawTeam: string) => {
     const q = rawTeam.trim();
@@ -131,18 +89,44 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   const fetchTeleopBalls = async (teamNum: string) => {
     const eventKey = selectedCompetition?.eventKey?.trim().toLowerCase();
     if (!eventKey || !teamNum) {
-      setTeleopBalls(null);
+      setTeleopPerMatch([]);
       setTeleopBallsError('');
       return;
     }
 
     setTeleopBallsLoading(true);
     setTeleopBallsError('');
-    setTeleopBalls(null);
+    setTeleopPerMatch([]);
+    setTeleopLastN(0); // Reset to all matches when fetching new team
 
     try {
-      const data = await statboticsApi.getTeamEventTeleopBalls(teamNum, eventKey);
-      setTeleopBalls(data);
+      // Fetch per-match data
+      const rows = await statboticsApi.getTeamMatches({ team: teamNum, event: eventKey, limit: 999 }) as Array<Record<string, unknown>>;
+      
+      // Extract teleop_points from each match and track completion status
+      const matches: Array<{ value: number; matchNum: string; isCompleted: boolean }> = [];
+      for (const row of rows) {
+        const matchName = String(row.match ?? 'Unknown');
+        const status = String(row.status ?? 'Upcoming');
+        const epa = (row.epa as Record<string, unknown>) ?? {};
+        const breakdown = (epa.breakdown as Record<string, unknown>) ?? {};
+        const teleopPoints = typeof breakdown.teleop_points === 'number' ? breakdown.teleop_points : 0;
+        const isCompleted = status === 'Completed';
+        matches.push({ value: teleopPoints, matchNum: matchName, isCompleted });
+      }
+      
+      // Sort matches numerically by match number (e.g., qm1, qm7, qm17)
+      matches.sort((a, b) => {
+        const aNum = parseInt(a.matchNum.match(/\d+$/)?.[0] ?? '0', 10);
+        const bNum = parseInt(b.matchNum.match(/\d+$/)?.[0] ?? '0', 10);
+        return aNum - bNum;
+      });
+      
+      if (matches.length === 0) {
+        setTeleopBallsError('No match data found for this team at the current event.');
+      } else {
+        setTeleopPerMatch(matches);
+      }
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 404) {
@@ -150,7 +134,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
       } else {
         setTeleopBallsError('Could not load teleop ball data from Statbotics.');
       }
-      setTeleopBalls(null);
+      setTeleopPerMatch([]);
     } finally {
       setTeleopBallsLoading(false);
     }
@@ -186,8 +170,9 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   useEffect(() => {
     setTeamQuery('');
     setTeamInfo(null);
-    setTeleopBalls(null);
+    setTeleopPerMatch([]);
     setTeleopBallsError('');
+    setTeleopLastN(0);
   }, [selectedCompetition?.id]);
 
   const filteredSubs = useMemo(() => {
@@ -326,11 +311,14 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   // Only show notes if the current search query matches the team the notes belong to
   const showNotes = superscoutNotes && teamQuery.trim() === targetTeam?.trim();
 
-  // Derived teleop ball display rows
-  const teleopBallRows = useMemo(() => {
-    if (!teleopBalls?.teleopBalls) return [];
-    return prioritizeTeleopFields(teleopBalls.teleopBalls);
-  }, [teleopBalls]);
+  // Compute average teleop per match based on filter (only completed matches)
+  const teleopAverage = useMemo(() => {
+    const completed = teleopPerMatch.filter(m => m.isCompleted);
+    if (completed.length === 0) return null;
+    const slice = teleopLastN === 0 ? completed : completed.slice(-teleopLastN);
+    if (slice.length === 0) return null;
+    return slice.reduce((sum, m) => sum + m.value, 0) / slice.length;
+  }, [teleopPerMatch, teleopLastN]);
 
   if (!selectedCompetition) return <div className="p-10 text-center text-gray-400">No active competition selected</div>;
 
@@ -379,14 +367,11 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
           <div className="flex items-center gap-2 px-5 py-3 bg-orange-50 border-b border-orange-100">
             <Zap size={16} className="text-orange-500" />
             <span className="font-black text-xs uppercase tracking-widest text-orange-700">
-              Teleop Balls — Statbotics
+              Teleop EPA Per Match — Statbotics
             </span>
-            {teleopBalls?.year && (
-              <span className="ml-auto text-[10px] font-bold text-orange-400">{teleopBalls.year} Season</span>
-            )}
           </div>
 
-          <div className="p-5">
+          <div className="p-5 space-y-4">
             {!selectedCompetition.eventKey ? (
               <p className="text-sm text-gray-500 italic">
                 Set an event key on this competition to enable Statbotics lookups.
@@ -395,30 +380,101 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
               <p className="text-sm text-gray-400 animate-pulse">Loading teleop data…</p>
             ) : teleopBallsError ? (
               <p className="text-sm text-amber-700">{teleopBallsError}</p>
-            ) : teleopBallRows.length === 0 ? (
+            ) : teleopPerMatch.length === 0 ? (
               <p className="text-sm text-gray-500 italic">
-                No teleop ball breakdown available for this team / event.
+                No match data available for this team / event.
               </p>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {teleopBallRows.map(({ key, label, value }) => (
-                  <div
-                    key={key}
-                    className="bg-orange-600 text-white p-5 rounded-2xl shadow-lg border-b-4 border-orange-800"
+              <>
+                {/* Filter Controls */}
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">View:</span>
+                  <button
+                    onClick={() => setTeleopLastN(0)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                      teleopLastN === 0
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
                   >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setTeleopLastN(1)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                      teleopLastN === 1
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    Last
+                  </button>
+                  {teleopPerMatch.length >= 3 && (
+                    <button
+                      onClick={() => setTeleopLastN(3)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                        teleopLastN === 3
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      Last 3
+                    </button>
+                  )}
+                  {teleopPerMatch.length >= 5 && (
+                    <button
+                      onClick={() => setTeleopLastN(5)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                        teleopLastN === 5
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      Last 5
+                    </button>
+                  )}
+                </div>
+
+                {/* Average Display */}
+                {teleopAverage !== null && (
+                  <div className="bg-orange-600 text-white p-5 rounded-2xl shadow-lg border-b-4 border-orange-800">
                     <div className="flex items-center gap-2 mb-2 opacity-80 uppercase text-[10px] font-black tracking-widest">
                       <Zap size={12} />
-                      {label}
+                      Teleop EPA Average
                     </div>
-                    <div className="text-3xl font-black">
-                      {Number.isInteger(value) ? value : value.toFixed(2)}
-                    </div>
+                    <div className="text-3xl font-black">{teleopAverage.toFixed(2)}</div>
                     <div className="text-[10px] mt-1 opacity-60 font-bold uppercase tracking-tight">
-                      via Statbotics EPA breakdown
+                      {(() => {
+                        const completed = teleopPerMatch.filter(m => m.isCompleted);
+                        const countDisplay = teleopLastN === 0 ? completed.length : Math.min(teleopLastN, completed.length);
+                        return `Average of ${countDisplay} completed match${countDisplay !== 1 ? 'es' : ''}`;
+                      })()}
                     </div>
                   </div>
-                ))}
-              </div>
+                )}
+
+                {/* Per-Match Breakdown */}
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Per-Match Breakdown:</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                    {teleopPerMatch.map((m, idx) => (
+                      <div
+                        key={idx}
+                        className={`border p-2 rounded-lg text-center ${
+                          m.isCompleted
+                            ? 'bg-orange-50 border-orange-200'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="text-[10px] text-gray-600 font-bold truncate">{m.matchNum}</div>
+                        <div className={`text-lg font-black ${m.isCompleted ? 'text-orange-600' : 'text-gray-400'}`}>
+                          {m.isCompleted ? m.value.toFixed(1) : '--'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </div>
