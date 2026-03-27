@@ -5,6 +5,7 @@ import type { TeleopBallsResponse } from '../services/api';
 import { formApi, tbaApi, statboticsApi } from '../services/api';
 import { BarChart3, ClipboardList, Zap } from 'lucide-react';
 import { submissionValueToText, isPictureFieldValue } from '../utils/formValues';
+import { ImageLightbox } from './ImageLightbox';
 
 // reuse helpers from ResponseViewer
 const isQuantitative = (field: FormField) => field.type === 'number' || field.type === 'ranking';
@@ -95,6 +96,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
 
   const [teamQuery, setTeamQuery] = useState('');
   const [teamInfo, setTeamInfo] = useState<unknown | null>(null);
+  const [expandedImage, setExpandedImage] = useState<PictureFieldValue | null>(null);
 
   // Teleop balls state
   const [teleopBalls, setTeleopBalls] = useState<TeleopBallsResponse | null>(null);
@@ -336,6 +338,15 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
 
   return (
     <div className="space-y-4 sm:space-y-6 pb-20">
+      {expandedImage && (
+        <ImageLightbox
+          imageUrl={expandedImage.url}
+          imageAlt={expandedImage.name || 'Team photo'}
+          imageName={expandedImage.name}
+          onClose={() => setExpandedImage(null)}
+        />
+      )}
+
       {/* Team search */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-3 sm:gap-4 items-stretch md:items-center">
         <input
@@ -461,18 +472,19 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
                       {photos.length > 0 ? (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                           {photos.map((photo, index) => (
-                            <div key={index} className="relative group">
-                              <img
-                                src={photo.url}
-                                alt={photo.name || `Photo ${index + 1}`}
-                                className="w-full h-24 object-cover rounded-lg border border-gray-200 hover:shadow-md transition-shadow cursor-pointer"
-                                onClick={() => window.open(photo.url, '_blank')}
-                              />
-                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity rounded-lg flex items-center justify-center">
-                                <div className="opacity-0 group-hover:opacity-100 text-white text-xs font-medium">
-                                  Click to view full size
-                                </div>
-                              </div>
+                            <div key={index}>
+                              <button
+                                type="button"
+                                onClick={() => setExpandedImage(photo)}
+                                className="block w-full overflow-hidden rounded-lg"
+                                aria-label={`Expand ${photo.name || `photo ${index + 1}`}`}
+                              >
+                                <img
+                                  src={photo.url}
+                                  alt={photo.name || `Photo ${index + 1}`}
+                                  className="w-full h-24 object-cover rounded-lg border border-gray-200 hover:shadow-md transition-shadow cursor-pointer"
+                                />
+                              </button>
                             </div>
                           ))}
                         </div>

@@ -6,6 +6,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { FormField } from './FormField';
 import { Filter, X, Download, Edit2, Save, AlertTriangle, ChevronLeft } from 'lucide-react';
 import { isPictureFieldValue, submissionValueToText } from '../utils/formValues';
+import { ImageLightbox } from './ImageLightbox';
+
+type ExpandedImageState = {
+  url: string;
+  alt: string;
+  name?: string;
+};
 
 type FilterOp = 'contains' | 'equals' | 'gt' | 'lt';
 type FieldErrors = Record<number, string>;
@@ -309,6 +316,7 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
 
   // Edit state
   const [editingSubmission, setEditingSubmission] = useState<Submission | null>(null);
+  const [expandedImage, setExpandedImage] = useState<ExpandedImageState | null>(null);
 
   useEffect(() => {
     if (selectedCompetition) {
@@ -411,6 +419,15 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
 
   return (
     <div className="space-y-6 pb-20">
+      {expandedImage && (
+        <ImageLightbox
+          imageUrl={expandedImage.url}
+          imageAlt={expandedImage.alt}
+          imageName={expandedImage.name}
+          onClose={() => setExpandedImage(null)}
+        />
+      )}
+
       {/* Edit modal */}
       {editingSubmission && selectedForm && (
         <EditModal
@@ -540,11 +557,14 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
                           </div>
                           <div className="text-sm font-bold text-gray-800">
                             {isPictureFieldValue(fieldValue) ? (
-                              <a
-                                href={fieldValue.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block space-y-2"
+                              <button
+                                type="button"
+                                onClick={() => setExpandedImage({
+                                  url: fieldValue.url,
+                                  alt: f.label,
+                                  name: fieldValue.name || 'Uploaded image',
+                                })}
+                                className="block w-full space-y-2 text-left"
                               >
                                 <img
                                   src={fieldValue.url}
@@ -552,9 +572,9 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
                                   className="h-28 w-full rounded-lg border border-gray-200 bg-gray-50 object-cover"
                                 />
                                 <span className="block break-words text-xs font-medium text-blue-600">
-                                  {fieldValue.name || 'Open uploaded image'}
+                                  {fieldValue.name || 'Click to enlarge image'}
                                 </span>
-                              </a>
+                              </button>
                             ) : (
                               submissionValueToText(fieldValue) || '—'
                             )}
