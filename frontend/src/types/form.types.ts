@@ -42,6 +42,7 @@ export type Form = {
   competitionId: string;
   name: string;
   fields: FormField[];
+  teamNumberFieldId?: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

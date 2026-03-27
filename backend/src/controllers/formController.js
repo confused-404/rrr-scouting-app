@@ -126,6 +126,24 @@ const sanitizeFields = (fields) => {
   });
 };
 
+const sanitizeTeamNumberFieldId = (teamNumberFieldId, fields) => {
+  if (teamNumberFieldId === undefined || teamNumberFieldId === null || teamNumberFieldId === '') {
+    return null;
+  }
+
+  const normalizedId = Number(teamNumberFieldId);
+  if (!Number.isInteger(normalizedId)) {
+    throw createValidationError('Team number field must be a valid field ID.');
+  }
+
+  const hasField = fields.some((field) => field.id === normalizedId);
+  if (!hasField) {
+    throw createValidationError('Selected team number field was not found in this form.');
+  }
+
+  return normalizedId;
+};
+
 const shouldIncludeField = (field, values) => {
   if (!field.condition) return true;
 
@@ -358,18 +376,20 @@ export const formController = {
   // Create form
   createForm: async (req, res) => {
     try {
-      const { fields, competitionId, name } = req.body;
+      const { fields, competitionId, name, teamNumberFieldId } = req.body;
 
       if (!competitionId) {
         return res.status(400).json({ message: 'Competition ID is required' });
       }
 
       const sanitizedFields = sanitizeFields(fields);
+      const sanitizedTeamNumberFieldId = sanitizeTeamNumberFieldId(teamNumberFieldId, sanitizedFields);
 
       const newForm = await formModel.createForm({
         fields: sanitizedFields,
         competitionId,
-        name: normalizeString(name) || 'Untitled Form'
+        name: normalizeString(name) || 'Untitled Form',
+        teamNumberFieldId: sanitizedTeamNumberFieldId,
       });
 
       // Add the form ID to the competition's formIds array
@@ -391,11 +411,15 @@ export const formController = {
   // Update form
   updateForm: async (req, res) => {
     try {
-      const { fields, name } = req.body; // Add name
+      const { fields, name, teamNumberFieldId } = req.body;
 
       const sanitizedFields = sanitizeFields(fields);
+      const sanitizedTeamNumberFieldId = sanitizeTeamNumberFieldId(teamNumberFieldId, sanitizedFields);
 
-      const updateData = { fields: sanitizedFields };
+      const updateData = {
+        fields: sanitizedFields,
+        teamNumberFieldId: sanitizedTeamNumberFieldId,
+      };
       if (name !== undefined) {
         updateData.name = normalizeString(name) || 'Untitled Form';
       }
