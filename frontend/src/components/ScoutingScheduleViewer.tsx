@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Clock, AlertCircle, Search } from 'lucide-react';
 import type { Competition, GeneratedAssignment } from '../types/competition.types';
-import { tbaApi } from '../services/api';
+import { tbaApi, statboticsApi } from '../services/api';
 
 interface ScoutingScheduleViewerProps {
   selectedCompetition: Competition | null;
@@ -15,14 +15,23 @@ const parsePosition = (pos: string): { alliance: 'red' | 'blue'; slot: number } 
   return { alliance: m[1].toLowerCase() as 'red' | 'blue', slot: parseInt(m[2]) - 1 };
 };
 
+const normalizeName = (value: string): string => value.toLowerCase().trim().replace(/\s+/g, ' ');
+
+const namesMatch = (candidate: string, target: string): boolean => {
+  const c = normalizeName(candidate);
+  const t = normalizeName(target);
+  if (!c || !t) return false;
+  return c === t || c.includes(t) || t.includes(c);
+};
+
 export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ selectedCompetition, scouterName }) => {
-  const [viewMode, setViewMode] = useState<'all' | 'myMatches'>('all');
+  const [viewMode, setViewMode] = useState<'nextMatch' | 'all' | 'myMatches'>('nextMatch');
   const [searchQuery, setSearchQuery] = useState('');
 
   // When scouterName becomes known (after login + profile fetch), auto-switch to My Assignments
   useEffect(() => {
     if (scouterName) {
-      setViewMode('myMatches');
+      setViewMode('nextMatch');
       setSearchQuery(scouterName);
     }
   }, [scouterName]); // Add this line
@@ -31,6 +40,9 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
   const [tbaMatches, setTbaMatches] = useState<Map<number, { red: string[]; blue: string[] }>>(new Map());
   const [tbaLoading, setTbaLoading] = useState(false);
   const [tbaError, setTbaError] = useState('');
+  const [statboticsLiveQualMatch, setStatboticsLiveQualMatch] = useState<number | null>(null);
+  const [statboticsLoading, setStatboticsLoading] = useState(false);
+  const [statboticsError, setStatboticsError] = useState('');
 
   useEffect(() => {
     if (!selectedCompetition?.eventKey) {
@@ -38,18 +50,19 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
       return;
     }
     fetchTbaMatches(selectedCompetition.eventKey);
+    fetchStatboticsProgress(selectedCompetition.eventKey);
   }, [selectedCompetition?.eventKey]);
 
   const myAssignments = useMemo(() => {
     const all = selectedCompetition?.scoutingAssignments || [];
-    const query = searchQuery.toLowerCase().trim();
+    const query = normalizeName(searchQuery);
     
     if (!query) return all;
 
     return all.filter(a => {
       // Check both scouts array and the team name
-      const matchesScout = a.scouts.some(name => name.toLowerCase().includes(query));
-      const matchesTeam = a.teamName?.toLowerCase().includes(query);
+      const matchesScout = a.scouts.some(name => namesMatch(name, query));
+      const matchesTeam = normalizeName(a.teamName || '').includes(query);
       return matchesScout || matchesTeam;
     });
   }, [selectedCompetition?.scoutingAssignments, searchQuery]);
@@ -85,6 +98,40 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
     }
   };
 
+  const fetchStatboticsProgress = async (eventKey: string) => {
+    setStatboticsLoading(true);
+    setStatboticsError('');
+
+    try {
+      const rows = await statboticsApi.getEventMatches(eventKey) as Array<Record<string, unknown>>;
+
+      const qualRows = rows
+        .filter(row => {
+          const compLevel = typeof row.comp_level === 'string' ? row.comp_level.toLowerCase() : '';
+          const key = typeof row.key === 'string' ? row.key.toLowerCase() : '';
+          return compLevel === 'qm' || key.includes('_qm');
+        })
+        .map(row => {
+          const matchNumber = typeof row.match_number === 'number'
+            ? row.match_number
+            : (typeof row.match_number === 'string' ? parseInt(row.match_number, 10) : NaN);
+          const status = typeof row.status === 'string' ? row.status.toLowerCase() : '';
+          return { matchNumber, status };
+        })
+        .filter(row => Number.isFinite(row.matchNumber))
+        .sort((a, b) => a.matchNumber - b.matchNumber);
+
+      // First non-completed qual match approximates the "current" event progress.
+      const firstOpen = qualRows.find(row => row.status !== 'completed');
+      setStatboticsLiveQualMatch(firstOpen ? firstOpen.matchNumber : null);
+    } catch {
+      setStatboticsLiveQualMatch(null);
+      setStatboticsError('Could not load live match progress from Statbotics.');
+    } finally {
+      setStatboticsLoading(false);
+    }
+  };
+
   /** Resolve team number for a given assignment */
   const resolveTeamNumber = (assignment: GeneratedAssignment): string | null => {
     const parsed = parsePosition(assignment.position);
@@ -97,15 +144,45 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
 
   const now = new Date();
 
+  const getTimeUntil = (unixSeconds?: number) => {
+    if (!unixSeconds) return null;
+    const diffMs = unixSeconds * 1000 - now.getTime();
+    if (diffMs <= 0) return 'In progress or completed';
+
+    const totalMinutes = Math.floor(diffMs / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+  };
+
   const getNextMatch = () => {
-    if (!selectedCompetition?.scoutingAssignments || !scouterName) return null;
-    // Only show "Your Next Match" when we know who the user is
-    return selectedCompetition.scoutingAssignments
-      .filter(a =>
-        a.matchTime &&
-        a.matchTime * 1000 > now.getTime() &&
-        a.scouts.some(s => s.toLowerCase() === scouterName.toLowerCase())
-      )
+    if (!selectedCompetition?.scoutingAssignments) return null;
+
+    // Primary: scouterName is linked — exact personalized match
+    let pool: GeneratedAssignment[];
+    if (scouterName) {
+      pool = selectedCompetition.scoutingAssignments.filter(a =>
+        a.scouts.some(s => namesMatch(s, scouterName))
+      );
+    } else if (searchQuery.trim()) {
+      // Fallback: not linked yet but user has filtered by their name manually
+      pool = myAssignments;
+    } else {
+      return null;
+    }
+
+    // Primary ordering source: Statbotics live event progress by qualification match number.
+    if (statboticsLiveQualMatch != null) {
+      const byMatchNumber = [...pool]
+        .filter(a => a.matchNumber >= statboticsLiveQualMatch)
+        .sort((a, b) => a.matchNumber - b.matchNumber);
+      if (byMatchNumber.length > 0) return byMatchNumber[0];
+    }
+
+    // Fallback ordering source: local scheduled timestamps.
+    return pool
+      .filter(a => a.matchTime && a.matchTime * 1000 > now.getTime())
       .sort((a, b) => a.matchTime! - b.matchTime!)[0] || null;
   };
 
@@ -162,6 +239,19 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
             <AlertCircle size={14} /> {tbaError}
           </div>
         )}
+        {statboticsLoading && (
+          <p className="text-xs text-gray-400 mt-1 animate-pulse">Loading live event progress from Statbotics…</p>
+        )}
+        {statboticsError && (
+          <div className="flex items-center gap-2 mt-1 text-xs text-amber-700">
+            <AlertCircle size={14} /> {statboticsError}
+          </div>
+        )}
+        {statboticsLiveQualMatch != null && (
+          <p className="text-xs text-blue-700 mt-1 font-semibold">
+            Statbotics live match pointer: Qual Match {statboticsLiveQualMatch}
+          </p>
+        )}
         {!selectedCompetition.eventKey && (
           <div className="flex items-center gap-2 mt-2 text-xs text-amber-700">
             <AlertCircle size={14} /> No event key set — team numbers from TBA are unavailable.
@@ -193,7 +283,15 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
       )}
 
       {/* View Mode Toggle */}
-      <div className="bg-white rounded-lg shadow-sm p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <div className="bg-white rounded-lg shadow-sm p-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <button
+          onClick={() => setViewMode('nextMatch')}
+          className={`flex-1 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+            viewMode === 'nextMatch' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          Next Match
+        </button>
         <button
           onClick={() => setViewMode('all')}
           className={`flex-1 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
@@ -211,6 +309,100 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
           My Assignments
         </button>
       </div>
+
+      {viewMode === 'nextMatch' && (
+        <div className="space-y-3">
+          {!nextMatch ? (
+            <div className="bg-white rounded-lg shadow-sm p-8 text-center text-gray-500">
+              <p className="font-semibold">No upcoming match found.</p>
+              <p className="text-sm text-gray-400 mt-1">
+                {scouterName
+                  ? `No future assignments found for ${scouterName}.`
+                  : 'Link this account to a scouter name (Manage Users) or use My Assignments search.'}
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-black uppercase tracking-wider">
+                  Up Next
+                </span>
+                <h3 className="text-xl font-black text-gray-900">
+                  Match {nextMatch.matchNumber}
+                </h3>
+                <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${
+                  nextMatch.position.startsWith('red')
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-blue-100 text-blue-700'
+                }`}>
+                  {nextMatch.position}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-gray-400">Scouting Team</div>
+                  <div className="text-lg font-black text-gray-900 tabular-nums">
+                    {resolveTeamNumber(nextMatch) ?? nextMatch.teamName ?? '—'}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-gray-400">Planned Time</div>
+                  <div className="text-sm font-bold text-gray-800">
+                    {nextMatch.matchTime ? new Date(nextMatch.matchTime * 1000).toLocaleString() : 'Time TBD'}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-gray-400">Starts In</div>
+                  <div className="text-lg font-black text-blue-700">
+                    {getTimeUntil(nextMatch.matchTime) ?? '—'}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-gray-400">Scouting With</div>
+                  <div className="text-sm font-semibold text-gray-800">
+                    {nextMatch.scouts.length > 0 ? nextMatch.scouts.join(', ') : '—'}
+                  </div>
+                </div>
+              </div>
+
+              {(() => {
+                const parsed = parsePosition(nextMatch.position);
+                const matchData = tbaMatches.get(nextMatch.matchNumber);
+                const allianceTeams = matchData
+                  ? (parsed?.alliance === 'red' ? matchData.red : matchData.blue)
+                  : [];
+
+                if (allianceTeams.length === 0) return null;
+
+                return (
+                  <div className="rounded-lg border border-gray-100 p-3">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">
+                      Alliance Context
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {allianceTeams.map((t, i) => (
+                        <span
+                          key={i}
+                          className={`text-xs font-black px-2 py-1 rounded ${
+                            t === resolveTeamNumber(nextMatch)
+                              ? nextMatch.position.startsWith('red')
+                                ? 'bg-red-200 text-red-800'
+                                : 'bg-blue-200 text-blue-800'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          Team {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      )}
 
       {viewMode === 'myMatches' && (
         <div className="relative mb-4">
