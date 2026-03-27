@@ -1,6 +1,6 @@
 // FormManager.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Layout, Plus, Edit2, Star, Check, X, GripVertical } from 'lucide-react';
+import { Trash2, Layout, Plus, Star, X, GripVertical } from 'lucide-react';
 import type { FormField as FormFieldType, Form } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { formApi, competitionApi } from '../services/api';
@@ -17,10 +17,6 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
     const [teamNumberFieldId, setTeamNumberFieldId] = useState<number | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(false);
-
-    // For inline name editing
-    const [editingFormId, setEditingFormId] = useState<string | null>(null);
-    const [editingFormName, setEditingFormName] = useState('');
 
     // For creation
     const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -56,7 +52,6 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
             setForms(data);
             setSelectedForm(null);
             setIsEditing(false);
-            setEditingFormId(null);
         } catch (error) {
             console.error('Error loading forms:', error);
         }
@@ -171,43 +166,6 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
         } catch (error) {
             console.error('Error setting active form:', error);
             alert('Error setting active form');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const startEditingFormName = (form: Form) => {
-        setEditingFormId(form.id);
-        setEditingFormName(form.name || '');
-    };
-
-    const cancelEditingFormName = () => {
-        setEditingFormId(null);
-        setEditingFormName('');
-    };
-
-    const saveFormName = async (formId: string) => {
-        if (!editingFormName.trim()) {
-            alert('Form name cannot be empty');
-            return;
-        }
-
-        setLoading(true);
-        try {
-            const form = forms.find((f) => f.id === formId);
-            if (form) {
-                await formApi.updateForm(formId, {
-                    fields: form.fields,
-                    name: editingFormName,
-                    teamNumberFieldId: form.teamNumberFieldId ?? null
-                });
-                await loadForms();
-                setEditingFormId(null);
-                setEditingFormName('');
-            }
-        } catch (error) {
-            console.error('Error updating form name:', error);
-            alert('Error updating form name');
         } finally {
             setLoading(false);
         }
@@ -456,71 +414,35 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
                                     key={form.id}
                                     className="flex items-center gap-2 p-3 border border-gray-200 rounded-md hover:bg-gray-50"
                                 >
-                                    {editingFormId === form.id ? (
-                                        <>
-                                            <input
-                                                type="text"
-                                                value={editingFormName}
-                                                onChange={(e) => setEditingFormName(e.target.value)}
-                                                className="flex-1 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                autoFocus
-                                            />
-                                            <button
-                                                onClick={() => saveFormName(form.id)}
-                                                className="p-2 text-green-600 hover:bg-green-50 rounded"
-                                                title="Save"
-                                            >
-                                                <Check size={18} />
-                                            </button>
-                                            <button
-                                                onClick={cancelEditingFormName}
-                                                className="p-2 text-red-600 hover:bg-red-50 rounded"
-                                                title="Cancel"
-                                            >
-                                                <X size={18} />
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <button
-                                                onClick={() => handleSelectForm(form.id)}
-                                                className="flex-1 text-left flex items-center gap-2"
-                                            >
-                                                <span className="font-medium">{form.name}</span>
-                                                <span className="text-sm text-gray-500">
-                                                    ({form.fields.length} field{form.fields.length !== 1 ? 's' : ''})
-                                                </span>
-                                            </button>
+                                    <button
+                                        onClick={() => handleSelectForm(form.id)}
+                                        className="flex-1 text-left flex items-center gap-2"
+                                    >
+                                        <span className="font-medium">{form.name}</span>
+                                        <span className="text-sm text-gray-500">
+                                            ({form.fields.length} field{form.fields.length !== 1 ? 's' : ''})
+                                        </span>
+                                    </button>
 
-                                            <button
-                                                onClick={() => startEditingFormName(form)}
-                                                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
-                                                title="Edit name"
-                                            >
-                                                <Edit2 size={16} />
-                                            </button>
-
-                                            <button
-                                                onClick={() => handleSetActiveForm(form.id)}
-                                                className={`p-2 rounded ${
-                                                    selectedCompetition.activeFormIds?.includes(form.id)
-                                                        ? 'bg-yellow-100 text-yellow-600'
-                                                        : 'text-gray-400 hover:text-yellow-600'
-                                                }`}
-                                                title={
-                                                    selectedCompetition.activeFormIds?.includes(form.id)
-                                                        ? 'Active form'
-                                                        : 'Set as active'
-                                                }
-                                            >
-                                                <Star size={18} fill={
-                                                    selectedCompetition.activeFormIds?.includes(form.id)
-                                                        ? 'currentColor'
-                                                        : 'none'
-                                                } />
-                                            </button>
-                                        </>
-                                    )}
+                                    <button
+                                        onClick={() => handleSetActiveForm(form.id)}
+                                        className={`p-2 rounded ${
+                                            selectedCompetition.activeFormIds?.includes(form.id)
+                                                ? 'bg-yellow-100 text-yellow-600'
+                                                : 'text-gray-400 hover:text-yellow-600'
+                                        }`}
+                                        title={
+                                            selectedCompetition.activeFormIds?.includes(form.id)
+                                                ? 'Active form'
+                                                : 'Set as active'
+                                        }
+                                    >
+                                        <Star size={18} fill={
+                                            selectedCompetition.activeFormIds?.includes(form.id)
+                                                ? 'currentColor'
+                                                : 'none'
+                                        } />
+                                    </button>
                                 </div>
                             ))}
                         </div>
@@ -619,7 +541,7 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
                                 onClick={() => addField('rank_order')}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                             >
-                                + Rank Order
+                                + Auto Path
                             </button>
 
                             <button

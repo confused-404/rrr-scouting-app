@@ -12,6 +12,8 @@ const normalizeTeamKey = (teamValue: string | number) => {
 
 const formatTeamNumber = (teamValue: string | number) => normalizeTeamKey(teamValue).replace('frc', '');
 
+const sanitizeTeamFilter = (value: string) => value.trim().replace(/^frc/i, '');
+
 const getTeamNumbers = (teamKeys: Array<string | number>) => teamKeys.map((teamKey) => {
   return formatTeamNumber(teamKey);
 });
@@ -67,6 +69,7 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
   const [teamFilter, setTeamFilter] = useState<string>('');
   const [fetchError, setFetchError] = useState<string>('');
   const [teamHistoryModal, setTeamHistoryModal] = useState<TeamHistoryModalState | null>(null);
+  const normalizedTeamFilter = sanitizeTeamFilter(teamFilter);
 
   useEffect(() => {
     if (!selectedCompetition?.eventKey) {
@@ -112,9 +115,9 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
   const sortedAllMatches = getSortedMatches(matches);
 
   const filteredMatches = sortedAllMatches.filter(match => {
-    if (!teamFilter) return true;
+    if (!normalizedTeamFilter) return true;
 
-    const teamKey = normalizeTeamKey(teamFilter);
+    const teamKey = normalizeTeamKey(normalizedTeamFilter);
     return matchIncludesTeam(match, teamKey);
   });
 
@@ -153,7 +156,7 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Schedule');
 
     const safeCompetitionName = selectedCompetition.name.replace(/[^a-z0-9]+/gi, '-').replace(/(^-|-$)/g, '');
-    const filterSuffix = teamFilter.trim() ? `-team-${normalizeTeamKey(teamFilter).replace('frc', '')}` : '';
+    const filterSuffix = normalizedTeamFilter ? `-team-${normalizeTeamFilter}` : '';
 
     XLSX.writeFile(workbook, `${safeCompetitionName || 'competition'}-schedule${filterSuffix}.xlsx`);
   };
@@ -222,8 +225,8 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
                 type="text"
                 placeholder="Team number (e.g. 254)"
                 value={teamFilter}
-                onChange={(e) => setTeamFilter(e.target.value)}
-                className="px-3 py-2 sm:py-1 border border-gray-300 rounded text-sm w-full sm:w-32"
+                onChange={(e) => setTeamFilter(sanitizeTeamFilter(e.target.value))}
+                className="px-3 py-2 sm:py-1 border border-gray-300 rounded text-sm w-full sm:w-52"
               />
             </div>
           </div>
@@ -241,21 +244,21 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
           </div>
         </div>
 
-        {teamFilter && (
+        {normalizedTeamFilter && (
           <p className="text-sm text-blue-600">
-            Showing matches for team {teamFilter} ({filteredMatches.length} matches)
+            Showing matches for team {normalizedTeamFilter} ({filteredMatches.length} matches)
           </p>
         )}
 
-        {!teamFilter && sortedMatches.length > 0 && (
+        {!normalizedTeamFilter && sortedMatches.length > 0 && (
           <p className="text-sm text-gray-500 mt-2">
             Export downloads all visible matches in the current schedule.
           </p>
         )}
 
-        {teamFilter && sortedMatches.length > 0 && (
+        {normalizedTeamFilter && sortedMatches.length > 0 && (
           <p className="text-sm text-gray-500 mt-2">
-            Export downloads only the filtered matches for team {teamFilter}.
+            Export downloads only the filtered matches for team {normalizedTeamFilter}.
           </p>
         )}
 
@@ -270,7 +273,7 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
         <div className="space-y-3 sm:space-y-4">
           {filteredMatches.length === 0 ? (
             <div className="p-12 text-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed font-bold italic">
-              {teamFilter ? `No matches found for team ${teamFilter}` : 'No matches available.'}
+              {normalizedTeamFilter ? `No matches found for team ${normalizedTeamFilter}` : 'No matches available.'}
             </div>
           ) : (
             sortedMatches
@@ -289,7 +292,7 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
                       <div className="font-bold text-red-600">Red Alliance</div>
                       <ul className="list-disc list-inside text-sm break-words">
                         {(m.alliances?.red?.team_keys || []).map((tk: string | number) => (
-                          <li key={tk} className={teamFilter && (tk.toString().includes(teamFilter) || tk.toString() === `frc${teamFilter}`) ? 'font-bold text-red-700' : ''}>
+                          <li key={tk} className={normalizedTeamFilter && formatTeamNumber(tk) === normalizedTeamFilter ? 'font-bold text-red-700' : ''}>
                             <button
                               type="button"
                               onClick={() => openTeamHistory(tk, m)}
@@ -305,7 +308,7 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
                       <div className="font-bold text-blue-600">Blue Alliance</div>
                       <ul className="list-disc list-inside text-sm break-words">
                         {(m.alliances?.blue?.team_keys || []).map((tk: string | number) => (
-                          <li key={tk} className={teamFilter && (tk.toString().includes(teamFilter) || tk.toString() === `frc${teamFilter}`) ? 'font-bold text-blue-700' : ''}>
+                          <li key={tk} className={normalizedTeamFilter && formatTeamNumber(tk) === normalizedTeamFilter ? 'font-bold text-blue-700' : ''}>
                             <button
                               type="button"
                               onClick={() => openTeamHistory(tk, m)}

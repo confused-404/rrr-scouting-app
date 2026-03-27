@@ -205,72 +205,73 @@ export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null 
         </div>
       </div>
 
-      {/* Teams List */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <h3 className="text-lg font-semibold mb-4">Teams ({teams.length})</h3>
-        {teams.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No teams created yet</p>
-        ) : (
-          <div className="space-y-4">
-            {teams.map(team => (
-              <div key={team.id} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-semibold text-lg">{team.name}</h4>
-                  <button
-                    onClick={() => deleteTeam(team.id)}
-                    disabled={isSaving}
-                    className="p-1 text-red-500 hover:bg-red-50 rounded"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-
-                {/* Add Scout */}
-                <div className="flex gap-2 mb-3">
-                  <input
-                    type="text"
-                    placeholder="Scout name"
-                    value={newScoutName}
-                    onChange={(e) => setNewScoutName(e.target.value)}
-                    className="flex-1 px-3 py-1 border border-gray-300 rounded text-sm"
-                  />
-                  <button
-                    onClick={() => addScoutToTeam(team.id)}
-                    disabled={isSaving}
-                    className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
-                  >
-                    Add
-                  </button>
-                </div>
-
-                {/* Scouts List */}
-                <div className="flex flex-wrap gap-2">
-                  {team.members.map((scout, index) => (
-                    <span
-                      key={index}
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,1fr)] gap-6 items-start">
+        {/* Teams List */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h3 className="text-lg font-semibold mb-4">Teams ({teams.length})</h3>
+          {teams.length === 0 ? (
+            <p className="text-gray-500 text-center py-8">No teams created yet</p>
+          ) : (
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+              {teams.map(team => (
+                <div key={team.id} className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-lg">{team.name}</h4>
+                    <button
+                      onClick={() => deleteTeam(team.id)}
+                      disabled={isSaving}
+                      className="p-1 text-red-500 hover:bg-red-50 rounded"
                     >
-                      {scout.name}
-                      <button
-                        onClick={() => removeScoutFromTeam(team.id, scout.name)}
-                        disabled={isSaving}
-                        className="ml-1 text-blue-600 hover:text-blue-800"
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                      <X size={18} />
+                    </button>
+                  </div>
 
-      {/* Schedule Generation */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <h3 className="text-lg font-semibold mb-4">Generate Schedule</h3>
-        <div className="space-y-4">
+                  {/* Add Scout */}
+                  <div className="flex gap-2 mb-3">
+                    <input
+                      type="text"
+                      placeholder="Scout name"
+                      value={newScoutName}
+                      onChange={(e) => setNewScoutName(e.target.value)}
+                      className="flex-1 px-3 py-1 border border-gray-300 rounded text-sm"
+                    />
+                    <button
+                      onClick={() => addScoutToTeam(team.id)}
+                      disabled={isSaving}
+                      className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                    >
+                      Add
+                    </button>
+                  </div>
+
+                  {/* Scouts List */}
+                  <div className="flex flex-wrap gap-2">
+                    {team.members.map((scout, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                      >
+                        {scout.name}
+                        <button
+                          onClick={() => removeScoutFromTeam(team.id, scout.name)}
+                          disabled={isSaving}
+                          className="ml-1 text-blue-600 hover:text-blue-800"
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Schedule Generation */}
+        <div className="bg-white rounded-xl shadow-sm p-6 xl:sticky xl:top-6">
+          <h3 className="text-lg font-semibold mb-4">Generate Schedule</h3>
+          <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Matches per Shift</label>
@@ -303,14 +304,15 @@ export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null 
             </div>
           </div>
 
-          <button
-            onClick={generateSchedule}
-            disabled={isGenerating || teams.length === 0 || teams.length % 6 !== 0 || !selectedCompetition.eventKey}
-            className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            <Clock size={18} />
-            {isGenerating ? 'Generating...' : 'Generate Scouting Schedule'}
-          </button>
+            <button
+              onClick={generateSchedule}
+              disabled={isGenerating || teams.length === 0 || teams.length % 6 !== 0 || !selectedCompetition.eventKey}
+              className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <Clock size={18} />
+              {isGenerating ? 'Generating...' : 'Generate Scouting Schedule'}
+            </button>
+          </div>
         </div>
       </div>
 

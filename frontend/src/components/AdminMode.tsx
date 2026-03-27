@@ -477,7 +477,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
       </div>
 
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-        {activeTab === 'competitions' && <CompetitionManager />}
+        {activeTab === 'competitions' && <CompetitionManager onCompetitionUpdate={handleCompetitionUpdate} />}
         {activeTab === 'forms' && (
           <FormManager selectedCompetition={activeCompetition} onCompetitionUpdate={handleCompetitionUpdate} />
         )}

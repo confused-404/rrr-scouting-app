@@ -43,6 +43,46 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
   const [statboticsLiveQualMatch, setStatboticsLiveQualMatch] = useState<number | null>(null);
   const [statboticsLoading, setStatboticsLoading] = useState(false);
   const [statboticsError, setStatboticsError] = useState('');
+  const [dismissedAssignments, setDismissedAssignments] = useState<Set<string>>(new Set());
+
+  const getAssignmentKey = (assignment: GeneratedAssignment) =>
+    `${assignment.matchNumber}-${assignment.position}-${assignment.teamId || assignment.teamName}`;
+
+  useEffect(() => {
+    const key = `dismissedAssignments:${selectedCompetition?.id ?? 'none'}`;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        setDismissedAssignments(new Set());
+        return;
+      }
+      const parsed = JSON.parse(raw) as string[];
+      setDismissedAssignments(new Set(parsed));
+    } catch {
+      setDismissedAssignments(new Set());
+    }
+  }, [selectedCompetition?.id]);
+
+  const persistDismissed = (next: Set<string>) => {
+    const key = `dismissedAssignments:${selectedCompetition?.id ?? 'none'}`;
+    setDismissedAssignments(next);
+    try {
+      localStorage.setItem(key, JSON.stringify(Array.from(next)));
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const dismissAssignment = (assignment: GeneratedAssignment) => {
+    const key = getAssignmentKey(assignment);
+    const next = new Set(dismissedAssignments);
+    next.add(key);
+    persistDismissed(next);
+  };
+
+  const restoreAllDismissed = () => {
+    persistDismissed(new Set());
+  };
 
   useEffect(() => {
     if (!selectedCompetition?.eventKey) {
@@ -56,7 +96,7 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
   const myAssignments = useMemo(() => {
     const all = selectedCompetition?.scoutingAssignments || [];
     const query = normalizeName(searchQuery);
-    
+
     if (!query) return all;
 
     return all.filter(a => {
@@ -66,6 +106,11 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
       return matchesScout || matchesTeam;
     });
   }, [selectedCompetition?.scoutingAssignments, searchQuery]);
+
+  const visibleAssignments = useMemo(() => {
+    if (dismissedAssignments.size === 0) return myAssignments;
+    return myAssignments.filter((a) => !dismissedAssignments.has(getAssignmentKey(a)));
+  }, [myAssignments, dismissedAssignments]);
 
   const fetchTbaMatches = async (eventKey: string) => {
     setTbaLoading(true);
@@ -165,9 +210,10 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
       pool = selectedCompetition.scoutingAssignments.filter(a =>
         a.scouts.some(s => namesMatch(s, scouterName))
       );
+      pool = pool.filter((a) => !dismissedAssignments.has(getAssignmentKey(a)));
     } else if (searchQuery.trim()) {
       // Fallback: not linked yet but user has filtered by their name manually
-      pool = myAssignments;
+      pool = visibleAssignments;
     } else {
       return null;
     }
@@ -278,6 +324,13 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
             {nextMatch.scouts.length > 0 && (
               <p className="mt-1">Scouting with: {nextMatch.scouts.join(', ')}</p>
             )}
+            <button
+              type="button"
+              onClick={() => dismissAssignment(nextMatch)}
+              className="mt-3 text-xs font-bold text-red-700 hover:text-red-900"
+            >
+              Cancel this assignment
+            </button>
           </div>
         </div>
       )}
@@ -405,15 +458,25 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
       )}
 
       {viewMode === 'myMatches' && (
-        <div className="relative mb-4">
-          <input
-            type="text"
-            placeholder="Search by your name or team..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)} // Ensure this is exactly (e.target.value)
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          />
-          <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+        <div className="relative mb-4 flex gap-2">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              placeholder="Search by your name or team..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+          </div>
+          <button
+            type="button"
+            onClick={restoreAllDismissed}
+            disabled={dismissedAssignments.size === 0}
+            className="px-3 py-2 rounded-xl text-xs font-bold border border-gray-200 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Restore canceled
+          </button>
         </div>
       )}
 
@@ -501,13 +564,12 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
       {/* My Assignments View */}
       {viewMode === 'myMatches' && (
         <div className="space-y-2">
-          {myAssignments.length === 0 ? (
+          {visibleAssignments.length === 0 ? (
             <div className="bg-white rounded-lg shadow-sm p-12 text-center text-gray-500">
               <p>{searchQuery ? `No results for "${searchQuery}"` : "No assignments currently visible."}</p>
             </div>
           ) : (
-            /* CHANGE: We map over myAssignments directly to enable filtering */
-            myAssignments.map((assignment, idx) => {
+            visibleAssignments.map((assignment, idx) => {
               const teamNum = assignment.teamName; // Using teamName from assignment
               const parsed = parsePosition(assignment.position);
               const matchData = tbaMatches.get(assignment.matchNumber);
@@ -560,6 +622,14 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
                   <div className="text-sm text-gray-500 ml-auto">
                     {assignment.scouts.join(', ')}
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => dismissAssignment(assignment)}
+                    className="text-xs font-bold text-red-700 hover:text-red-900"
+                  >
+                    Cancel
+                  </button>
                 </div>
               );
             })
