@@ -145,12 +145,10 @@ export const competitionController = {
         return res.status(404).json({ message: 'Competition not found' });
       }
 
-      // Check if formId already exists
       if (competition.formIds.includes(formId)) {
         return res.status(400).json({ message: 'Form ID already exists in this competition' });
       }
 
-      // Add formId to the array
       const updatedFormIds = [...competition.formIds, formId];
       const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
         formIds: updatedFormIds,
@@ -178,17 +176,14 @@ export const competitionController = {
         return res.status(404).json({ message: 'Competition not found' });
       }
 
-      // Remove formId from the array
       const updatedFormIds = competition.formIds.filter(id => id !== formId);
       
-      // If the removed formId was active, clear activeFormId
       let updateData = { formIds: updatedFormIds };
       if (competition.activeFormId === formId) {
         updateData.activeFormId = null;
       }
 
       const updatedCompetition = await competitionModel.updateCompetition(competitionId, updateData);
-
       res.json(updatedCompetition);
     } catch (error) {
       console.error('Error in removeFormId:', error);
@@ -196,9 +191,7 @@ export const competitionController = {
     }
   },
 
-  // Toggle an active form ID for a competition (multiple allowed)
-  // If formId is present it will be added/removed from the active list.
-  // Sending no formId will clear all actives.
+  // Toggle an active form ID for a competition
   setActiveFormId: async (req, res) => {
     try {
       const { formId } = req.body;
@@ -209,12 +202,10 @@ export const competitionController = {
         return res.status(404).json({ message: 'Competition not found' });
       }
 
-      // ensure form exists in competition
       if (formId && !competition.formIds.includes(formId)) {
         return res.status(400).json({ message: 'Form ID does not exist in this competition' });
       }
 
-      // start from existing array (handle legacy activeFormId)
       let activeIds = competition.activeFormIds || [];
       if (!Array.isArray(activeIds) && competition.activeFormId) {
         activeIds = [competition.activeFormId];
@@ -227,7 +218,6 @@ export const competitionController = {
           activeIds.push(formId);
         }
       } else {
-        // clear all
         activeIds = [];
       }
 
@@ -242,7 +232,16 @@ export const competitionController = {
     }
   },
 
-  // Save superscouterNotes for a specific team in a competition
+  /**
+   * Save superscouter notes (and optionally a rating) for a specific team.
+   *
+   * The `notes` body field accepts either:
+   *   - A plain string (legacy / simple notes)
+   *   - A JSON string of the shape { notes: string, rating: number | null }
+   *     (sent by the new superscouter UI)
+   *
+   * Internally we store the parsed object so that `rating` survives round-trips.
+   */
   saveSuperscouterNotes: async (req, res) => {
     try {
       const { teamNumber, notes } = req.body;
@@ -257,9 +256,28 @@ export const competitionController = {
         return res.status(404).json({ message: 'Competition not found' });
       }
 
-      // Update the superscouterNotes object
-      const updatedNotes = competition.superscouterNotes || {};
-      updatedNotes[teamNumber] = notes || '';
+      // Parse payload — accept both plain string and JSON-encoded {notes, rating}
+      let parsedNotes = '';
+      let parsedRating = null;
+
+      if (typeof notes === 'string') {
+        try {
+          const obj = JSON.parse(notes);
+          if (obj && typeof obj === 'object') {
+            parsedNotes = typeof obj.notes === 'string' ? obj.notes : '';
+            parsedRating = typeof obj.rating === 'number' ? obj.rating : null;
+          } else {
+            parsedNotes = notes;
+          }
+        } catch {
+          // Not JSON — treat as plain notes string
+          parsedNotes = notes;
+        }
+      }
+
+      // Merge into existing superscouter notes map
+      const updatedNotes = { ...(competition.superscouterNotes || {}) };
+      updatedNotes[teamNumber] = { notes: parsedNotes, rating: parsedRating };
 
       const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
         superscouterNotes: updatedNotes,
@@ -272,7 +290,10 @@ export const competitionController = {
     }
   },
 
-  // Get superscouterNotes for a specific team in a competition
+  /**
+   * Get superscouter notes for a specific team.
+   * Returns { teamNumber, notes, rating } to the client.
+   */
   getSuperscouterNotes: async (req, res) => {
     try {
       const { teamNumber } = req.query;
@@ -287,8 +308,32 @@ export const competitionController = {
         return res.status(404).json({ message: 'Competition not found' });
       }
 
-      const notes = competition.superscouterNotes?.[teamNumber] || '';
-      res.json({ teamNumber, notes });
+      const raw = competition.superscouterNotes?.[teamNumber];
+
+      // Normalise — handle legacy plain-string storage and new object storage
+      let notes = '';
+      let rating = null;
+
+      if (typeof raw === 'string') {
+        // Could be a JSON string from new UI or a legacy plain string
+        try {
+          const obj = JSON.parse(raw);
+          if (obj && typeof obj === 'object') {
+            notes = typeof obj.notes === 'string' ? obj.notes : '';
+            rating = typeof obj.rating === 'number' ? obj.rating : null;
+          } else {
+            notes = raw;
+          }
+        } catch {
+          notes = raw;
+        }
+      } else if (raw && typeof raw === 'object') {
+        const obj = raw;
+        notes = typeof obj.notes === 'string' ? obj.notes : '';
+        rating = typeof obj.rating === 'number' ? obj.rating : null;
+      }
+
+      res.json({ teamNumber, notes, rating });
     } catch (error) {
       console.error('Error in getSuperscouterNotes:', error);
       res.status(500).json({ message: error.message });
