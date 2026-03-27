@@ -47,4 +47,9 @@ export type Competition = {
   pitMapImageUrl?: string;
   manualPickLists?: ManualPickList[];
   createdAt: string;
+
+  superscouterNotes?: Record<
+    string,
+    string | { notes?: string; rating?: number }
+  >;
 };
