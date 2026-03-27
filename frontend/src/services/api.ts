@@ -194,12 +194,12 @@ export const formApi = {
     const response = await api.get(`/forms/${id}`);
     return response.data;
   },
-  createForm: async (competitionId: string, fields: FormField[], name?: string): Promise<Form> => {
-    const response = await api.post('/forms', { competitionId, fields, name });
+  createForm: async (competitionId: string, form: { fields: FormField[]; name?: string; teamNumberFieldId?: number | null }): Promise<Form> => {
+    const response = await api.post('/forms', { ...form, competitionId });
     return response.data;
   },
-  updateForm: async (id: string, fields: FormField[], name?: string): Promise<Form> => {
-    const response = await api.put(`/forms/${id}`, { fields, name });
+  updateForm: async (id: string, form: { fields: FormField[]; name: string; teamNumberFieldId?: number | null }): Promise<Form> => {
+    const response = await api.put(`/forms/${id}`, form);
     return response.data;
   },
   deleteForm: async (id: string): Promise<void> => {

@@ -17,41 +17,44 @@ export type PictureFieldValue = {
   uploadedAt?: string;
 };
 
-export type FormField = {
+export interface FormField {
   id: number;
   type: FormFieldType;
   label: string;
   required: boolean;
-  options?: string[];
-  unit?: string;
+  options?: string[]; // Used by multiple_choice, multiple_select, and rank_order
+  unit?: string;      // Used by number fields
 
-  // ranking-specific
+  // ranking-specific properties
   min?: number;
   max?: number;
 
   // conditional logic
   condition?: {
-    fieldId: number; // ID of the field this depends on
+    fieldId: number; 
     operator: 'equals' | 'not_equals' | 'contains' | 'not_contains';
-    value: string | number | string[]; // value(s) to match
+    value: string; // FormManager handles this primarily as a string input
   };
-};
+}
 
-export type Form = {
+export interface Form {
   id: string;
   competitionId: string;
   name: string;
   fields: FormField[];
-  teamNumberFieldId?: number | null;
+  teamNumberFieldId?: number | null; // Critical for cross-referencing team data
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
-};
+}
 
-export type Submission = {
+export interface Submission {
   id: string;
   formId: string;
   competitionId: string;
   timestamp: string;
-  data: Record<string, string | number | string[] | PictureFieldValue>;
-};
+  /** * Maps field.id to the user's response.
+   * AdminMode uses this to extract team numbers and climb data.
+   */
+  data: Record<string, any>; 
+}
