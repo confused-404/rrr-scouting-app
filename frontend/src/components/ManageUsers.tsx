@@ -23,6 +23,22 @@ export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition })
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [draftNames, setDraftNames] = useState<Record<string, string>>({});
 
+  const getApiErrorMessage = (error: unknown, fallback: string): string => {
+    if (error && typeof error === 'object') {
+      const e = error as {
+        response?: { status?: number; data?: { message?: string } };
+        message?: string;
+      };
+      const status = e.response?.status;
+      const serverMessage = e.response?.data?.message;
+      if (status && serverMessage) return `${fallback} (${status}): ${serverMessage}`;
+      if (status) return `${fallback} (${status})`;
+      if (serverMessage) return `${fallback}: ${serverMessage}`;
+      if (e.message) return `${fallback}: ${e.message}`;
+    }
+    return fallback;
+  };
+
   const availableScouterNames = useMemo(() => {
     const names = new Set<string>();
     (selectedCompetition?.scoutingTeams ?? []).forEach(team => {
@@ -59,7 +75,7 @@ export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition })
       setUsers(prev => prev.map(u => u.uid === uid ? { ...u, scouterName: name } : u));
     } catch (err) {
       console.error('Error saving scouter name:', err);
-      alert('Failed to save. Please try again.');
+      alert(getApiErrorMessage(err, 'Failed to save scouter name'));
     } finally {
       setSaving(null);
     }
@@ -78,7 +94,7 @@ export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition })
       setUsers(prev => prev.map(u => u.uid === uid ? { ...u, role: 'admin' } : u));
     } catch (err) {
       console.error('Error promoting user:', err);
-      alert('Failed to promote user. Please try again.');
+      alert(getApiErrorMessage(err, 'Failed to promote user'));
     } finally {
       setActionPending(null);
     }
@@ -91,7 +107,7 @@ export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition })
       setUsers(prev => prev.map(u => u.uid === uid ? { ...u, role: 'user' } : u));
     } catch (err) {
       console.error('Error demoting user:', err);
-      alert('Failed to demote user. Please try again.');
+      alert(getApiErrorMessage(err, 'Failed to demote user'));
     } finally {
       setActionPending(null);
     }
@@ -106,7 +122,7 @@ export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition })
       setDraftNames(prev => { const next = { ...prev }; delete next[uid]; return next; });
     } catch (err) {
       console.error('Error deleting user:', err);
-      alert('Failed to delete user. Please try again.');
+      alert(getApiErrorMessage(err, 'Failed to delete user'));
     } finally {
       setActionPending(null);
     }

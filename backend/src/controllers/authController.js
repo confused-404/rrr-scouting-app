@@ -168,6 +168,61 @@ export const updateScouterName = async (req, res) => {
   }
 };
 
+/**
+ * PROMOTE USER TO ADMIN (Admin only)
+ */
+export const promoteUser = async (req, res) => {
+  try {
+    const { uid } = req.params;
+    if (uid === req.user.uid) {
+      return res.status(400).json({ message: 'You cannot promote yourself.' });
+    }
+    await auth.setCustomUserClaims(uid, { admin: true });
+    await db.collection('users').doc(uid).set({ role: 'admin', updatedAt: new Date().toISOString() }, { merge: true });
+    res.json({ message: `User ${uid} promoted to admin.` });
+  } catch (error) {
+    console.error('Error promoting user:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * DEMOTE ADMIN TO USER (Admin only)
+ */
+export const demoteUser = async (req, res) => {
+  try {
+    const { uid } = req.params;
+    if (uid === req.user.uid) {
+      return res.status(400).json({ message: 'You cannot demote yourself.' });
+    }
+    await auth.setCustomUserClaims(uid, { admin: false });
+    await db.collection('users').doc(uid).set({ role: 'user', updatedAt: new Date().toISOString() }, { merge: true });
+    res.json({ message: `User ${uid} demoted to user.` });
+  } catch (error) {
+    console.error('Error demoting user:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * DELETE USER (Admin only)
+ * Removes user from Firebase Auth and Firestore.
+ */
+export const deleteUser = async (req, res) => {
+  try {
+    const { uid } = req.params;
+    if (uid === req.user.uid) {
+      return res.status(400).json({ message: 'You cannot delete your own account.' });
+    }
+    await auth.deleteUser(uid);
+    await db.collection('users').doc(uid).delete();
+    res.json({ message: `User ${uid} deleted.` });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 export const getAdminEmails = async (req, res) => {
   try {
     const adminsSnapshot = await db.collection('users').where('role', '==', 'admin').get();
