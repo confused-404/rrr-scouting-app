@@ -193,6 +193,26 @@ export const statboticsController = {
   },
 
   /**
+   * GET /api/statbotics/team_matches
+   * Returns per-team per-match EPA data for an event or team.
+   * Query params: team, year, event, limit, offset
+   * Example: /api/statbotics/team_matches?event=2026idbo&limit=999
+   */
+  getTeamMatches: async (req, res) => {
+    try {
+      const { team, year, event, limit = 500, offset = 0 } = req.query;
+      const data = await fetchStatbotics('/team_matches', { team, year, event, limit, offset });
+      res.json(data);
+    } catch (error) {
+      console.error('Error in getTeamMatches:', error);
+      if (error.status === 404) {
+        return res.status(404).json({ message: 'No team matches found' });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  /**
    * GET /api/statbotics/team/:team
    * Returns overall info and EPA ratings for a single team.
    * Example: /api/statbotics/team/254

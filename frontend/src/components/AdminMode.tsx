@@ -41,6 +41,38 @@ const normalizeTeam = (raw: unknown): string | null => {
 const teamFieldRegex = /team|team number|team #/i;
 const climbWhereRegex = /where did they climb|climb level|climb position/i;
 
+const asNumberOrNull = (value: unknown): number | null => {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+};
+
+const parseLegacySuperscoutEntry = (raw: unknown): { notes: string; rating: number | null } => {
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as { notes?: unknown; rating?: unknown };
+      if (parsed && typeof parsed === 'object') {
+        return {
+          notes: typeof parsed.notes === 'string' ? parsed.notes : '',
+          rating: asNumberOrNull(parsed.rating),
+        };
+      }
+    } catch {
+      return { notes: raw, rating: null };
+    }
+
+    return { notes: raw, rating: null };
+  }
+
+  if (raw && typeof raw === 'object') {
+    const parsed = raw as { notes?: unknown; rating?: unknown };
+    return {
+      notes: typeof parsed.notes === 'string' ? parsed.notes : '',
+      rating: asNumberOrNull(parsed.rating),
+    };
+  }
+
+  return { notes: '', rating: null };
+};
+
 // ─── types ───────────────────────────────────────────────────────────────────
 interface TeamSuperscoutData {
   team: string;
@@ -59,6 +91,12 @@ interface TeamSuperscoutData {
   teleopEpa: number | null;
   /** auto EPA from statbotics (null if not loaded yet) */
   autoEpa: number | null;
+  /** Per-match teleop EPA values in chronological order */
+  teleopPerMatch: number[];
+  /** Per-match auto EPA values in chronological order */
+  autoPerMatch: number[];
+  /** Per-match endgame EPA values in chronological order */
+  endgamePerMatch: number[];
 }
 
 /** Compute score for a team given last-N-matches window */
@@ -66,22 +104,19 @@ const computeScore = (
   team: TeamSuperscoutData,
   lastN: number,
 ): number => {
-  if (team.matchCount === 0) return 0;
+  const hasPerMatch = team.teleopPerMatch.length > 0 || team.autoPerMatch.length > 0;
+  if (team.matchCount === 0 && !hasPerMatch) return 0;
 
-  const climbSlice = lastN === 0
-    ? team.climbPointsPerMatch
-    : team.climbPointsPerMatch.slice(-lastN);
+  const slice = (arr: number[]) => lastN === 0 ? arr : arr.slice(-lastN);
+  const avg = (arr: number[]) => arr.length === 0 ? 0 : arr.reduce((a, b) => a + b, 0) / arr.length;
 
-  const avgClimb = climbSlice.length === 0
-    ? 0
-    : climbSlice.reduce((a, b) => a + b, 0) / climbSlice.length;
+  const avgTeleop = hasPerMatch ? avg(slice(team.teleopPerMatch)) : (team.teleopEpa ?? 0);
+  const avgAuto = hasPerMatch ? avg(slice(team.autoPerMatch)) : (team.autoEpa ?? 0);
+  const avgEndgame = hasPerMatch ? avg(slice(team.endgamePerMatch)) : 0;
 
-  const teleop = team.teleopEpa ?? 0;
-  const auto = team.autoEpa ?? 0;
+  const avgClimb = avg(slice(team.climbPointsPerMatch));
 
-  // teleop + auto are in EPA "points" units; climb is actual points averaged
-  // Weight: 1pt per teleop EPA unit, 1pt per auto EPA unit, climb as-is
-  return teleop + auto + avgClimb;
+  return avgTeleop + avgAuto + avgEndgame + avgClimb;
 };
 
 export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCompetitionUpdate }) => {
@@ -103,7 +138,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
   const [draftRating, setDraftRating] = useState<string>('');
   const [savingTeam, setSavingTeam] = useState<string | null>(null);
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
-  const [epaLoadingTeams, setEpaLoadingTeams] = useState<Set<string>>(new Set());
+  const [epaLoadingTeams] = useState<Set<string>>(new Set());
   const [localRating, setLocalRating] = useState<string>('');
 
   // ── load active competition ───────────────────────────────────────────────
@@ -125,7 +160,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
       loadSuperscoutData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, activeCompetition?.id]);
+  }, [activeTab, activeCompetition?.id, activeCompetition?.eventKey]);
 
   const loadSuperscoutData = async () => {
     if (!activeCompetition) return;
@@ -182,12 +217,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
       const noteKeys = Object.keys(activeCompetition.superscouterNotes || {});
       for (const teamNum of noteKeys) {
         const raw = (activeCompetition.superscouterNotes as Record<string, unknown>)?.[teamNum];
-        if (typeof raw === 'string') {
-          existingNotes[teamNum] = { notes: raw, rating: null };
-        } else if (typeof raw === 'object' && raw !== null) {
-          const obj = raw as { notes?: string; rating?: number };
-          existingNotes[teamNum] = { notes: obj.notes ?? '', rating: obj.rating ?? null };
-        }
+        existingNotes[teamNum] = parseLegacySuperscoutEntry(raw);
       }
 
       // 5. Build team list — union of scouted teams + teams with existing notes
@@ -218,17 +248,18 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
           climbPointsPerMatch: paired.map(p => p.climb),
           teleopEpa: null,
           autoEpa: null,
+          teleopPerMatch: [],
+          autoPerMatch: [],
+          endgamePerMatch: [],
         };
       });
 
       setSuperscoutTeams(teamList);
 
-      // 6. Load EPA for all teams from statbotics (fire-and-forget per team)
+      // 6. Load per-match EPA for all teams from Statbotics in one bulk request
       if (activeCompetition.eventKey) {
-        const eventKey = activeCompetition.eventKey;
-        for (const td of teamList) {
-          loadEpaForTeam(td.team, eventKey);
-        }
+        const eventKey = activeCompetition.eventKey.trim().toLowerCase();
+        loadPerMatchStatsForEvent(eventKey);
       }
     } catch (err) {
       console.error('Error loading superscouter data:', err);
@@ -247,41 +278,44 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
     }
   };
 
-  const loadEpaForTeam = async (team: string, eventKey: string) => {
-    setEpaLoadingTeams(prev => new Set(prev).add(team));
+  const loadPerMatchStatsForEvent = async (eventKey: string) => {
     try {
-      const data = await statboticsApi.getTeamEvent(team, eventKey) as Record<string, unknown>;
-      // Statbotics v3 stores breakdown in data.epa or top-level
-      const epaObj = (data?.epa as Record<string, unknown>) ?? data;
-      const breakdown = (epaObj?.breakdown as Record<string, unknown>) ?? {};
+      const rows = await statboticsApi.getTeamMatches({ event: eventKey, limit: 999 }) as Array<Record<string, unknown>>;
 
-      // teleop total
-      const teleop =
-        typeof breakdown.teleop_points === 'number' ? breakdown.teleop_points :
-        typeof breakdown.teleop === 'number' ? breakdown.teleop :
-        typeof epaObj.teleop === 'number' ? epaObj.teleop :
-        null;
+      // Group rows by team number
+      const byTeam = new Map<string, Array<{ time: number; teleop: number; auto: number; endgame: number }>>();
 
-      // auto total
-      const auto =
-        typeof breakdown.auto_points === 'number' ? breakdown.auto_points :
-        typeof breakdown.auto === 'number' ? breakdown.auto :
-        typeof epaObj.auto === 'number' ? epaObj.auto :
-        null;
+      for (const row of rows) {
+        const teamNum = String(row.team);
+        const epaObj = (row.epa as Record<string, unknown>) ?? {};
+        const breakdown = (epaObj.breakdown as Record<string, unknown>) ?? {};
+        const teleop = typeof breakdown.teleop_points === 'number' ? breakdown.teleop_points : 0;
+        const auto = typeof breakdown.auto_points === 'number' ? breakdown.auto_points : 0;
+        const endgame = typeof breakdown.endgame_points === 'number' ? breakdown.endgame_points : 0;
+        const time = typeof row.time === 'number' ? row.time : 0;
 
-      setSuperscoutTeams(prev => prev.map(t =>
-        t.team === team
-          ? { ...t, teleopEpa: typeof teleop === 'number' ? teleop : null, autoEpa: typeof auto === 'number' ? auto : null }
-          : t
-      ));
-    } catch {
-      // 404 or network error — leave nulls
-    } finally {
-      setEpaLoadingTeams(prev => {
-        const next = new Set(prev);
-        next.delete(team);
-        return next;
-      });
+        if (!byTeam.has(teamNum)) byTeam.set(teamNum, []);
+        byTeam.get(teamNum)!.push({ time, teleop, auto, endgame });
+      }
+
+      // Sort each team's rows chronologically and push into state
+      setSuperscoutTeams(prev => prev.map(t => {
+        const matchData = (byTeam.get(t.team) ?? []).sort((a, b) => a.time - b.time);
+        if (matchData.length === 0) return t;
+        const last = matchData[matchData.length - 1];
+        return {
+          ...t,
+          teleopPerMatch: matchData.map(m => m.teleop),
+          autoPerMatch: matchData.map(m => m.auto),
+          endgamePerMatch: matchData.map(m => m.endgame),
+          // Keep scalar fields updated for display (most recent match value)
+          teleopEpa: last.teleop,
+          autoEpa: last.auto,
+        };
+      }));
+    } catch (err) {
+      console.error('Error loading per-match Statbotics data:', err);
+      // Fall back silently — teams still rank using scouting climb data
     }
   };
 

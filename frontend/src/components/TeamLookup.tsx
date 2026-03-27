@@ -129,7 +129,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   };
 
   const fetchTeleopBalls = async (teamNum: string) => {
-    const eventKey = selectedCompetition?.eventKey;
+    const eventKey = selectedCompetition?.eventKey?.trim().toLowerCase();
     if (!eventKey || !teamNum) {
       setTeleopBalls(null);
       setTeleopBallsError('');
@@ -316,12 +316,12 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   useEffect(() => {
     const incomingTeam = targetTeam?.trim() || '';
     if (!incomingTeam) return;
-    if (incomingTeam === teamQuery.trim()) return;
-
-    setTeamQuery(incomingTeam);
+    if (incomingTeam !== teamQuery.trim()) {
+      setTeamQuery(incomingTeam);
+    }
     searchTeam(incomingTeam);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetTeam]);
+  }, [targetTeam, selectedCompetition?.eventKey]);
 
   // Only show notes if the current search query matches the team the notes belong to
   const showNotes = superscoutNotes && teamQuery.trim() === targetTeam?.trim();
