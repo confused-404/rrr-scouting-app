@@ -326,55 +326,63 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
       <div className="bg-white rounded-xl shadow-sm p-2 border border-gray-100 grid grid-cols-2 sm:grid-cols-5 gap-2">
         <button
           onClick={() => setActiveTab('scout')}
-          className={`px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
+          className={`px-3 py-2.5 rounded-lg grid grid-cols-[14px_1fr_14px] items-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
             activeTab === 'scout'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
           }`}
         >
-          Scout
+          <span aria-hidden="true" />
+          <span className="block w-full text-center leading-tight">Scout</span>
+          <span aria-hidden="true" />
         </button>
         <button
           onClick={() => setActiveTab('scoutingSchedule')}
-          className={`px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
+          className={`px-3 py-2.5 rounded-lg grid grid-cols-[14px_1fr_14px] items-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
             activeTab === 'scoutingSchedule'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
           }`}
         >
-          <Clock size={14} />
-          My Scouting
+          <span className="flex items-center justify-center"><Clock size={14} /></span>
+          <span className="block w-full text-center leading-tight">My Scouting</span>
+          <span aria-hidden="true" />
         </button>
         <button
           onClick={() => setActiveTab('teamLookup')}
-          className={`px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
+          className={`px-3 py-2.5 rounded-lg grid grid-cols-[14px_1fr_14px] items-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
             activeTab === 'teamLookup'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
           }`}
         >
-          Team Lookup
+          <span aria-hidden="true" />
+          <span className="block w-full text-center leading-tight">Team Lookup</span>
+          <span aria-hidden="true" />
         </button>
         <button
           onClick={() => setActiveTab('schedule')}
-          className={`px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
+          className={`px-3 py-2.5 rounded-lg grid grid-cols-[14px_1fr_14px] items-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
             activeTab === 'schedule'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
           }`}
         >
-          Schedule
+          <span aria-hidden="true" />
+          <span className="block w-full text-center leading-tight">Schedule</span>
+          <span aria-hidden="true" />
         </button>
         <button
           onClick={() => setActiveTab('pitMap')}
-          className={`px-3 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
+          className={`px-3 py-2.5 rounded-lg grid grid-cols-[14px_1fr_14px] items-center gap-2 font-black text-[11px] uppercase tracking-wide sm:tracking-widest transition-all ${
             activeTab === 'pitMap'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
           }`}
         >
-          <ImageIcon size={14} />
-          Pit Map
+          <span className="flex items-center justify-center"><ImageIcon size={14} /></span>
+          <span className="block w-full text-center leading-tight">Pit Map</span>
+          <span aria-hidden="true" />
         </button>
       </div>
 

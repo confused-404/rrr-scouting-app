@@ -528,7 +528,7 @@ export const PickListManager: React.FC<{
       <div className="bg-white rounded-xl shadow-sm p-2 border border-gray-100 flex gap-2 overflow-x-auto">
         <button
           onClick={() => setActivePickListTab('manual')}
-          className={`flex-1 min-w-[140px] px-4 py-2.5 rounded-lg font-black text-xs uppercase tracking-widest transition-all ${
+          className={`flex-1 min-w-[140px] px-4 py-2.5 rounded-lg font-black text-xs uppercase tracking-widest text-center transition-all ${
             activePickListTab === 'manual'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
@@ -538,7 +538,7 @@ export const PickListManager: React.FC<{
         </button>
         <button
           onClick={() => setActivePickListTab('automatic')}
-          className={`flex-1 min-w-[140px] px-4 py-2.5 rounded-lg font-black text-xs uppercase tracking-widest transition-all ${
+          className={`flex-1 min-w-[140px] px-4 py-2.5 rounded-lg font-black text-xs uppercase tracking-widest text-center transition-all ${
             activePickListTab === 'automatic'
               ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
