@@ -7,11 +7,13 @@ import {
   type User
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
+import { authApi } from '../services/api';
 import { createLogger, formatErrorForLogging } from '../utils/logger';
 
 interface AuthContextType {
   currentUser: User | null;
-  isAdmin: boolean; // Added isAdmin to the type
+  isAdmin: boolean;
+  scouterName: string | null;
   loading: boolean;
   signup: (email: string, password: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -31,7 +33,8 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false); // New state for admin status
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [scouterName, setScouterName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const signup = async (email: string, password: string) => {
@@ -105,8 +108,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
           setIsAdmin(false);
         }
+        try {
+          const profile = await authApi.getCurrentUser() as { scouterName?: string | null };
+          setScouterName(profile.scouterName ?? null);
+        } catch {
+          setScouterName(null);
+        }
       } else {
         setIsAdmin(false);
+        setScouterName(null);
       }
       
       setLoading(false);
@@ -117,7 +127,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const value = {
     currentUser,
-    isAdmin, // Exposed to the rest of the app
+    isAdmin,
+    scouterName,
     loading,
     signup,
     login,

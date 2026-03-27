@@ -85,11 +85,87 @@ export const makeAdmin = async (req, res) => {
  * GET ME & GET ADMIN EMAILS
  */
 export const getMe = async (req, res) => {
-  res.json({
-    uid: req.user.uid,
-    email: req.user.email,
-    admin: !!req.user.admin
-  });
+  try {
+    const doc = await db.collection('users').doc(req.user.uid).get();
+    const scouterName = doc.exists ? (doc.data().scouterName || null) : null;
+    res.json({
+      uid: req.user.uid,
+      email: req.user.email,
+      admin: !!req.user.admin,
+      scouterName,
+    });
+  } catch {
+    res.json({
+      uid: req.user.uid,
+      email: req.user.email,
+      admin: !!req.user.admin,
+      scouterName: null,
+    });
+  }
+};
+
+/**
+ * GET ALL USERS (Admin only)
+ * List all Firebase Auth accounts and merge in Firestore data
+ * so accounts without a Firestore doc still appear.
+ */
+export const getAllUsers = async (req, res) => {
+  try {
+    // 1. Collect every Auth account (listUsers pages up to 1000 at a time)
+    const authUsers = [];
+    let pageToken;
+    do {
+      const result = await auth.listUsers(1000, pageToken);
+      authUsers.push(...result.users);
+      pageToken = result.pageToken;
+    } while (pageToken);
+
+    // 2. Fetch all Firestore user docs in one shot
+    const snapshot = await db.collection('users').get();
+    const firestoreMap = new Map();
+    snapshot.docs.forEach(doc => firestoreMap.set(doc.id, doc.data()));
+
+    // 3. Merge: Auth is the source of truth for existence/email/role
+    const users = authUsers
+      .map(u => {
+        const fsData = firestoreMap.get(u.uid) || {};
+        const isAdmin = !!(u.customClaims?.admin) || fsData.role === 'admin';
+        return {
+          uid: u.uid,
+          email: u.email || fsData.email || '',
+          role: isAdmin ? 'admin' : 'user',
+          scouterName: fsData.scouterName || null,
+        };
+      })
+      .sort((a, b) => a.email.localeCompare(b.email));
+
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * UPDATE SCOUTER NAME (Admin only)
+ * Links a user account to a scouter name used in the schedule.
+ */
+export const updateScouterName = async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { scouterName } = req.body;
+    const trimmed = typeof scouterName === 'string' ? scouterName.trim() : null;
+
+    await db.collection('users').doc(uid).set({
+      scouterName: trimmed || null,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+
+    res.json({ uid, scouterName: trimmed || null });
+  } catch (error) {
+    console.error('Error updating scouter name:', error);
+    res.status(500).json({ message: error.message });
+  }
 };
 
 export const getAdminEmails = async (req, res) => {
