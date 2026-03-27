@@ -16,7 +16,7 @@ export type GeneratedAssignment = {
   teamId: string;
   teamName: string;
   scouts: string[];
-  matchTime?: number; // Unix timestamp
+  matchTime?: number;
 };
 
 export type ManualPickList = {
@@ -27,6 +27,11 @@ export type ManualPickList = {
   thirdPickRankings: string[];
 };
 
+export type SuperscoutEntry = {
+  notes: string;
+  rating: number | null; // now 1–5 scale
+};
+
 export type Competition = {
   id: string;
   name: string;
@@ -35,21 +40,16 @@ export type Competition = {
   startDate: string;
   endDate: string;
   formIds: string[];
-  /**
-   * For legacy code this may still be present (single active form),
-   * but new logic uses activeFormIds array for multiple selections.
-   */
   activeFormId?: string;
   activeFormIds?: string[];
   scoutingTeams?: ScoutingTeam[];
   scoutingAssignments?: GeneratedAssignment[];
-  eventKey?: string; // TBA event key
+  eventKey?: string;
   pitMapImageUrl?: string;
   manualPickLists?: ManualPickList[];
-  createdAt: string;
 
-  superscouterNotes?: Record<
-    string,
-    string | { notes?: string; rating?: number }
-  >;
+  // ✅ fixed typing
+  superscouterNotes?: Record<string, SuperscoutEntry | string>;
+
+  createdAt: string;
 };

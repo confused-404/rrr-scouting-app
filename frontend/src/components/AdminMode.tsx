@@ -324,7 +324,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
 
   const commitEdit = async (team: string) => {
     const rating = draftRating !== '' ? parseFloat(draftRating) : null;
-    const clampedRating = rating != null ? Math.min(10, Math.max(1, rating)) : null;
+    const clampedRating = rating != null ? Math.min(5, Math.max(1, rating)) : null;
     await saveTeamSuperscout(team, draftNotes, clampedRating);
   };
 
@@ -365,7 +365,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
 
     return (
       <div className="flex items-center gap-0.5">
-        {[2, 4, 6, 8, 10].map(val => (
+        {[1, 2, 3, 4, 5].map(val => (
           <button
             key={val}
             type="button"
@@ -374,7 +374,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
             onMouseLeave={() => setHovered(null)}
             onClick={() => !disabled && handleRatingChange(team, rating === val ? null : val)}
             className="focus:outline-none disabled:cursor-not-allowed"
-            title={`Rate ${val}/10`}
+            title={`Rate ${val}/5`}
           >
             <Star
               size={18}
@@ -387,7 +387,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
           </button>
         ))}
         {rating != null && (
-          <span className="ml-1 text-xs font-bold text-gray-500">{rating}/10</span>
+          <span className="ml-1 text-xs font-bold text-gray-500">{rating}/5</span>
         )}
       </div>
     );
@@ -638,20 +638,25 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
                             <input
                               type="number"
                               min={1}
-                              max={10}
+                              max={5}
                               step={0.1}
-                              value={isEditing ? draftRating : (td.rating ?? '')}
+                              value={td.rating ?? ''}
                               onChange={e => {
-                                if (isEditing) setDraftRating(e.target.value);
-                              }}
-                              onBlur={async e => {
-                                if (!isEditing) {
-                                  const v = parseFloat(e.target.value);
-                                  const r = isNaN(v) ? null : Math.min(10, Math.max(1, v));
-                                  await handleRatingChange(td.team, r);
+                                const val = e.target.value;
+
+                                if (val === '') {
+                                  handleRatingChange(td.team, null);
+                                  return;
+                                }
+
+                                const num = parseFloat(val);
+
+                                if (!isNaN(num)) {
+                                  const clamped = Math.min(5, Math.max(1, num));
+                                  handleRatingChange(td.team, clamped);
                                 }
                               }}
-                              placeholder="e.g. 7.5"
+                              placeholder="e.g. 4.5"
                               className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                           </div>
