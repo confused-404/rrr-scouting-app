@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Clock, AlertCircle } from 'lucide-react';
+import { Clock, AlertCircle, Search } from 'lucide-react';
 import type { Competition, GeneratedAssignment } from '../types/competition.types';
 import { tbaApi } from '../services/api';
 
@@ -16,6 +16,7 @@ const parsePosition = (pos: string): { alliance: 'red' | 'blue'; slot: number } 
 
 export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ selectedCompetition }) => {
   const [viewMode, setViewMode] = useState<'all' | 'myMatches'>('all');
+  const [searchQuery, setSearchQuery] = useState(''); // Add this line
 
   // TBA match data: match_number → { red: string[3], blue: string[3] }
   const [tbaMatches, setTbaMatches] = useState<Map<number, { red: string[]; blue: string[] }>>(new Map());
@@ -29,6 +30,20 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
     }
     fetchTbaMatches(selectedCompetition.eventKey);
   }, [selectedCompetition?.eventKey]);
+
+  const myAssignments = useMemo(() => {
+    const all = selectedCompetition?.scoutingAssignments || [];
+    const query = searchQuery.toLowerCase().trim();
+    
+    if (!query) return all;
+
+    return all.filter(a => {
+      // Check both scouts array and the team name
+      const matchesScout = a.scouts.some(name => name.toLowerCase().includes(query));
+      const matchesTeam = a.teamName?.toLowerCase().includes(query);
+      return matchesScout || matchesTeam;
+    });
+  }, [selectedCompetition?.scoutingAssignments, searchQuery]);
 
   const fetchTbaMatches = async (eventKey: string) => {
     setTbaLoading(true);
@@ -196,6 +211,19 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
         </button>
       </div>
 
+      {viewMode === 'myMatches' && (
+        <div className="relative mb-4">
+          <input
+            type="text"
+            placeholder="Search by your name or team..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)} // Ensure this is exactly (e.target.value)
+            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          />
+          <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+        </div>
+      )}
+
       {/* All Matches View */}
       {viewMode === 'all' && (
         <div className="space-y-2">
@@ -279,88 +307,69 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
 
       {/* My Assignments View */}
       {viewMode === 'myMatches' && (
-        <div className="space-y-4">
-          {uniqueTeams.length === 0 ? (
+        <div className="space-y-2">
+          {myAssignments.length === 0 ? (
             <div className="bg-white rounded-lg shadow-sm p-12 text-center text-gray-500">
-              <p>No assignments currently visible.</p>
-              <p className="text-sm text-gray-400">Switch to "All Matches" to see the full schedule.</p>
+              <p>{searchQuery ? `No results for "${searchQuery}"` : "No assignments currently visible."}</p>
             </div>
           ) : (
-            uniqueTeams.map(team => (
-              <div key={team.teamId} className="bg-white rounded-lg shadow-sm p-4 sm:p-6 border border-gray-200">
-                <h3 className="text-base sm:text-lg font-bold text-gray-800 mb-4">{team.teamName}</h3>
-                <div className="space-y-2">
-                  {team.assignments.map(assignment => {
-                    const teamNum = resolveTeamNumber(assignment);
-                    const parsed = parsePosition(assignment.position);
-                    const matchData = tbaMatches.get(assignment.matchNumber);
-                    const allianceTeams = matchData
-                      ? (parsed?.alliance === 'red' ? matchData.red : matchData.blue)
-                      : [];
-                    const isRed = assignment.position.startsWith('red');
+            /* CHANGE: We map over myAssignments directly to enable filtering */
+            myAssignments.map((assignment, idx) => {
+              const teamNum = assignment.teamName; // Using teamName from assignment
+              const parsed = parsePosition(assignment.position);
+              const matchData = tbaMatches.get(assignment.matchNumber);
+              const allianceTeams = matchData
+                ? (parsed?.alliance === 'red' ? matchData.red : matchData.blue)
+                : [];
+              const isRed = assignment.position.startsWith('red');
 
-                    return (
-                      <div
-                        key={`${assignment.matchNumber}-${assignment.position}`}
-                        className="flex flex-wrap items-center gap-2 sm:gap-4 p-3 bg-gray-50 rounded-lg border border-gray-100"
-                      >
-                        {/* Match number */}
-                        <div className="font-black text-gray-800 w-20 flex-shrink-0">
-                          Match {assignment.matchNumber}
-                        </div>
+              return (
+                <div
+                  key={`${assignment.matchNumber}-${assignment.position}-${idx}`}
+                  className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-wrap items-center gap-2 sm:gap-4 hover:bg-gray-50 transition-colors"
+                >
+                  {/* Match number */}
+                  <div className="bg-gray-100 px-3 py-1 rounded-lg font-black text-gray-700 w-20 text-center">
+                    M{assignment.matchNumber}
+                  </div>
 
-                        {/* Alliance badge */}
-                        <div className={`px-2.5 py-1 rounded-lg text-sm font-black border ${getPositionBg(assignment.position)}`}>
-                          {getPositionLabel(assignment.position)}
-                        </div>
+                  {/* Alliance badge */}
+                  <div className={`w-20 text-center py-1 rounded text-[10px] font-black uppercase tracking-widest ${
+                    isRed ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'
+                  }`}>
+                    {assignment.position}
+                  </div>
 
-                        {/* Team number — the key info */}
-                        <div className={`font-black text-xl ${isRed ? 'text-red-700' : 'text-blue-700'}`}>
-                          {teamNum ? (
-                            <>Scout: Team <span className="tabular-nums">{teamNum}</span></>
-                          ) : (
-                            <span className="text-sm text-gray-400 font-normal">Team # loading…</span>
-                          )}
-                        </div>
+                  {/* Team number */}
+                  <div className="w-16 font-black text-gray-900 text-lg tabular-nums">
+                    {teamNum || '—'}
+                  </div>
 
-                        {/* Rest of alliance for context */}
-                        {allianceTeams.length > 0 && (
-                          <div className="flex items-center gap-1 ml-auto">
-                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mr-1">Alliance:</span>
-                            {allianceTeams.map((t, i) => (
-                              <span
-                                key={i}
-                                className={`text-xs font-black px-1.5 py-0.5 rounded ${
-                                  t === teamNum
-                                    ? isRed ? 'bg-red-200 text-red-800' : 'bg-blue-200 text-blue-800'
-                                    : 'bg-gray-200 text-gray-500'
-                                }`}
-                              >
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                  {/* Rest of alliance for context */}
+                  {allianceTeams.length > 0 && (
+                    <div className="flex items-center gap-1 hidden sm:flex">
+                      {allianceTeams.map((t, i) => (
+                        <span
+                          key={i}
+                          className={`text-xs font-black px-1.5 py-0.5 rounded ${
+                            t === teamNum
+                              ? isRed ? 'bg-red-200 text-red-800' : 'bg-blue-200 text-blue-800'
+                              : 'bg-gray-200 text-gray-500'
+                          }`}
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
-                        {/* Time */}
-                        {assignment.matchTime && (
-                          <div className="text-xs text-gray-500 ml-auto hidden sm:block">
-                            {new Date(assignment.matchTime * 1000).toLocaleString()}
-                          </div>
-                        )}
-
-                        {/* Scout names */}
-                        {assignment.scouts.length > 0 && (
-                          <div className="text-sm text-gray-500 w-full sm:w-auto sm:ml-auto">
-                            {assignment.scouts.join(', ')}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {/* Scout names */}
+                  <div className="text-sm text-gray-500 ml-auto">
+                    {assignment.scouts.join(', ')}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
