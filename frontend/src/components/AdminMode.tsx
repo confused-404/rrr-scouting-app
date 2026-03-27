@@ -44,7 +44,7 @@ const climbWhereRegex = /where did they climb|climb level|climb position/i;
 // ─── types ───────────────────────────────────────────────────────────────────
 interface TeamSuperscoutData {
   team: string;
-  /** Superscouter's manual rating 1–10 */
+  /** Superscouter's manual rating 1–5 */
   rating: number | null;
   notes: string;
   /** Average climb points per match from scouting submissions */
@@ -633,7 +633,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
                           {/* Exact rating input */}
                           <div className="flex items-center gap-3">
                             <label className="text-xs font-black text-gray-500 uppercase tracking-widest">
-                              Exact Rating (1–10)
+                              Exact Rating (1-5)
                             </label>
                             <input
                               type="number"
