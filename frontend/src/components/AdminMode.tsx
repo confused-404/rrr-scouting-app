@@ -457,13 +457,14 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
           <button
             key={tab}
             onClick={() => setActiveTab(tab as AdminTab)}
-            className={`flex-1 min-w-[120px] px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
+            className={`flex-1 min-w-[150px] px-4 py-3 rounded-lg flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-wide whitespace-nowrap transition-all ${
               activeTab === tab
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
             }`}
           >
-            <Icon size={16} /> {label}
+            <Icon size={16} />
+            <span className="text-center">{label}</span>
           </button>
         ))}
       </div>
