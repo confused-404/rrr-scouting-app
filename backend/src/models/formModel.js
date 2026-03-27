@@ -63,7 +63,7 @@ export const formModel = {
   createForm: async (formData) => {
     const docRef = await db.collection(FORMS_COLLECTION).add({
       ...formData,
-      name: formData.name || 'Untitled Form', // Add default name
+      name: formData.name || 'Untitled Form',
       isActive: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -136,6 +136,18 @@ export const formModel = {
     });
   },
 
+  getSubmissionById: async (id) => {
+    const doc = await db.collection(SUBMISSIONS_COLLECTION).doc(id).get();
+    if (!doc.exists) return null;
+
+    const data = doc.data();
+    return {
+      id: doc.id,
+      ...data,
+      timestamp: convertTimestamp(data.timestamp),
+    };
+  },
+
   createSubmission: async (submissionData) => {
     const docRef = await db.collection(SUBMISSIONS_COLLECTION).add({
       ...submissionData,
@@ -151,6 +163,32 @@ export const formModel = {
     };
   },
 
+  /**
+   * Update an existing submission's data in-place.
+   * Only updates the `data` field — preserves formId, competitionId, timestamp, etc.
+   * Adds an `editedAt` field to record when the admin last modified it.
+   */
+  updateSubmission: async (id, newData) => {
+    const docRef = db.collection(SUBMISSIONS_COLLECTION).doc(id);
+    const doc = await docRef.get();
+
+    if (!doc.exists) return null;
+
+    await docRef.update({
+      data: newData,
+      editedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const updated = await docRef.get();
+    const data = updated.data();
+    return {
+      id: updated.id,
+      ...data,
+      timestamp: convertTimestamp(data.timestamp),
+      editedAt: data.editedAt ? convertTimestamp(data.editedAt) : undefined,
+    };
+  },
+
   getAllSubmissions: async () => {
     const snapshot = await db.collection(SUBMISSIONS_COLLECTION).get();
     return snapshot.docs.map(doc => {
@@ -161,5 +199,5 @@ export const formModel = {
         timestamp: convertTimestamp(data.timestamp),
       };
     });
-  }
+  },
 };
