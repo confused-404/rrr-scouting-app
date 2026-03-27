@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, Search, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, Search, X, Star, ChevronDown, ChevronUp, Trophy } from 'lucide-react';
 import { CompetitionManager } from './CompetitionManager';
 import { FormManager } from './FormManager';
 import { ResponseViewer } from './ResponseViewer';
@@ -7,24 +7,106 @@ import { TeamLookup } from './TeamLookup';
 import { MatchSchedule } from './MatchSchedule';
 import { ScoutingTeams } from './ScoutingTeams';
 import { PickListManager } from './PickListManager';
-import { competitionApi } from '../services/api';
+import { competitionApi, formApi, statboticsApi } from '../services/api';
 import type { Competition } from '../types/competition.types';
+import type { Form, Submission } from '../types/form.types';
 
 type AdminTab = 'competitions' | 'forms' | 'scoutingTeams' | 'analytics' | 'superscout' | 'picklists';
 type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule';
+
+// ─── climbing points by answer ───────────────────────────────────────────────
+const CLIMB_POINTS: Record<string, number> = {
+  'L1': 10,
+  'L2': 20,
+  'L3': 30,
+  // handle case-insensitive / alternate spellings
+  'l1': 10,
+  'l2': 20,
+  'l3': 30,
+  'Level 1': 10,
+  'Level 2': 20,
+  'Level 3': 30,
+};
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+const normalizeTeam = (raw: unknown): string | null => {
+  if (raw === null || raw === undefined) return null;
+  const text = String(raw).trim();
+  if (!text) return null;
+  if (text.startsWith('frc')) return text.replace(/^frc/i, '').trim();
+  const digits = text.match(/\d+/)?.[0];
+  return digits || null;
+};
+
+const teamFieldRegex = /team|team number|team #/i;
+const climbWhereRegex = /where did they climb|climb level|climb position/i;
+const didClimbRegex = /did they climb/i;
+
+// ─── types ───────────────────────────────────────────────────────────────────
+interface TeamSuperscoutData {
+  team: string;
+  /** Superscouter's manual rating 1–10 */
+  rating: number | null;
+  notes: string;
+  /** Average climb points per match from scouting submissions */
+  avgClimbPoints: number;
+  /** Number of scouted matches */
+  matchCount: number;
+  /** Timestamps of matches (for last-N filtering) */
+  matchTimestamps: number[];
+  /** Climb points per match in order */
+  climbPointsPerMatch: number[];
+  /** teleop EPA from statbotics (null if not loaded yet) */
+  teleopEpa: number | null;
+  /** auto EPA from statbotics (null if not loaded yet) */
+  autoEpa: number | null;
+}
+
+/** Compute score for a team given last-N-matches window */
+const computeScore = (
+  team: TeamSuperscoutData,
+  lastN: number,
+): number => {
+  if (team.matchCount === 0) return 0;
+
+  const climbSlice = lastN === 0
+    ? team.climbPointsPerMatch
+    : team.climbPointsPerMatch.slice(-lastN);
+
+  const avgClimb = climbSlice.length === 0
+    ? 0
+    : climbSlice.reduce((a, b) => a + b, 0) / climbSlice.length;
+
+  const teleop = team.teleopEpa ?? 0;
+  const auto = team.autoEpa ?? 0;
+
+  // teleop + auto are in EPA "points" units; climb is actual points averaged
+  // Weight: 1pt per teleop EPA unit, 1pt per auto EPA unit, climb as-is
+  return teleop + auto + avgClimb;
+};
 
 export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCompetitionUpdate }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('competitions');
   const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>('responses');
   const [activeCompetition, setActiveCompetition] = useState<Competition | null>(null);
 
-  // --- Superscouter State ---
+  // ── analytics team state (shared between superscouter & analytics tab) ──
   const [targetTeam, setTargetTeam] = useState('');
-  const [scouterNotes, setScouterNotes] = useState(''); // The LIVE notes (shown in Team Lookup)
-  const [draftNotes, setDraftNotes] = useState('');    // The WORKSPACE (only shown while editing)
-  const [isEditing, setIsEditing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  // "live" superscouter notes for the current targetTeam (used in TeamLookup)
+  const [scouterNotes, setScouterNotes] = useState('');
 
+  // ── superscouter list state ───────────────────────────────────────────────
+  const [superscoutTeams, setSuperscoutTeams] = useState<TeamSuperscoutData[]>([]);
+  const [superscoutLoading, setSuperscoutLoading] = useState(false);
+  const [lastN, setLastN] = useState<number>(0); // 0 = all matches
+  const [editingTeam, setEditingTeam] = useState<string | null>(null);
+  const [draftNotes, setDraftNotes] = useState('');
+  const [draftRating, setDraftRating] = useState<string>('');
+  const [savingTeam, setSavingTeam] = useState<string | null>(null);
+  const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
+  const [epaLoadingTeams, setEpaLoadingTeams] = useState<Set<string>>(new Set());
+
+  // ── load active competition ───────────────────────────────────────────────
   useEffect(() => {
     const loadActiveCompetition = async () => {
       try {
@@ -37,62 +119,219 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
     loadActiveCompetition();
   }, []);
 
-  // When user toggles Edit ON, we sync the draft to the current saved notes
-  const handleEditToggle = () => {
-    if (!isEditing) {
-      setDraftNotes(scouterNotes);
-    }
-    setIsEditing(!isEditing);
-  };
-
-  // Load notes when target team changes
+  // ── load superscouter data whenever competition changes ───────────────────
   useEffect(() => {
-    const loadNotes = async () => {
-      if (!targetTeam || !activeCompetition) return;
-      
-      try {
-        const data = await competitionApi.getSuperscouterNotes(activeCompetition.id, targetTeam);
-        setScouterNotes(data.notes);
-        setDraftNotes(data.notes);
-      } catch (error) {
-        console.error('Error loading notes:', error);
-      }
-    };
-
-    loadNotes();
-  }, [targetTeam, activeCompetition?.id]);
-
-  const handleSaveNotes = async () => {
-    if (!targetTeam) {
-      alert("Please enter a team number before saving.");
-      return;
+    if (activeTab === 'superscout' && activeCompetition) {
+      loadSuperscoutData();
     }
-    if (!activeCompetition) {
-      alert("No active competition selected.");
-      return;
-    }
-    setIsSaving(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, activeCompetition?.id]);
+
+  const loadSuperscoutData = async () => {
+    if (!activeCompetition) return;
+    setSuperscoutLoading(true);
+
     try {
-      await competitionApi.saveSuperscouterNotes(activeCompetition.id, targetTeam, draftNotes);
-      
-      setScouterNotes(draftNotes); // "Commits" the draft to the live state
-      setIsEditing(false);
-      alert(`Saved notes for Team ${targetTeam}`);
-    } catch (error) {
-      console.error('Save error:', error);
-      alert('Error saving notes. Please try again.');
+      // 1. Load all forms + submissions for this competition
+      const forms: Form[] = await formApi.getFormsByCompetition(activeCompetition.id);
+      const allSubs: Submission[] = [];
+      for (const form of forms) {
+        const subs = await formApi.getSubmissions(form.id);
+        allSubs.push(...subs);
+      }
+
+      // 2. Identify relevant fields across all forms
+      const teamFieldMap = new Map<string, number>(); // formId → field.id
+      const climbWhereMap = new Map<string, number>(); // formId → field.id
+      for (const form of forms) {
+        const teamField = form.fields.find(f => teamFieldRegex.test(f.label));
+        const climbWhere = form.fields.find(f => climbWhereRegex.test(f.label));
+        if (teamField) teamFieldMap.set(form.id, teamField.id);
+        if (climbWhere) climbWhereMap.set(form.id, climbWhere.id);
+      }
+
+      // 3. Aggregate submissions by team
+      const byTeam = new Map<string, { climbPoints: number[]; timestamps: number[] }>();
+
+      for (const sub of allSubs) {
+        const teamFieldId = teamFieldMap.get(sub.formId);
+        if (!teamFieldId) continue;
+
+        const team = normalizeTeam(sub.data?.[teamFieldId]);
+        if (!team) continue;
+
+        if (!byTeam.has(team)) byTeam.set(team, { climbPoints: [], timestamps: [] });
+        const agg = byTeam.get(team)!;
+
+        // timestamp — use sub.timestamp (ISO string) converted to ms
+        const ts = sub.timestamp ? new Date(sub.timestamp).getTime() : 0;
+        agg.timestamps.push(ts);
+
+        // climb points
+        const climbWhereId = climbWhereMap.get(sub.formId);
+        let climbPts = 0;
+        if (climbWhereId) {
+          const climbVal = String(sub.data?.[climbWhereId] ?? '').trim();
+          climbPts = CLIMB_POINTS[climbVal] ?? 0;
+        }
+        agg.climbPoints.push(climbPts);
+      }
+
+      // 4. Load existing superscouter notes from competition
+      const existingNotes: Record<string, { notes: string; rating: number | null }> = {};
+      const noteKeys = Object.keys(activeCompetition.superscouterNotes || {});
+      for (const teamNum of noteKeys) {
+        const raw = (activeCompetition.superscouterNotes as Record<string, unknown>)?.[teamNum];
+        if (typeof raw === 'string') {
+          existingNotes[teamNum] = { notes: raw, rating: null };
+        } else if (typeof raw === 'object' && raw !== null) {
+          const obj = raw as { notes?: string; rating?: number };
+          existingNotes[teamNum] = { notes: obj.notes ?? '', rating: obj.rating ?? null };
+        }
+      }
+
+      // 5. Build team list — union of scouted teams + teams with existing notes
+      const allTeams = new Set<string>([
+        ...byTeam.keys(),
+        ...Object.keys(existingNotes),
+      ]);
+
+      const teamList: TeamSuperscoutData[] = Array.from(allTeams).map(team => {
+        const agg = byTeam.get(team);
+        const noteData = existingNotes[team] ?? { notes: '', rating: null };
+
+        // sort by timestamp so last-N is chronologically meaningful
+        const paired = (agg?.timestamps ?? []).map((ts, i) => ({
+          ts,
+          climb: agg!.climbPoints[i],
+        })).sort((a, b) => a.ts - b.ts);
+
+        return {
+          team,
+          rating: noteData.rating,
+          notes: noteData.notes,
+          avgClimbPoints: paired.length === 0
+            ? 0
+            : paired.reduce((s, p) => s + p.climb, 0) / paired.length,
+          matchCount: paired.length,
+          matchTimestamps: paired.map(p => p.ts),
+          climbPointsPerMatch: paired.map(p => p.climb),
+          teleopEpa: null,
+          autoEpa: null,
+        };
+      });
+
+      setSuperscoutTeams(teamList);
+
+      // 6. Load EPA for all teams from statbotics (fire-and-forget per team)
+      if (activeCompetition.eventKey) {
+        const eventKey = activeCompetition.eventKey;
+        for (const td of teamList) {
+          loadEpaForTeam(td.team, eventKey);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading superscouter data:', err);
     } finally {
-      setIsSaving(false);
+      setSuperscoutLoading(false);
     }
   };
 
-  const handleCancelEdit = () => {
-    setDraftNotes(scouterNotes); // Discard changes
-    setIsEditing(false);
+  const loadEpaForTeam = async (team: string, eventKey: string) => {
+    setEpaLoadingTeams(prev => new Set(prev).add(team));
+    try {
+      const data = await statboticsApi.getTeamEvent(team, eventKey) as Record<string, unknown>;
+      // Statbotics v3 stores breakdown in data.epa or top-level
+      const epaObj = (data?.epa as Record<string, unknown>) ?? data;
+      const breakdown = (epaObj?.breakdown as Record<string, unknown>) ?? {};
+
+      // teleop total
+      const teleop =
+        typeof breakdown.teleop_points === 'number' ? breakdown.teleop_points :
+        typeof breakdown.teleop === 'number' ? breakdown.teleop :
+        typeof epaObj.teleop === 'number' ? epaObj.teleop :
+        null;
+
+      // auto total
+      const auto =
+        typeof breakdown.auto_points === 'number' ? breakdown.auto_points :
+        typeof breakdown.auto === 'number' ? breakdown.auto :
+        typeof epaObj.auto === 'number' ? epaObj.auto :
+        null;
+
+      setSuperscoutTeams(prev => prev.map(t =>
+        t.team === team
+          ? { ...t, teleopEpa: typeof teleop === 'number' ? teleop : null, autoEpa: typeof auto === 'number' ? auto : null }
+          : t
+      ));
+    } catch {
+      // 404 or network error — leave nulls
+    } finally {
+      setEpaLoadingTeams(prev => {
+        const next = new Set(prev);
+        next.delete(team);
+        return next;
+      });
+    }
   };
 
+  // ── ranked teams for superscouter list ───────────────────────────────────
+  const rankedTeams = useMemo(() => {
+    return [...superscoutTeams].sort((a, b) => {
+      const sa = computeScore(a, lastN);
+      const sb = computeScore(b, lastN);
+      return sb - sa;
+    });
+  }, [superscoutTeams, lastN]);
+
+  // ── save superscouter notes + rating ─────────────────────────────────────
+  const saveTeamSuperscout = async (team: string, notes: string, rating: number | null) => {
+    if (!activeCompetition) return;
+    setSavingTeam(team);
+    try {
+      // Store as object with both notes and rating
+      const payload = { notes, rating };
+      await competitionApi.saveSuperscouterNotes(activeCompetition.id, team, JSON.stringify(payload));
+
+      setSuperscoutTeams(prev =>
+        prev.map(t => t.team === team ? { ...t, notes, rating } : t)
+      );
+
+      // If this is the currently viewed team in analytics, sync live notes
+      if (team === targetTeam) setScouterNotes(notes);
+
+      setEditingTeam(null);
+    } catch (err) {
+      console.error('Error saving superscouter data:', err);
+      alert('Failed to save. Please try again.');
+    } finally {
+      setSavingTeam(null);
+    }
+  };
+
+  const handleRatingChange = async (team: string, newRating: number | null) => {
+    const td = superscoutTeams.find(t => t.team === team);
+    if (!td || !activeCompetition) return;
+    await saveTeamSuperscout(team, td.notes, newRating);
+  };
+
+  const startEditing = (td: TeamSuperscoutData) => {
+    setEditingTeam(td.team);
+    setDraftNotes(td.notes);
+    setDraftRating(td.rating != null ? String(td.rating) : '');
+  };
+
+  const cancelEditing = () => setEditingTeam(null);
+
+  const commitEdit = async (team: string) => {
+    const rating = draftRating !== '' ? parseFloat(draftRating) : null;
+    const clampedRating = rating != null ? Math.min(10, Math.max(1, rating)) : null;
+    await saveTeamSuperscout(team, draftNotes, clampedRating);
+  };
+
+  // ── competition update helper ─────────────────────────────────────────────
   const handleCompetitionUpdate = () => {
-    const loadActiveCompetition = async () => {
+    const reload = async () => {
       try {
         const comp = await competitionApi.getActive();
         setActiveCompetition(comp);
@@ -100,7 +339,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
         console.error('Error loading active competition:', error);
       }
     };
-    loadActiveCompetition();
+    reload();
     if (onCompetitionUpdate) onCompetitionUpdate();
   };
 
@@ -110,33 +349,84 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
     setAnalyticsTab('teamLookup');
   };
 
+  const handleSuperscoutTeamClick = (team: string) => {
+    setTargetTeam(team);
+    const td = superscoutTeams.find(t => t.team === team);
+    setScouterNotes(td?.notes ?? '');
+    setActiveTab('analytics');
+    setAnalyticsTab('teamLookup');
+  };
+
+  // ── star rating widget ────────────────────────────────────────────────────
+  const StarRating: React.FC<{ team: string; rating: number | null; disabled?: boolean }> = ({
+    team, rating, disabled,
+  }) => {
+    const [hovered, setHovered] = useState<number | null>(null);
+    const display = hovered ?? rating ?? 0;
+
+    return (
+      <div className="flex items-center gap-0.5">
+        {[2, 4, 6, 8, 10].map(val => (
+          <button
+            key={val}
+            type="button"
+            disabled={disabled}
+            onMouseEnter={() => setHovered(val)}
+            onMouseLeave={() => setHovered(null)}
+            onClick={() => !disabled && handleRatingChange(team, rating === val ? null : val)}
+            className="focus:outline-none disabled:cursor-not-allowed"
+            title={`Rate ${val}/10`}
+          >
+            <Star
+              size={18}
+              className={`transition-colors ${
+                display >= val
+                  ? 'text-yellow-400 fill-yellow-400'
+                  : 'text-gray-300'
+              }`}
+            />
+          </button>
+        ))}
+        {rating != null && (
+          <span className="ml-1 text-xs font-bold text-gray-500">{rating}/10</span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Main Navigation */}
       <div className="bg-white rounded-xl shadow-sm p-2 border border-gray-100 flex gap-2 overflow-x-auto">
-        <button onClick={() => setActiveTab('competitions')} className={`flex-1 min-w-[120px] px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'competitions' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
-          <Settings size={16} /> Competitions
-        </button>
-        <button onClick={() => setActiveTab('forms')} className={`flex-1 min-w-[120px] px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'forms' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
-          <FileText size={16} /> Forms
-        </button>
-        <button onClick={() => setActiveTab('scoutingTeams')} className={`flex-1 min-w-[120px] px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'scoutingTeams' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
-          <Users size={16} /> Scouting Teams
-        </button>
-        <button onClick={() => setActiveTab('analytics')} className={`flex-1 min-w-[120px] px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'analytics' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
-          <BarChart size={16} /> Analytics
-        </button>
-        <button onClick={() => setActiveTab('superscout')} className={`flex-1 min-w-[120px] px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'superscout' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
-          <ClipboardList size={16} /> Superscouter
-        </button>
-        <button onClick={() => setActiveTab('picklists')} className={`flex-1 min-w-[120px] px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'picklists' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
-          <ClipboardList size={16} /> Pick Lists
-        </button>
+        {(
+          [
+            ['competitions', Settings, 'Competitions'],
+            ['forms', FileText, 'Forms'],
+            ['scoutingTeams', Users, 'Scouting Teams'],
+            ['analytics', BarChart, 'Analytics'],
+            ['superscout', ClipboardList, 'Superscouter'],
+            ['picklists', ClipboardList, 'Pick Lists'],
+          ] as const
+        ).map(([tab, Icon, label]) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab as AdminTab)}
+            className={`flex-1 min-w-[120px] px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all ${
+              activeTab === tab
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+            }`}
+          >
+            <Icon size={16} /> {label}
+          </button>
+        ))}
       </div>
 
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         {activeTab === 'competitions' && <CompetitionManager />}
-        {activeTab === 'forms' && <FormManager selectedCompetition={activeCompetition} onCompetitionUpdate={handleCompetitionUpdate} />}
+        {activeTab === 'forms' && (
+          <FormManager selectedCompetition={activeCompetition} onCompetitionUpdate={handleCompetitionUpdate} />
+        )}
         {activeTab === 'scoutingTeams' && <ScoutingTeams selectedCompetition={activeCompetition} />}
         {activeTab === 'picklists' && (
           <PickListManager
@@ -146,101 +436,322 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
           />
         )}
 
-        {/* --- SUPERSCOUTER TAB --- */}
+        {/* ══════════════════════════════════════════════════════════
+            SUPERSCOUTER TAB
+        ══════════════════════════════════════════════════════════ */}
         {activeTab === 'superscout' && (
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 space-y-4">
-            <div className="flex items-center justify-between border-b pb-4">
-              <h2 className="text-xl font-bold text-gray-900">Superscouter Master Notes</h2>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  type="text" 
-                  placeholder="Team Number..." 
-                  value={targetTeam}
-                  onChange={(e) => setTargetTeam(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-48 font-bold text-blue-600"
-                />
-              </div>
-            </div>
-
-            <div className="relative group">
-              {isEditing ? (
-                <textarea
-                  value={draftNotes} // Typing into draft, not scouterNotes
-                  onChange={(e) => setDraftNotes(e.target.value)}
-                  className="w-full h-96 p-4 border-2 border-blue-100 rounded-xl focus:border-blue-500 outline-none resize-none bg-blue-50/20 transition-all font-medium text-sm leading-relaxed"
-                  placeholder={`Drafting notes for Team ${targetTeam}... (Not visible in Analytics yet)`}
-                />
-              ) : (
-                <div className="w-full h-96 p-6 border border-gray-200 rounded-xl bg-gray-50 overflow-y-auto text-gray-700 whitespace-pre-wrap leading-relaxed">
-                  {scouterNotes || <span className="text-gray-400 italic">No saved notes. Click Edit to begin.</span>}
+          <div className="space-y-4">
+            {/* Header + controls */}
+            <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Superscouter Command Center</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Teams ranked by Teleop EPA + Auto EPA + Avg Climb Points
+                  </p>
                 </div>
-              )}
-
-              <div className="absolute bottom-4 right-4 flex gap-2">
-                {isEditing && (
-                  <button
-                    onClick={handleCancelEdit}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest bg-white text-red-600 border border-red-100 hover:bg-red-50 transition-all shadow-md"
-                  >
-                    <X size={14} /> Cancel
-                  </button>
-                )}
-                
                 <button
-                  onClick={handleEditToggle}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all shadow-md ${
-                    isEditing ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-                  }`}
+                  onClick={loadSuperscoutData}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-all"
                 >
-                  <Edit3 size={14} />
-                  {isEditing ? 'Editing Mode' : 'Edit'}
-                </button>
-                
-                <button
-                  onClick={handleSaveNotes}
-                  disabled={isSaving || !targetTeam}
-                  className={`flex items-center gap-2 px-6 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all shadow-md ${
-                    isSaving || !targetTeam 
-                      ? 'bg-gray-300 cursor-not-allowed text-gray-500' 
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
-                  }`}
-                >
-                  <Save size={14} />
-                  {isSaving ? 'Saving...' : 'Save'}
+                  Refresh
                 </button>
               </div>
+
+              {/* Last-N control */}
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest">
+                    Rank by last
+                  </label>
+                  <div className="flex items-center gap-1">
+                    {[0, 1, 2, 3, 5, 8].map(n => (
+                      <button
+                        key={n}
+                        onClick={() => setLastN(n)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+                          lastN === n
+                            ? 'bg-blue-600 text-white shadow'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {n === 0 ? 'All' : `${n}M`}
+                      </button>
+                    ))}
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={lastN === 0 ? '' : lastN}
+                      onChange={e => {
+                        const v = parseInt(e.target.value);
+                        if (!isNaN(v) && v > 0) setLastN(v);
+                      }}
+                      placeholder="N"
+                      className="w-14 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-bold text-center focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <span className="text-xs text-gray-400">
+                    {lastN === 0 ? 'matches (all competition)' : `matches`}
+                  </span>
+                </div>
+
+                {!activeCompetition?.eventKey && (
+                  <p className="text-xs text-amber-600 font-bold">
+                    ⚠ Set an event key to enable Statbotics EPA scores
+                  </p>
+                )}
+              </div>
             </div>
+
+            {/* Team list */}
+            {superscoutLoading ? (
+              <div className="bg-white rounded-xl p-16 text-center text-gray-300 font-black uppercase tracking-widest animate-pulse">
+                Loading teams…
+              </div>
+            ) : rankedTeams.length === 0 ? (
+              <div className="bg-white rounded-xl p-16 text-center text-gray-400 border-2 border-dashed">
+                <ClipboardList size={40} className="mx-auto mb-3 opacity-20" />
+                <p className="font-bold">No scouted teams yet.</p>
+                <p className="text-sm text-gray-400">Submit scouting forms or add notes below to populate this list.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {rankedTeams.map((td, idx) => {
+                  const score = computeScore(td, lastN);
+                  const allScore = computeScore(td, 0);
+                  const isExpanded = expandedTeam === td.team;
+                  const isEditing = editingTeam === td.team;
+                  const epaLoading = epaLoadingTeams.has(td.team);
+
+                  return (
+                    <div
+                      key={td.team}
+                      className={`bg-white rounded-xl shadow-sm border transition-all ${
+                        isExpanded ? 'border-blue-200 shadow-md' : 'border-gray-100 hover:border-blue-100'
+                      }`}
+                    >
+                      {/* Row header */}
+                      <div className="flex items-center gap-3 p-4">
+                        {/* Rank badge */}
+                        <div className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm ${
+                          idx === 0 ? 'bg-yellow-400 text-yellow-900' :
+                          idx === 1 ? 'bg-gray-300 text-gray-700' :
+                          idx === 2 ? 'bg-amber-600 text-white' :
+                          'bg-gray-100 text-gray-500'
+                        }`}>
+                          {idx === 0 ? <Trophy size={16} /> : `#${idx + 1}`}
+                        </div>
+
+                        {/* Team number */}
+                        <button
+                          onClick={() => handleSuperscoutTeamClick(td.team)}
+                          className="text-blue-700 font-black text-lg hover:underline"
+                          title="View in Team Lookup"
+                        >
+                          {td.team}
+                        </button>
+
+                        {/* Score pill */}
+                        <div className="flex items-center gap-2 ml-1">
+                          <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-black">
+                            {score.toFixed(1)} pts
+                            <span className="text-blue-400 font-normal ml-1">
+                              ({lastN === 0 ? 'all' : `last ${lastN}`})
+                            </span>
+                          </span>
+                          {lastN !== 0 && (
+                            <span className="px-2 py-1 bg-gray-50 text-gray-500 rounded-lg text-xs font-bold">
+                              {allScore.toFixed(1)} all
+                            </span>
+                          )}
+                        </div>
+
+                        {/* EPA chips */}
+                        {epaLoading ? (
+                          <span className="text-xs text-gray-300 animate-pulse">loading EPA…</span>
+                        ) : (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {td.teleopEpa != null && (
+                              <span className="px-2 py-0.5 bg-orange-50 text-orange-600 rounded text-[10px] font-black uppercase tracking-wider">
+                                T {td.teleopEpa.toFixed(1)}
+                              </span>
+                            )}
+                            {td.autoEpa != null && (
+                              <span className="px-2 py-0.5 bg-purple-50 text-purple-600 rounded text-[10px] font-black uppercase tracking-wider">
+                                A {td.autoEpa.toFixed(1)}
+                              </span>
+                            )}
+                            {td.matchCount > 0 && (
+                              <span className="px-2 py-0.5 bg-green-50 text-green-600 rounded text-[10px] font-black uppercase tracking-wider">
+                                C {td.avgClimbPoints.toFixed(1)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Star rating — always visible */}
+                        <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+                          <StarRating team={td.team} rating={td.rating} disabled={isEditing} />
+                          <button
+                            onClick={() => setExpandedTeam(isExpanded ? null : td.team)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+                          >
+                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expanded detail */}
+                      {isExpanded && (
+                        <div className="border-t border-gray-100 p-4 space-y-3">
+                          {/* Match stats */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                            <div className="bg-gray-50 rounded-lg p-2">
+                              <div className="text-[10px] font-black uppercase tracking-widest text-gray-400">Matches</div>
+                              <div className="text-xl font-black text-gray-700">{td.matchCount}</div>
+                            </div>
+                            <div className="bg-orange-50 rounded-lg p-2">
+                              <div className="text-[10px] font-black uppercase tracking-widest text-orange-400">Teleop EPA</div>
+                              <div className="text-xl font-black text-orange-600">
+                                {td.teleopEpa != null ? td.teleopEpa.toFixed(1) : '—'}
+                              </div>
+                            </div>
+                            <div className="bg-purple-50 rounded-lg p-2">
+                              <div className="text-[10px] font-black uppercase tracking-widest text-purple-400">Auto EPA</div>
+                              <div className="text-xl font-black text-purple-600">
+                                {td.autoEpa != null ? td.autoEpa.toFixed(1) : '—'}
+                              </div>
+                            </div>
+                            <div className="bg-green-50 rounded-lg p-2">
+                              <div className="text-[10px] font-black uppercase tracking-widest text-green-400">Avg Climb</div>
+                              <div className="text-xl font-black text-green-600">
+                                {td.matchCount > 0 ? td.avgClimbPoints.toFixed(1) : '—'}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Exact rating input */}
+                          <div className="flex items-center gap-3">
+                            <label className="text-xs font-black text-gray-500 uppercase tracking-widest">
+                              Exact Rating (1–10)
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={10}
+                              step={0.1}
+                              value={isEditing ? draftRating : (td.rating ?? '')}
+                              onChange={e => {
+                                if (isEditing) setDraftRating(e.target.value);
+                              }}
+                              onBlur={async e => {
+                                if (!isEditing) {
+                                  const v = parseFloat(e.target.value);
+                                  const r = isNaN(v) ? null : Math.min(10, Math.max(1, v));
+                                  await handleRatingChange(td.team, r);
+                                }
+                              }}
+                              placeholder="e.g. 7.5"
+                              className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                          </div>
+
+                          {/* Notes section */}
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <textarea
+                                value={draftNotes}
+                                onChange={e => setDraftNotes(e.target.value)}
+                                rows={5}
+                                className="w-full border-2 border-blue-100 rounded-xl p-3 text-sm resize-none focus:border-blue-500 outline-none bg-blue-50/20"
+                                placeholder="Superscouter notes…"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => commitEdit(td.team)}
+                                  disabled={savingTeam === td.team}
+                                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                                >
+                                  <Save size={14} />
+                                  {savingTeam === td.team ? 'Saving…' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={cancelEditing}
+                                  className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 flex items-center gap-2"
+                                >
+                                  <X size={14} /> Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div
+                                className="min-h-[60px] p-3 bg-gray-50 rounded-xl text-sm text-gray-700 whitespace-pre-wrap leading-relaxed cursor-pointer hover:bg-gray-100 transition-colors"
+                                onClick={() => startEditing(td)}
+                              >
+                                {td.notes || (
+                                  <span className="text-gray-400 italic">Click to add notes…</span>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => startEditing(td)}
+                                className="mt-2 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-bold"
+                              >
+                                <Edit3 size={12} /> Edit notes
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
-        {/* --- ANALYTICS TAB --- */}
+        {/* ══════════════════════════════════════════════════════════
+            ANALYTICS TAB
+        ══════════════════════════════════════════════════════════ */}
         {activeTab === 'analytics' && (
           <div className="space-y-4">
             <div className="bg-gray-100 rounded-lg p-2 flex gap-2">
-              <button onClick={() => setAnalyticsTab('responses')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${analyticsTab === 'responses' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200'}`}>
+              <button
+                onClick={() => setAnalyticsTab('responses')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${analyticsTab === 'responses' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200'}`}
+              >
                 Responses
               </button>
-              <button onClick={() => setAnalyticsTab('teamLookup')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${analyticsTab === 'teamLookup' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200'}`}>
+              <button
+                onClick={() => setAnalyticsTab('teamLookup')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${analyticsTab === 'teamLookup' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200'}`}
+              >
                 Team Lookup
               </button>
-              <button onClick={() => setAnalyticsTab('schedule')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${analyticsTab === 'schedule' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200'}`}>
+              <button
+                onClick={() => setAnalyticsTab('schedule')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${analyticsTab === 'schedule' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200'}`}
+              >
                 Schedule
               </button>
             </div>
 
             <div>
-              {analyticsTab === 'responses' && <ResponseViewer selectedCompetition={activeCompetition} />}
-              
+              {analyticsTab === 'responses' && (
+                <ResponseViewer selectedCompetition={activeCompetition} />
+              )}
               {analyticsTab === 'teamLookup' && (
-                <TeamLookup 
-                  selectedCompetition={activeCompetition} 
-                  superscoutNotes={scouterNotes} // Only passes what has been SAVED
-                  targetTeam={targetTeam} 
+                <TeamLookup
+                  selectedCompetition={activeCompetition}
+                  superscoutNotes={scouterNotes}
+                  targetTeam={targetTeam}
                 />
               )}
-              
-              {analyticsTab === 'schedule' && <MatchSchedule selectedCompetition={activeCompetition} />}
+              {analyticsTab === 'schedule' && (
+                <MatchSchedule selectedCompetition={activeCompetition} />
+              )}
             </div>
           </div>
         )}
