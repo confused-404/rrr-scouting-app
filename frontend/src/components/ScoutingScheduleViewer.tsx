@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Clock, AlertCircle, Search } from 'lucide-react';
 import type { Competition, GeneratedAssignment } from '../types/competition.types';
-import { tbaApi, statboticsApi } from '../services/api';
+import type { Form, Submission } from '../types/form.types';
+import { formApi, tbaApi, statboticsApi } from '../services/api';
 
 interface ScoutingScheduleViewerProps {
   selectedCompetition: Competition | null;
@@ -24,6 +25,44 @@ const namesMatch = (candidate: string, target: string): boolean => {
   return c === t || c.includes(t) || t.includes(c);
 };
 
+const matchFieldRegex = /match( number| #|#|num| no\.?|)/i;
+
+const parseMatchNumber = (raw: unknown): number | null => {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+  if (raw === null || raw === undefined) return null;
+  const text = String(raw).trim();
+  if (!text) return null;
+  const digits = text.match(/\d+/)?.[0];
+  if (!digits) return null;
+  const parsed = parseInt(digits, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getFormMatchFieldId = (form: Form): string | null => {
+  const field = form.fields.find((f) => matchFieldRegex.test(f.label));
+  return field ? String(field.id) : null;
+};
+
+const getSubmittedLiveMatchCounter = (forms: Form[], submissions: Submission[]): number | null => {
+  const formMatchField = new Map<string, string | null>();
+  forms.forEach((form) => {
+    formMatchField.set(form.id, getFormMatchFieldId(form));
+  });
+
+  let maxSubmittedMatch: number | null = null;
+  submissions.forEach((submission) => {
+    const matchFieldId = formMatchField.get(submission.formId);
+    if (!matchFieldId) return;
+    const matchNumber = parseMatchNumber(submission.data?.[matchFieldId]);
+    if (matchNumber == null) return;
+    if (maxSubmittedMatch == null || matchNumber > maxSubmittedMatch) {
+      maxSubmittedMatch = matchNumber;
+    }
+  });
+
+  return maxSubmittedMatch == null ? null : maxSubmittedMatch + 1;
+};
+
 export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ selectedCompetition, scouterName }) => {
   const [viewMode, setViewMode] = useState<'nextMatch' | 'all' | 'myMatches'>('nextMatch');
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,8 +80,10 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
   const [tbaLoading, setTbaLoading] = useState(false);
   const [tbaError, setTbaError] = useState('');
   const [statboticsLiveQualMatch, setStatboticsLiveQualMatch] = useState<number | null>(null);
+  const [formLiveMatch, setFormLiveMatch] = useState<number | null>(null);
   const [statboticsLoading, setStatboticsLoading] = useState(false);
   const [statboticsError, setStatboticsError] = useState('');
+  const [formProgressError, setFormProgressError] = useState('');
   const [dismissedAssignments, setDismissedAssignments] = useState<Set<string>>(new Set());
 
   const getAssignmentKey = (assignment: GeneratedAssignment) =>
@@ -87,11 +128,18 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
   useEffect(() => {
     if (!selectedCompetition?.eventKey) {
       setTbaMatches(new Map());
+    } else {
+      fetchTbaMatches(selectedCompetition.eventKey);
+      fetchStatboticsProgress(selectedCompetition.eventKey);
+    }
+
+    if (!selectedCompetition?.id) {
+      setFormLiveMatch(null);
       return;
     }
-    fetchTbaMatches(selectedCompetition.eventKey);
-    fetchStatboticsProgress(selectedCompetition.eventKey);
-  }, [selectedCompetition?.eventKey]);
+
+    fetchFormProgress(selectedCompetition.id);
+  }, [selectedCompetition?.eventKey, selectedCompetition?.id]);
 
   const myAssignments = useMemo(() => {
     const all = selectedCompetition?.scoutingAssignments || [];
@@ -177,6 +225,19 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
     }
   };
 
+  const fetchFormProgress = async (competitionId: string) => {
+    setFormProgressError('');
+    try {
+      const forms = await formApi.getFormsByCompetition(competitionId);
+      const submissionLists = await Promise.all(forms.map((form) => formApi.getSubmissions(form.id)));
+      const submissions = submissionLists.flat();
+      setFormLiveMatch(getSubmittedLiveMatchCounter(forms, submissions));
+    } catch {
+      setFormLiveMatch(null);
+      setFormProgressError('Could not load submitted form progress. Falling back to official live match pointer.');
+    }
+  };
+
   /** Resolve team number for a given assignment */
   const resolveTeamNumber = (assignment: GeneratedAssignment): string | null => {
     const parsed = parsePosition(assignment.position);
@@ -187,19 +248,9 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
     return teams[parsed.slot] ?? null;
   };
 
-  const now = new Date();
-
-  const getTimeUntil = (unixSeconds?: number) => {
-    if (!unixSeconds) return null;
-    const diffMs = unixSeconds * 1000 - now.getTime();
-    if (diffMs <= 0) return 'In progress or completed';
-
-    const totalMinutes = Math.floor(diffMs / 60000);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
-  };
+  const liveMatchCounter = formLiveMatch ?? statboticsLiveQualMatch ?? 1;
+  const liveCounterSource: 'forms' | 'official' | 'default' =
+    formLiveMatch != null ? 'forms' : (statboticsLiveQualMatch != null ? 'official' : 'default');
 
   const getNextMatch = () => {
     if (!selectedCompetition?.scoutingAssignments) return null;
@@ -218,18 +269,13 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
       return null;
     }
 
-    // Primary ordering source: Statbotics live event progress by qualification match number.
-    if (statboticsLiveQualMatch != null) {
-      const byMatchNumber = [...pool]
-        .filter(a => a.matchNumber >= statboticsLiveQualMatch)
-        .sort((a, b) => a.matchNumber - b.matchNumber);
-      if (byMatchNumber.length > 0) return byMatchNumber[0];
-    }
+    const byCounter = [...pool]
+      .filter(a => a.matchNumber >= liveMatchCounter)
+      .sort((a, b) => a.matchNumber - b.matchNumber);
+    if (byCounter.length > 0) return byCounter[0];
 
-    // Fallback ordering source: local scheduled timestamps.
-    return pool
-      .filter(a => a.matchTime && a.matchTime * 1000 > now.getTime())
-      .sort((a, b) => a.matchTime! - b.matchTime!)[0] || null;
+    // If every assignment is below the live counter, return the earliest assignment.
+    return [...pool].sort((a, b) => a.matchNumber - b.matchNumber)[0] || null;
   };
 
   const nextMatch = getNextMatch();
@@ -293,11 +339,17 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
             <AlertCircle size={14} /> {statboticsError}
           </div>
         )}
-        {statboticsLiveQualMatch != null && (
-          <p className="text-xs text-blue-700 mt-1 font-semibold">
-            Statbotics live match pointer: Qual Match {statboticsLiveQualMatch}
-          </p>
+        {formProgressError && (
+          <div className="flex items-center gap-2 mt-1 text-xs text-amber-700">
+            <AlertCircle size={14} /> {formProgressError}
+          </div>
         )}
+        <p className="text-xs text-blue-700 mt-1 font-semibold">
+          Live match counter: Qual Match {liveMatchCounter}
+          {liveCounterSource === 'forms' && ' (from submitted forms)'}
+          {liveCounterSource === 'official' && ' (from official live feed)'}
+          {liveCounterSource === 'default' && ' (default)'}
+        </p>
         {!selectedCompetition.eventKey && (
           <div className="flex items-center gap-2 mt-2 text-xs text-amber-700">
             <AlertCircle size={14} /> No event key set — team numbers from TBA are unavailable.
@@ -407,8 +459,8 @@ export const ScoutingScheduleViewer: React.FC<ScoutingScheduleViewerProps> = ({ 
                 </div>
                 <div className="rounded-lg bg-gray-50 p-3">
                   <div className="text-[10px] font-black uppercase tracking-widest text-gray-400">Starts In</div>
-                  <div className="text-lg font-black text-blue-700">
-                    {getTimeUntil(nextMatch.matchTime) ?? '—'}
+                  <div className="text-sm font-bold text-blue-700">
+                    Match-based counter in use
                   </div>
                 </div>
                 <div className="rounded-lg bg-gray-50 p-3">

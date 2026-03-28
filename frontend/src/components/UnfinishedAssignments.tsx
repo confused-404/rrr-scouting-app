@@ -59,6 +59,26 @@ const getFieldId = (form: Form, regex: RegExp): string | null => {
   return String(field.id);
 };
 
+const getSubmittedLiveMatchCounter = (forms: Form[], submissions: Submission[]): number | null => {
+  const matchFieldByForm = new Map<string, string | null>();
+  forms.forEach((form) => {
+    matchFieldByForm.set(form.id, getFieldId(form, matchFieldRegex));
+  });
+
+  let maxSubmittedMatch: number | null = null;
+  submissions.forEach((submission) => {
+    const matchFieldId = matchFieldByForm.get(submission.formId);
+    if (!matchFieldId) return;
+    const matchNumber = parseMatchNumber(submission.data?.[matchFieldId]);
+    if (matchNumber == null) return;
+    if (maxSubmittedMatch == null || matchNumber > maxSubmittedMatch) {
+      maxSubmittedMatch = matchNumber;
+    }
+  });
+
+  return maxSubmittedMatch == null ? null : maxSubmittedMatch + 1;
+};
+
 const buildDoneKeySet = (forms: Form[], submissions: Submission[]): Set<string> => {
   const teamFieldByForm = new Map<string, string | null>();
   const matchFieldByForm = new Map<string, string | null>();
@@ -145,6 +165,7 @@ export const UnfinishedAssignments: React.FC<{ selectedCompetition?: Competition
   const [unfinished, setUnfinished] = useState<UnfinishedAssignment[]>([]);
   const [doneCount, setDoneCount] = useState(0);
   const [liveQualMatch, setLiveQualMatch] = useState<number | null>(null);
+  const [liveCounterSource, setLiveCounterSource] = useState<'forms' | 'official' | 'default'>('default');
 
   useEffect(() => {
     const load = async () => {
@@ -180,6 +201,7 @@ export const UnfinishedAssignments: React.FC<{ selectedCompetition?: Competition
 
         const doneKeys = buildDoneKeySet(forms, submissions);
         const tbaMatches = buildTbaMatchMap(tbaRows);
+        const formLiveMatch = getSubmittedLiveMatchCounter(forms, submissions);
         const qualRows = statboticsRows
           .map((row) => row as { comp_level?: unknown; key?: unknown; match_number?: unknown; status?: unknown })
           .filter((row) => {
@@ -195,8 +217,10 @@ export const UnfinishedAssignments: React.FC<{ selectedCompetition?: Competition
           .sort((a, b) => a.matchNumber - b.matchNumber);
 
         const firstOpenQual = qualRows.find((row) => row.status !== 'completed');
-        const nextLiveMatch = firstOpenQual?.matchNumber ?? null;
+        const officialLiveMatch = firstOpenQual?.matchNumber ?? null;
+        const nextLiveMatch = formLiveMatch ?? officialLiveMatch ?? 1;
         setLiveQualMatch(nextLiveMatch);
+        setLiveCounterSource(formLiveMatch != null ? 'forms' : (officialLiveMatch != null ? 'official' : 'default'));
 
         const unfinishedAssignments: UnfinishedAssignment[] = [];
         let resolvedDoneCount = 0;
@@ -285,11 +309,12 @@ export const UnfinishedAssignments: React.FC<{ selectedCompetition?: Competition
           Completion is based on submission match number + team number compared against scheduled assignments.
         </p>
 
-        {liveQualMatch != null && (
-          <p className="text-sm text-gray-500 mt-1">
-            Live counter is currently on match {liveQualMatch}. Earlier unfinished matches are marked missing.
-          </p>
-        )}
+        <p className="text-sm text-gray-500 mt-1">
+          Live counter is currently on match {liveQualMatch ?? 1}. Earlier unfinished matches are marked missing.
+          {liveCounterSource === 'forms' && ' Source: submitted forms.'}
+          {liveCounterSource === 'official' && ' Source: official qualification feed.'}
+          {liveCounterSource === 'default' && ' Source: default counter.'}
+        </p>
 
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-lg bg-blue-50 p-3 border border-blue-100">
