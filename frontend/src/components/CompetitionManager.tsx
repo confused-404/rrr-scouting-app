@@ -53,7 +53,7 @@ const compressImageDataUrl = async (inputDataUrl: string): Promise<string> => {
     return output;
 };
 
-export const CompetitionManager: React.FC = () => {
+export const CompetitionManager: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCompetitionUpdate }) => {
     const [competitions, setCompetitions] = useState<Competition[]>([]);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -97,6 +97,7 @@ export const CompetitionManager: React.FC = () => {
             await competitionApi.delete(deleteConfirmId);
             setDeleteConfirmId(null);
             await loadCompetitions();
+            if (onCompetitionUpdate) onCompetitionUpdate();
         } catch (error) {
             console.error('Delete failed:', error);
         }
@@ -168,6 +169,7 @@ export const CompetitionManager: React.FC = () => {
                 pitMapImageUrl: '',
             });
             await loadCompetitions();
+            if (onCompetitionUpdate) onCompetitionUpdate();
         } catch (error) {
             console.error('Save failed:', error);
         }

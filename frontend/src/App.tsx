@@ -17,6 +17,7 @@ function App() {
   const [mode, setMode] = useState<AppMode>('user');
   const [selectedCompetition, setSelectedCompetition] = useState<Competition | null>(null);
   const [userModeKey, setUserModeKey] = useState(0);
+  const [modeInitializedForUid, setModeInitializedForUid] = useState<string | null>(null);
   
   // isAdmin is now pulled from our updated AuthContext
   const { currentUser, logout, isAdmin } = useAuth();
@@ -54,10 +55,20 @@ function App() {
         uid: currentUser.uid,
       });
       loadCompetitions();
+
+      // Default each signed-in user to their expected landing mode after refresh/login.
+      if (isAdmin && mode !== 'admin') {
+        setMode('admin');
+        setModeInitializedForUid(currentUser.uid);
+      } else if (!isAdmin && modeInitializedForUid !== currentUser.uid) {
+        setMode('user');
+        setModeInitializedForUid(currentUser.uid);
+      }
     } else {
       appLogger.info('No authenticated user, rendering login screen');
+      setModeInitializedForUid(null);
     }
-  }, [currentUser]);
+  }, [currentUser, isAdmin, modeInitializedForUid]);
 
   // Security check: if a user is not an admin but somehow set mode to admin, kick them back to user mode
   useEffect(() => {
@@ -164,7 +175,7 @@ function App() {
 
       <div className="max-w-4xl mx-auto px-3 sm:px-4 py-5 sm:py-8">
         {mode === 'admin' && isAdmin ? (
-          <AdminMode onCompetitionUpdate={() => loadCompetitions()} />
+          <AdminMode onCompetitionUpdate={loadCompetitions} />
         ) : (
           <UserMode key={userModeKey} selectedCompetition={selectedCompetition} />
         )}
