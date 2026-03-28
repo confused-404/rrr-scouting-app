@@ -62,7 +62,12 @@ type TeamHistoryModalState = {
   pastMatches: string[];
 };
 
-export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
+type MatchScheduleProps = {
+  selectedCompetition?: Competition | null;
+  onTeamLookup?: (teamNumber: string) => void;
+};
+
+export const MatchSchedule: React.FC<MatchScheduleProps> = ({ selectedCompetition, onTeamLookup }) => {
   const [matches, setMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'tba' | 'statbotics'>('tba');
@@ -371,6 +376,21 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
                 </ul>
               </div>
             )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onTeamLookup) {
+                    onTeamLookup(teamHistoryModal.teamNumber);
+                  }
+                  setTeamHistoryModal(null);
+                }}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Team Lookup
+              </button>
+            </div>
           </div>
         </div>
       )}

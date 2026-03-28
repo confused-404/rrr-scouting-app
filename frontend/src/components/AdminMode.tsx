@@ -410,6 +410,14 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
     setAnalyticsTab('teamLookup');
   };
 
+  const handleScheduleTeamLookup = (team: string) => {
+    setTargetTeam(team);
+    const td = superscoutTeams.find(t => t.team === team);
+    setScouterNotes(td?.notes ?? '');
+    setActiveTab('analytics');
+    setAnalyticsTab('teamLookup');
+  };
+
   // ── star rating widget ────────────────────────────────────────────────────
   const StarRating: React.FC<{ team: string; rating: number | null; disabled?: boolean }> = ({
     team, rating, disabled,
@@ -844,7 +852,10 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
                 />
               )}
               {analyticsTab === 'schedule' && (
-                <MatchSchedule selectedCompetition={activeCompetition} />
+                <MatchSchedule
+                  selectedCompetition={activeCompetition}
+                  onTeamLookup={handleScheduleTeamLookup}
+                />
               )}
               {analyticsTab === 'unfinishedAssignments' && (
                 <UnfinishedAssignments selectedCompetition={activeCompetition} />

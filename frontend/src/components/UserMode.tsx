@@ -27,6 +27,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   const [loading, setLoading] = useState(false);
   const [fetchingForm, setFetchingForm] = useState(true);
   const [activeTab, setActiveTab] = useState<UserTab>('scout');
+  const [targetTeam, setTargetTeam] = useState('');
 
   const [errors, setErrors] = useState<FieldErrors>({});
 
@@ -480,9 +481,15 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
           )}
         </div>
       ) : activeTab === 'teamLookup' ? (
-        <TeamLookup selectedCompetition={selectedCompetition} />
+        <TeamLookup selectedCompetition={selectedCompetition} targetTeam={targetTeam} />
       ) : (
-        <MatchSchedule selectedCompetition={selectedCompetition} />
+        <MatchSchedule
+          selectedCompetition={selectedCompetition}
+          onTeamLookup={(team) => {
+            setTargetTeam(team);
+            setActiveTab('teamLookup');
+          }}
+        />
       )}
     </div>
   );
