@@ -9,6 +9,8 @@ import {
   resetPassword,
   getAllUsers,
   updateScouterName,
+  getPinnedMatches,
+  savePinnedMatches,
   promoteUser,
   demoteUser,
   deleteUser,
@@ -27,6 +29,8 @@ router.post('/reset-password', resetPassword);
 
 // AUTHENTICATED
 router.get('/me', verifyToken, getMe);
+router.get('/pins/:competitionId', verifyToken, getPinnedMatches);
+router.put('/pins/:competitionId', verifyToken, savePinnedMatches);
 
 // ADMIN ONLY
 router.post('/make-admin', verifyToken, isAdmin, makeAdmin);
