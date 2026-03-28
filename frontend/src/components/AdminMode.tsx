@@ -5,6 +5,7 @@ import { FormManager } from './FormManager';
 import { ResponseViewer } from './ResponseViewer';
 import { TeamLookup } from './TeamLookup';
 import { MatchSchedule } from './MatchSchedule';
+import { UnfinishedAssignments } from './UnfinishedAssignments';
 import { ScoutingTeams } from './ScoutingTeams';
 import { PickListManager } from './PickListManager';
 import { ManageUsers } from './ManageUsers';
@@ -13,7 +14,7 @@ import type { Competition } from '../types/competition.types';
 import type { Form, Submission } from '../types/form.types';
 
 type AdminTab = 'competitions' | 'forms' | 'scoutingTeams' | 'analytics' | 'superscout' | 'picklists' | 'manageUsers';
-type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule';
+type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule' | 'unfinishedAssignments';
 
 // ─── climbing points by answer ───────────────────────────────────────────────
 const CLIMB_POINTS: Record<string, number> = {
@@ -823,6 +824,12 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
               >
                 Schedule
               </button>
+              <button
+                onClick={() => setAnalyticsTab('unfinishedAssignments')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${analyticsTab === 'unfinishedAssignments' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200'}`}
+              >
+                Unfinished
+              </button>
             </div>
 
             <div>
@@ -838,6 +845,9 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
               )}
               {analyticsTab === 'schedule' && (
                 <MatchSchedule selectedCompetition={activeCompetition} />
+              )}
+              {analyticsTab === 'unfinishedAssignments' && (
+                <UnfinishedAssignments selectedCompetition={activeCompetition} />
               )}
             </div>
           </div>
