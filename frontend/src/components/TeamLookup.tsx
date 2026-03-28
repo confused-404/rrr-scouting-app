@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission, FormField, PictureFieldValue } from '../types/form.types';
 import { competitionApi, formApi, tbaApi, statboticsApi } from '../services/api';
+import { matchesTeamQuery } from '../utils/teamNameSearch';
 import { BarChart3, ClipboardList, Zap } from 'lucide-react';
 import { submissionValueToText, isPictureFieldValue } from '../utils/formValues';
 import { ImageLightbox } from './ImageLightbox';
@@ -56,21 +57,18 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   const [expandedImage, setExpandedImage] = useState<PictureFieldValue | null>(null);
   const [dbSuperscoutNotes, setDbSuperscoutNotes] = useState('');
   const [dbSuperscoutTeam, setDbSuperscoutTeam] = useState('');
+  const [eventTeams, setEventTeams] = useState<Array<{ team_number: number; nickname: string; key: string }>>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Teleop balls state (per-match data)
   const [teleopPerMatch, setTeleopPerMatch] = useState<Array<{ value: number; matchNum: string; isCompleted: boolean }>>([]);
   const [teleopBallsLoading, setTeleopBallsLoading] = useState(false);
   const [teleopBallsError, setTeleopBallsError] = useState('');
 
-  const searchTeam = async (rawTeam: string) => {
-    const q = rawTeam.trim();
+  const searchTeam = async (teamNum: string) => {
+    const q = teamNum.trim();
     if (!q) {
       setTeamInfo(null);
-      return;
-    }
-
-    if (!/^\d+$/.test(q)) {
-      alert('Please enter a numeric team number');
       return;
     }
 
@@ -83,7 +81,6 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
       setTeamInfo(null);
     }
 
-    // Also fetch teleop balls if we have an event key
     await fetchTeleopBalls(q);
   };
 
@@ -165,6 +162,23 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCompetition?.id]);
+
+  useEffect(() => {
+    const eventKey = selectedCompetition?.eventKey;
+    if (!eventKey) { setEventTeams([]); return; }
+    (async () => {
+      try {
+        const teams = await tbaApi.getEventTeams(eventKey) as Array<Record<string, unknown>>;
+        setEventTeams(
+          (teams || []).map(t => ({
+            team_number: Number(t.team_number ?? 0),
+            nickname: String(t.nickname ?? ''),
+            key: String(t.key ?? ''),
+          })).filter(t => t.team_number > 0)
+        );
+      } catch { /* non-critical */ }
+    })();
+  }, [selectedCompetition?.eventKey]);
 
   const loadAllData = async () => {
     if (!selectedCompetition) return;
@@ -315,9 +329,25 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   }, [forms, filteredSubs]);
 
   const handleSearch = async () => {
+    const q = teamQuery.trim();
+    if (!q) return;
+
+    let teamNum = q;
+    if (!/^\d+$/.test(q)) {
+      const found = eventTeams.find(t =>
+        matchesTeamQuery(String(t.team_number), t.nickname, q)
+      );
+      if (found) {
+        teamNum = String(found.team_number);
+        setTeamQuery(teamNum);
+      } else {
+        return;
+      }
+    }
+
     await Promise.all([
-      searchTeam(teamQuery),
-      fetchSuperscoutNotes(teamQuery),
+      searchTeam(teamNum),
+      fetchSuperscoutNotes(teamNum),
     ]);
   };
 
@@ -333,6 +363,14 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     ]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetTeam, selectedCompetition?.eventKey]);
+
+  const teamSuggestions = useMemo(() => {
+    const q = teamQuery.trim();
+    if (!q || /^\d+$/.test(q)) return [];
+    return eventTeams
+      .filter(t => matchesTeamQuery(String(t.team_number), t.nickname, q))
+      .slice(0, 8);
+  }, [teamQuery, eventTeams]);
 
   const normalizedQuery = normalizeTeamNumber(teamQuery);
   const targetNormalized = normalizeTeamNumber(targetTeam);
@@ -360,13 +398,37 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
 
       {/* Team search */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-3 sm:gap-4 items-stretch md:items-center">
-        <input
-          placeholder="Team number..."
-          value={teamQuery}
-          onChange={e => setTeamQuery(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
-          className="flex-1 border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium"
-        />
+        <div className="relative flex-1">
+          <input
+            placeholder="Team # or name…"
+            value={teamQuery}
+            onChange={e => { setTeamQuery(e.target.value); setShowSuggestions(true); }}
+            onKeyDown={e => { if (e.key === 'Enter') { setShowSuggestions(false); handleSearch(); } }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setShowSuggestions(false)}
+            className="w-full border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+          />
+          {showSuggestions && teamSuggestions.length > 0 && (
+            <ul className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+              {teamSuggestions.map(t => (
+                <li
+                  key={t.key}
+                  onMouseDown={() => {
+                    const num = String(t.team_number);
+                    setTeamQuery(num);
+                    setShowSuggestions(false);
+                    searchTeam(num);
+                    fetchSuperscoutNotes(num);
+                  }}
+                  className="px-3 py-2 cursor-pointer hover:bg-blue-50 text-sm flex items-center gap-2"
+                >
+                  <span className="font-bold text-blue-700 w-12 flex-shrink-0">{t.team_number}</span>
+                  <span className="text-gray-600 truncate">{t.nickname}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <button onClick={handleSearch} className="w-full md:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition-all">
           Search
         </button>

@@ -277,6 +277,10 @@ export const tbaApi = {
     const response = await api.get(`/tba/event/${eventKey}/oprs`);
     return response.data;
   },
+  getEventTeams: async (eventKey: string): Promise<unknown[]> => {
+    const response = await api.get(`/tba/event/${eventKey}/teams`);
+    return response.data;
+  },
 };
 
 export const statboticsApi = {
