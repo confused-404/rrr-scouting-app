@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission, FormField, PictureFieldValue } from '../types/form.types';
-import { formApi, tbaApi, statboticsApi } from '../services/api';
+import { competitionApi, formApi, tbaApi, statboticsApi } from '../services/api';
 import { BarChart3, ClipboardList, Zap } from 'lucide-react';
 import { submissionValueToText, isPictureFieldValue } from '../utils/formValues';
 import { ImageLightbox } from './ImageLightbox';
@@ -54,6 +54,8 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   const [teamQuery, setTeamQuery] = useState('');
   const [teamInfo, setTeamInfo] = useState<unknown | null>(null);
   const [expandedImage, setExpandedImage] = useState<PictureFieldValue | null>(null);
+  const [dbSuperscoutNotes, setDbSuperscoutNotes] = useState('');
+  const [dbSuperscoutTeam, setDbSuperscoutTeam] = useState('');
 
   // Teleop balls state (per-match data)
   const [teleopPerMatch, setTeleopPerMatch] = useState<Array<{ value: number; matchNum: string; isCompleted: boolean }>>([]);
@@ -138,6 +140,25 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     }
   };
 
+  const fetchSuperscoutNotes = async (rawTeam: string) => {
+    const normalizedTeam = normalizeTeamNumber(rawTeam);
+    if (!selectedCompetition?.id || !normalizedTeam) {
+      setDbSuperscoutNotes('');
+      setDbSuperscoutTeam('');
+      return;
+    }
+
+    try {
+      const result = await competitionApi.getSuperscouterNotes(selectedCompetition.id, normalizedTeam);
+      setDbSuperscoutNotes((result.notes || '').trim());
+      setDbSuperscoutTeam(normalizedTeam);
+    } catch {
+      // If fetch fails, preserve existing fallback behavior via prop.
+      setDbSuperscoutNotes('');
+      setDbSuperscoutTeam('');
+    }
+  };
+
   useEffect(() => {
     if (selectedCompetition) {
       loadAllData();
@@ -170,6 +191,8 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     setTeamInfo(null);
     setTeleopPerMatch([]);
     setTeleopBallsError('');
+    setDbSuperscoutNotes('');
+    setDbSuperscoutTeam('');
   }, [selectedCompetition?.id]);
 
   const filteredSubs = useMemo(() => {
@@ -292,7 +315,10 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   }, [forms, filteredSubs]);
 
   const handleSearch = async () => {
-    await searchTeam(teamQuery);
+    await Promise.all([
+      searchTeam(teamQuery),
+      fetchSuperscoutNotes(teamQuery),
+    ]);
   };
 
   useEffect(() => {
@@ -301,12 +327,21 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     if (incomingTeam !== teamQuery.trim()) {
       setTeamQuery(incomingTeam);
     }
-    searchTeam(incomingTeam);
+    Promise.all([
+      searchTeam(incomingTeam),
+      fetchSuperscoutNotes(incomingTeam),
+    ]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetTeam, selectedCompetition?.eventKey]);
 
-  // Only show notes if the current search query matches the team the notes belong to
-  const showNotes = superscoutNotes && teamQuery.trim() === targetTeam?.trim();
+  const normalizedQuery = normalizeTeamNumber(teamQuery);
+  const targetNormalized = normalizeTeamNumber(targetTeam);
+  const fetchedNotes = normalizedQuery && normalizedQuery === dbSuperscoutTeam ? dbSuperscoutNotes : '';
+  const propNotes = normalizedQuery && targetNormalized && normalizedQuery === targetNormalized
+    ? (superscoutNotes?.trim() ?? '')
+    : '';
+  const notesToDisplay = fetchedNotes || propNotes;
+  const showNotes = notesToDisplay.length > 0;
 
   if (!selectedCompetition) return <div className="p-10 text-center text-gray-400">No active competition selected</div>;
 
@@ -408,7 +443,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
             <ClipboardList size={18} /> Superscouter Insight
           </div>
           <div className="text-gray-800 whitespace-pre-wrap text-sm leading-relaxed font-medium">
-            {superscoutNotes}
+            {notesToDisplay}
           </div>
         </div>
       )}

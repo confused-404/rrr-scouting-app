@@ -1,6 +1,17 @@
 import { competitionModel } from '../models/competitionModel.js';
 
 export const competitionController = {
+  normalizeSuperscoutTeamKey: (rawTeam) => {
+    if (rawTeam === null || rawTeam === undefined) return '';
+    const text = String(rawTeam).trim();
+    if (!text) return '';
+    if (/^frc\d+$/i.test(text)) {
+      return text.replace(/^frc/i, '').trim();
+    }
+    const digits = text.match(/\d+/)?.[0];
+    return digits || text;
+  },
+
   // Get all competitions
   getAllCompetitions: async (req, res) => {
     try {
@@ -246,8 +257,9 @@ export const competitionController = {
     try {
       const { teamNumber, notes } = req.body;
       const competitionId = req.params.id;
+      const normalizedTeamNumber = competitionController.normalizeSuperscoutTeamKey(teamNumber);
 
-      if (!teamNumber) {
+      if (!normalizedTeamNumber) {
         return res.status(400).json({ message: 'Team number is required' });
       }
 
@@ -273,11 +285,14 @@ export const competitionController = {
           // Not JSON — treat as plain notes string
           parsedNotes = notes;
         }
+      } else if (notes && typeof notes === 'object') {
+        parsedNotes = typeof notes.notes === 'string' ? notes.notes : '';
+        parsedRating = typeof notes.rating === 'number' ? notes.rating : null;
       }
 
       // Merge into existing superscouter notes map
       const updatedNotes = { ...(competition.superscouterNotes || {}) };
-      updatedNotes[teamNumber] = { notes: parsedNotes, rating: parsedRating };
+      updatedNotes[normalizedTeamNumber] = { notes: parsedNotes, rating: parsedRating };
 
       const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
         superscouterNotes: updatedNotes,
@@ -298,8 +313,9 @@ export const competitionController = {
     try {
       const { teamNumber } = req.query;
       const competitionId = req.params.id;
+      const normalizedTeamNumber = competitionController.normalizeSuperscoutTeamKey(teamNumber);
 
-      if (!teamNumber) {
+      if (!normalizedTeamNumber) {
         return res.status(400).json({ message: 'Team number is required' });
       }
 
@@ -308,7 +324,11 @@ export const competitionController = {
         return res.status(404).json({ message: 'Competition not found' });
       }
 
-      const raw = competition.superscouterNotes?.[teamNumber];
+      const superscoutMap = competition.superscouterNotes || {};
+      const directRaw = superscoutMap[teamNumber];
+      const normalizedRaw = superscoutMap[normalizedTeamNumber];
+      const frcRaw = superscoutMap[`frc${normalizedTeamNumber}`];
+      const raw = directRaw ?? normalizedRaw ?? frcRaw;
 
       // Normalise — handle legacy plain-string storage and new object storage
       let notes = '';
@@ -333,7 +353,7 @@ export const competitionController = {
         rating = typeof obj.rating === 'number' ? obj.rating : null;
       }
 
-      res.json({ teamNumber, notes, rating });
+      res.json({ teamNumber: normalizedTeamNumber, notes, rating });
     } catch (error) {
       console.error('Error in getSuperscouterNotes:', error);
       res.status(500).json({ message: error.message });
