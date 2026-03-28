@@ -22,6 +22,7 @@ export type GeneratedAssignment = {
 export type ManualPickList = {
   id: string;
   name: string;
+  teamBank: string[];
   firstPickRankings: string[];
   secondPickRankings: string[];
   thirdPickRankings: string[];
