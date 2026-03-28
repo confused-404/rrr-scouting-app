@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BarChart3, ClipboardList, ListOrdered, Plus, RefreshCcw, Save, Trash2 } from 'lucide-react';
+import { BarChart3, ClipboardList, GripVertical, ListOrdered, Plus, RefreshCcw, Save, Trash2, X } from 'lucide-react';
 import { competitionApi, formApi, statboticsApi, tbaApi } from '../services/api';
 import type { Competition, ManualPickList } from '../types/competition.types';
 import type { Form, Submission } from '../types/form.types';
@@ -36,6 +36,10 @@ type QuantitativeAutoRow = {
   submissionCount: number;
   value: number;
 };
+
+type DragData =
+  | { source: 'bank'; team: string }
+  | { source: 'tier'; tier: 'first' | 'second' | 'third'; index: number; team: string };
 
 const TELEOP_EPA_PER_MATCH_METRIC = 'Statbotics: Teleop EPA (Calculated)';
 
@@ -75,6 +79,7 @@ const toFiniteNumber = (value: unknown): number | null => {
 const emptyManualList = (): ManualPickList => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   name: `Pick List ${new Date().toLocaleTimeString()}`,
+  teamBank: [],
   firstPickRankings: [],
   secondPickRankings: [],
   thirdPickRankings: [],
@@ -134,11 +139,9 @@ export const PickListManager: React.FC<{
 
   const [manualLists, setManualLists] = useState<ManualPickList[]>([]);
   const [selectedManualId, setSelectedManualId] = useState<string>('');
-  const [draftInputs, setDraftInputs] = useState<{ first: string; second: string; third: string }>({
-    first: '',
-    second: '',
-    third: '',
-  });
+  const [bankInput, setBankInput] = useState('');
+  const [dropTarget, setDropTarget] = useState<{ tier: 'first' | 'second' | 'third'; index: number } | null>(null);
+  const [loadingRoster, setLoadingRoster] = useState(false);
   const [savingManual, setSavingManual] = useState(false);
 
   const [selectedQualCategory, setSelectedQualCategory] = useState('');
@@ -410,19 +413,113 @@ export const PickListManager: React.FC<{
     setManualLists((prev) => prev.map((list) => (list.id === id ? updater(list) : list)));
   };
 
-  const addToRound = (round: 'first' | 'second' | 'third') => {
-    if (!selectedManualList) return;
+  const populateBankFromStatbotics = async (listId: string) => {
+    if (!selectedCompetition?.eventKey) return;
+    setLoadingRoster(true);
+    try {
+      const rows = await statboticsApi.getTeamEvents({ event: selectedCompetition.eventKey, limit: 999 }) as Array<Record<string, unknown>>;
+      const teams = Array.from(
+        new Set(
+          rows
+            .map((row) => normalizeTeamNumber(row.team))
+            .filter((t): t is string => t !== null),
+        ),
+      ).sort((a, b) => Number(a) - Number(b));
+      if (teams.length === 0) return;
+      setManualLists((prev) =>
+        prev.map((list) =>
+          list.id === listId ? { ...list, teamBank: teams } : list,
+        ),
+      );
+    } catch (err) {
+      console.error('Error loading Statbotics roster:', err);
+    } finally {
+      setLoadingRoster(false);
+    }
+  };
 
-    const value = draftInputs[round].trim();
-    if (!value) return;
+  const addToBank = () => {
+    const value = bankInput.trim();
+    if (!value || !selectedManualList) return;
+    if ((selectedManualList.teamBank ?? []).includes(value)) {
+      setBankInput('');
+      return;
+    }
+    updateManualList(selectedManualList.id, (list) => ({
+      ...list,
+      teamBank: [...(list.teamBank ?? []), value],
+    }));
+    setBankInput('');
+  };
+
+  const removeFromBank = (team: string) => {
+    if (!selectedManualList) return;
+    updateManualList(selectedManualList.id, (list) => ({
+      ...list,
+      teamBank: (list.teamBank ?? []).filter((t) => t !== team),
+    }));
+  };
+
+  const handleBankDragStart = (e: React.DragEvent, team: string) => {
+    const data: DragData = { source: 'bank', team };
+    e.dataTransfer.setData('application/json', JSON.stringify(data));
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleTierItemDragStart = (
+    e: React.DragEvent,
+    tier: 'first' | 'second' | 'third',
+    index: number,
+    team: string,
+  ) => {
+    e.stopPropagation();
+    const data: DragData = { source: 'tier', tier, index, team };
+    e.dataTransfer.setData('application/json', JSON.stringify(data));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleTierDrop = (e: React.DragEvent, tier: 'first' | 'second' | 'third') => {
+    e.preventDefault();
+    if (!selectedManualList) { setDropTarget(null); return; }
+
+    const raw = e.dataTransfer.getData('application/json');
+    if (!raw) { setDropTarget(null); return; }
+
+    let data: DragData;
+    try { data = JSON.parse(raw) as DragData; } catch { setDropTarget(null); return; }
+
+    const getArr = (list: ManualPickList, t: 'first' | 'second' | 'third') =>
+      t === 'first' ? list.firstPickRankings : t === 'second' ? list.secondPickRankings : list.thirdPickRankings;
+
+    const withArr = (list: ManualPickList, t: 'first' | 'second' | 'third', arr: string[]): ManualPickList =>
+      t === 'first' ? { ...list, firstPickRankings: arr }
+      : t === 'second' ? { ...list, secondPickRankings: arr }
+      : { ...list, thirdPickRankings: arr };
+
+    const insertAt = dropTarget?.tier === tier ? dropTarget.index : getArr(selectedManualList, tier).length;
 
     updateManualList(selectedManualList.id, (list) => {
-      if (round === 'first') return { ...list, firstPickRankings: [...list.firstPickRankings, value] };
-      if (round === 'second') return { ...list, secondPickRankings: [...list.secondPickRankings, value] };
-      return { ...list, thirdPickRankings: [...list.thirdPickRankings, value] };
+      if (data.source === 'bank') {
+        const arr = [...getArr(list, tier)];
+        arr.splice(insertAt, 0, data.team);
+        return withArr(list, tier, arr);
+      }
+      const { tier: srcTier, index: srcIndex } = data;
+      if (srcTier === tier) {
+        const arr = [...getArr(list, tier)];
+        const [item] = arr.splice(srcIndex, 1);
+        const adjusted = srcIndex < insertAt ? insertAt - 1 : insertAt;
+        arr.splice(adjusted, 0, item);
+        return withArr(list, tier, arr);
+      }
+      const srcArr = [...getArr(list, srcTier)];
+      const dstArr = [...getArr(list, tier)];
+      const [item] = srcArr.splice(srcIndex, 1);
+      dstArr.splice(insertAt, 0, item);
+      return withArr(withArr(list, srcTier, srcArr), tier, dstArr);
     });
 
-    setDraftInputs((prev) => ({ ...prev, [round]: '' }));
+    setDropTarget(null);
   };
 
   const removeFromRound = (round: 'first' | 'second' | 'third', index: number) => {
@@ -766,10 +863,11 @@ export const PickListManager: React.FC<{
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => {
+                onClick={async () => {
                   const created = emptyManualList();
                   setManualLists((prev) => [...prev, created]);
                   setSelectedManualId(created.id);
+                  await populateBankFromStatbotics(created.id);
                 }}
                 className="px-3 py-2 rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 flex items-center gap-2 text-sm"
               >
@@ -826,55 +924,155 @@ export const PickListManager: React.FC<{
                     </button>
                   </div>
 
+                  {/* ── Team Bank ───────────────────────────────────────────── */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                      <h4 className="font-bold text-gray-800 text-sm uppercase tracking-wide">Team Bank</h4>
+                      <span className="text-xs text-gray-400 flex-1">— drag teams into the pick tiers below</span>
+                      {selectedCompetition?.eventKey && (
+                        <button
+                          type="button"
+                          onClick={() => populateBankFromStatbotics(selectedManualList.id)}
+                          disabled={loadingRoster}
+                          className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 text-xs flex items-center gap-1.5 disabled:opacity-50"
+                          title="Reload roster from Statbotics"
+                        >
+                          <RefreshCcw size={11} className={loadingRoster ? 'animate-spin' : ''} />
+                          {loadingRoster ? 'Loading…' : 'Reload Roster'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex gap-2 mb-3">
+                      <input
+                        value={bankInput}
+                        onChange={(e) => setBankInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addToBank(); } }}
+                        placeholder="Team number"
+                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm w-36 focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={addToBank}
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1.5"
+                      >
+                        <Plus size={14} /> Add
+                      </button>
+                    </div>
+                    {(selectedManualList.teamBank ?? []).length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">No teams in bank yet. Add team numbers above.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {(selectedManualList.teamBank ?? []).map((team) => (
+                          <div
+                            key={team}
+                            draggable
+                            onDragStart={(e) => handleBankDragStart(e, team)}
+                            className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-full px-2.5 py-1 text-sm font-bold text-blue-800 cursor-grab active:cursor-grabbing select-none hover:bg-blue-100 transition-colors"
+                          >
+                            <GripVertical size={11} className="text-blue-400" />
+                            {team}
+                            <button
+                              type="button"
+                              onClick={() => removeFromBank(team)}
+                              className="ml-0.5 text-blue-300 hover:text-red-500 transition-colors"
+                              title="Remove from bank"
+                            >
+                              <X size={11} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Three pick tiers ────────────────────────────────────── */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     {[
-                      { key: 'first', label: 'First Pick', values: selectedManualList.firstPickRankings },
-                      { key: 'second', label: 'Second Pick', values: selectedManualList.secondPickRankings },
-                      { key: 'third', label: 'Third Pick', values: selectedManualList.thirdPickRankings },
+                      { key: 'first' as const, label: 'First Pick', values: selectedManualList.firstPickRankings },
+                      { key: 'second' as const, label: 'Second Pick', values: selectedManualList.secondPickRankings },
+                      { key: 'third' as const, label: 'Third Pick', values: selectedManualList.thirdPickRankings },
                     ].map((section) => (
-                      <div key={section.key} className="border border-gray-200 rounded-lg p-3">
-                        <h4 className="font-semibold text-gray-800 mb-2">{section.label}</h4>
-                        <div className="flex gap-2 mb-3">
-                          <input
-                            value={draftInputs[section.key as 'first' | 'second' | 'third']}
-                            onChange={(e) =>
-                              setDraftInputs((prev) => ({ ...prev, [section.key]: e.target.value }))
-                            }
-                            placeholder="Team number"
-                            className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm"
-                          />
-                          <button
-                            onClick={() => addToRound(section.key as 'first' | 'second' | 'third')}
-                            className="px-2.5 py-1.5 text-sm rounded bg-green-600 text-white hover:bg-green-700"
-                          >
-                            Add
-                          </button>
-                        </div>
-                        <div className="space-y-2 max-h-64 overflow-y-auto">
-                          {section.values.map((team, index) => (
-                            <div key={`${team}-${index}`} className="flex items-center justify-between text-sm bg-gray-50 rounded px-2 py-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleTeamSelect(team)}
-                                className="text-left text-blue-700 hover:text-blue-900 hover:underline"
-                              >
-                                #{index + 1} Team {team}
-                              </button>
-                              <button
-                                onClick={() => removeFromRound(section.key as 'first' | 'second' | 'third', index)}
-                                className="text-red-600 hover:text-red-800"
-                              >
-                                <Trash2 size={14} />
-                              </button>
+                      <div
+                        key={section.key}
+                        className={`border rounded-lg p-3 flex flex-col min-h-[140px] transition-colors ${
+                          dropTarget?.tier === section.key
+                            ? 'border-blue-400 bg-blue-50/40'
+                            : 'border-gray-200'
+                        }`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (!dropTarget || dropTarget.tier !== section.key) {
+                            setDropTarget({ tier: section.key, index: section.values.length });
+                          }
+                        }}
+                        onDrop={(e) => handleTierDrop(e, section.key)}
+                        onDragLeave={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                            setDropTarget(null);
+                          }
+                        }}
+                      >
+                        <h4 className="font-semibold text-gray-800 mb-2 text-sm">{section.label}</h4>
+                        <div className="flex-1">
+                          {section.values.length === 0 ? (
+                            <div className={`flex items-center justify-center h-16 rounded border-2 border-dashed text-xs transition-colors ${
+                              dropTarget?.tier === section.key
+                                ? 'border-blue-400 text-blue-400 bg-blue-50'
+                                : 'border-gray-200 text-gray-400'
+                            }`}>
+                              Drop teams here
                             </div>
-                          ))}
-                          {section.values.length === 0 && <p className="text-xs text-gray-500">No teams ranked yet.</p>}
+                          ) : (
+                            <div className="max-h-72 overflow-y-auto">
+                              {dropTarget?.tier === section.key && dropTarget.index === 0 && (
+                                <div className="h-0.5 bg-blue-500 rounded mx-0.5 mb-1" />
+                              )}
+                              {section.values.map((team, index) => (
+                                <React.Fragment key={`${team}-${index}`}>
+                                  <div
+                                    draggable
+                                    onDragStart={(e) => handleTierItemDragStart(e, section.key, index, team)}
+                                    onDragEnd={() => setDropTarget(null)}
+                                    onDragOver={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                      const insertIdx = e.clientY < rect.top + rect.height / 2 ? index : index + 1;
+                                      setDropTarget({ tier: section.key, index: insertIdx });
+                                    }}
+                                    className="flex items-center justify-between text-sm bg-white border border-gray-100 rounded px-2 py-1.5 mb-1.5 cursor-grab active:cursor-grabbing hover:border-blue-200 shadow-sm"
+                                  >
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <GripVertical size={12} className="text-gray-300 flex-shrink-0" />
+                                      <button
+                                        type="button"
+                                        onClick={() => handleTeamSelect(team)}
+                                        className="text-left text-blue-700 hover:underline"
+                                      >
+                                        #{index + 1} · {team}
+                                      </button>
+                                    </div>
+                                    <button
+                                      onClick={() => removeFromRound(section.key, index)}
+                                      className="text-red-400 hover:text-red-600 flex-shrink-0 ml-1"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                  {dropTarget?.tier === section.key && dropTarget.index === index + 1 && (
+                                    <div className="h-0.5 bg-blue-500 rounded mx-0.5 mb-1" />
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
+
                   <p className="text-xs text-gray-500">
-                    Duplicate teams are allowed across first, second, and third pick rankings.
+                    Drag teams from the bank into pick tiers. Drag tier items to reorder or move between tiers. Duplicates across tiers are allowed.
                   </p>
                 </div>
               )}
@@ -882,6 +1080,7 @@ export const PickListManager: React.FC<{
           )}
         </div>
       )}
+
     </div>
   );
 };
