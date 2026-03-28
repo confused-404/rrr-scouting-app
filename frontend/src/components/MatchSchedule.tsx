@@ -156,7 +156,7 @@ export const MatchSchedule: React.FC<{ selectedCompetition?: Competition | null 
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Schedule');
 
     const safeCompetitionName = selectedCompetition.name.replace(/[^a-z0-9]+/gi, '-').replace(/(^-|-$)/g, '');
-    const filterSuffix = normalizedTeamFilter ? `-team-${normalizeTeamFilter}` : '';
+    const filterSuffix = normalizedTeamFilter ? `-team-${normalizedTeamFilter}` : '';
 
     XLSX.writeFile(workbook, `${safeCompetitionName || 'competition'}-schedule${filterSuffix}.xlsx`);
   };

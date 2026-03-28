@@ -1,6 +1,6 @@
 // FormManager.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Layout, Plus, Star, X, GripVertical } from 'lucide-react';
+import { Trash2, Layout, Plus, Star, GripVertical } from 'lucide-react';
 import type { FormField as FormFieldType, Form } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { formApi, competitionApi } from '../services/api';
