@@ -9,7 +9,8 @@ import { UnfinishedAssignments } from './UnfinishedAssignments';
 import { ScoutingTeams } from './ScoutingTeams';
 import { PickListManager } from './PickListManager';
 import { ManageUsers } from './ManageUsers';
-import { authApi, competitionApi, formApi, statboticsApi } from '../services/api';
+import { authApi, competitionApi, formApi, statboticsApi, tbaApi } from '../services/api';
+import { matchesTeamQuery } from '../utils/teamNameSearch';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission } from '../types/form.types';
 
@@ -143,6 +144,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
   const [epaLoadingTeams] = useState<Set<string>>(new Set());
   const [localRating, setLocalRating] = useState<string>('');
   const [superscoutSearch, setSuperscoutSearch] = useState('');
+  const [superscoutTeamNames, setSuperscoutTeamNames] = useState<Record<string, string>>({});
   const [pinnedMatches, setPinnedMatches] = useState<PinnedScheduleMatch[]>([]);
   const [pinnedRailOpen, setPinnedRailOpen] = useState(false);
   const hasLoadedPinsForCompetition = useRef(false);
@@ -227,6 +229,29 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
 
     persistPinnedMatches();
   }, [activeCompetition?.id, pinnedMatches]);
+
+  // ── load team names from TBA for name-based search ──────────────────────
+  useEffect(() => {
+    if (!activeCompetition?.eventKey) {
+      setSuperscoutTeamNames({});
+      return;
+    }
+    const loadTeamNames = async () => {
+      try {
+        const teams = await tbaApi.getEventTeams(activeCompetition.eventKey!) as Array<Record<string, unknown>>;
+        const names: Record<string, string> = {};
+        for (const t of teams) {
+          const num = String(t.team_number ?? '').trim();
+          const nick = String(t.nickname ?? '').trim();
+          if (num && nick) names[num] = nick;
+        }
+        setSuperscoutTeamNames(names);
+      } catch {
+        // Non-critical — search still works by number
+      }
+    };
+    loadTeamNames();
+  }, [activeCompetition?.eventKey]);
 
   // ── load superscouter data whenever competition changes ───────────────────
   useEffect(() => {
@@ -403,10 +428,10 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
   }, [superscoutTeams, lastN]);
 
   const filteredTeams = useMemo(() => {
-    const q = superscoutSearch.trim().toLowerCase();
+    const q = superscoutSearch.trim();
     if (!q) return rankedTeams;
-    return rankedTeams.filter(t => t.team.toLowerCase().includes(q));
-  }, [rankedTeams, superscoutSearch]);
+    return rankedTeams.filter(t => matchesTeamQuery(t.team, superscoutTeamNames[t.team] ?? '', q));
+  }, [rankedTeams, superscoutSearch, superscoutTeamNames]);
 
   // ── save superscouter notes + rating ─────────────────────────────────────
   const saveTeamSuperscout = async (team: string, notes: string, rating: number | null) => {
