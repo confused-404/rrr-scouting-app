@@ -256,12 +256,77 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({ selectedCompetitio
     }
   };
 
-  const exportSchedule = () => {
-    if (!selectedCompetition || visibleMatches.length === 0) {
+  const getLiveCounterSnapshot = async (): Promise<number> => {
+    if (!selectedCompetition?.id) return 1;
+
+    try {
+      const forms = await formApi.getFormsByCompetition(selectedCompetition.id);
+      const submissionLists = await Promise.all(forms.map((form) => formApi.getSubmissions(form.id)));
+      const submissions = submissionLists.flat();
+      const formCounter = getFormLiveMatchCounter(forms, submissions);
+      if (formCounter != null) return formCounter;
+
+      if (selectedCompetition.eventKey) {
+        try {
+          const rows = await statboticsApi.getEventMatches(selectedCompetition.eventKey) as Array<Record<string, unknown>>;
+          const officialCounter = getOfficialLiveQualMatch(rows);
+          if (officialCounter != null) return officialCounter;
+        } catch {
+          // Ignore and fall back to default below.
+        }
+      }
+    } catch {
+      // Ignore and fall back to default below.
+    }
+
+    return 1;
+  };
+
+  const getLatestMatchesSnapshot = async (): Promise<any[]> => {
+    if (!selectedCompetition?.eventKey) return [];
+    try {
+      const primaryData = dataSource === 'tba'
+        ? await tbaApi.getEventMatches(selectedCompetition.eventKey)
+        : await statboticsApi.getEventMatches(selectedCompetition.eventKey);
+      return Array.isArray(primaryData) ? primaryData : [];
+    } catch {
+      const fallbackSource = dataSource === 'tba' ? 'statbotics' : 'tba';
+      try {
+        const fallbackData = fallbackSource === 'tba'
+          ? await tbaApi.getEventMatches(selectedCompetition.eventKey)
+          : await statboticsApi.getEventMatches(selectedCompetition.eventKey);
+        return Array.isArray(fallbackData) ? fallbackData : [];
+      } catch {
+        return [];
+      }
+    }
+  };
+
+  const exportSchedule = async () => {
+    if (!selectedCompetition) {
       return;
     }
 
-    const rows = visibleMatches.map((match) => {
+    const latestMatches = await getLatestMatchesSnapshot();
+    const sortedLatest = getSortedMatches(latestMatches);
+
+    const latestFiltered = sortedLatest.filter((match) => {
+      if (!normalizedTeamFilter) return true;
+      const teamKey = normalizeTeamKey(normalizedTeamFilter);
+      return matchIncludesTeam(match, teamKey);
+    });
+
+    const liveCounterForExport = showPastMatches
+      ? liveMatchCounter
+      : await getLiveCounterSnapshot();
+
+    const latestVisible = showPastMatches
+      ? latestFiltered
+      : latestFiltered.filter((match) => getMatchNumberFromScheduleRow(match) >= liveCounterForExport);
+
+    if (latestVisible.length === 0) return;
+
+    const rows = latestVisible.map((match) => {
       const redTeams = match.alliances?.red?.team_keys || [];
       const blueTeams = match.alliances?.blue?.team_keys || [];
 

@@ -339,10 +339,32 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
   }, [selectedForm?.id]);
 
   const handleExportCSV = async () => {
-    if (!selectedForm || submissions.length === 0) return;
+    if (!selectedCompetition || !selectedForm) return;
     setIsExporting(true);
 
-    const teamField = selectedForm.fields.find(f => f.label.toLowerCase().includes('team'));
+    let latestForm: Form = selectedForm;
+    let latestSubmissions: Submission[] = [];
+
+    try {
+      const latestForms = await formApi.getFormsByCompetition(selectedCompetition.id);
+      const matchedForm = latestForms.find((form) => form.id === selectedForm.id);
+      if (matchedForm) {
+        latestForm = matchedForm;
+      }
+      latestSubmissions = await formApi.getSubmissions(latestForm.id);
+    } catch {
+      alert('Failed to load latest data for export. Please try again.');
+      setIsExporting(false);
+      return;
+    }
+
+    if (latestSubmissions.length === 0) {
+      alert('No submissions available to export.');
+      setIsExporting(false);
+      return;
+    }
+
+    const teamField = latestForm.fields.find(f => f.label.toLowerCase().includes('team'));
     if (!teamField) {
       alert('No team field found in form. Cannot export analyzed data.');
       setIsExporting(false);
@@ -350,7 +372,7 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
     }
 
     const teamGroups: Record<string, Submission[]> = {};
-    submissions.forEach(sub => {
+    latestSubmissions.forEach(sub => {
       const teamValue = String((sub.data as Record<string, unknown>)?.[teamField.id] ?? '').trim();
       if (teamValue) {
         if (!teamGroups[teamValue]) teamGroups[teamValue] = [];
@@ -358,8 +380,8 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
       }
     });
 
-    const quantFields = selectedForm.fields.filter(f => f.type === 'number' || f.type === 'ranking');
-    const qualFields = selectedForm.fields.filter(f => f.type !== 'number' && f.type !== 'ranking');
+    const quantFields = latestForm.fields.filter(f => f.type === 'number' || f.type === 'ranking');
+    const qualFields = latestForm.fields.filter(f => f.type !== 'number' && f.type !== 'ranking');
     const headers = ['Team', ...quantFields.map(f => f.label), ...qualFields.map(f => f.label)];
 
     const csvRows = Object.entries(teamGroups).map(([team, teamSubs]) => {
@@ -386,8 +408,9 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${selectedForm.name}_analyzed_data.csv`;
+    link.download = `${latestForm.name}_analyzed_data.csv`;
     link.click();
+    URL.revokeObjectURL(url);
     setIsExporting(false);
   };
 
