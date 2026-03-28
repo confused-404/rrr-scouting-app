@@ -169,6 +169,77 @@ export const updateScouterName = async (req, res) => {
 };
 
 /**
+ * GET PINNED MATCHES (Authenticated)
+ * Returns per-user pinned matches for a specific competition.
+ */
+export const getPinnedMatches = async (req, res) => {
+  try {
+    const { competitionId } = req.params;
+    if (!competitionId) {
+      return res.status(400).json({ message: 'competitionId is required' });
+    }
+
+    const userDoc = await db.collection('users').doc(req.user.uid).get();
+    const data = userDoc.exists ? (userDoc.data() || {}) : {};
+    const byCompetition = data.pinnedMatchesByCompetition || {};
+    const matches = Array.isArray(byCompetition[competitionId]) ? byCompetition[competitionId] : [];
+
+    return res.json(matches);
+  } catch (error) {
+    console.error('Error fetching pinned matches:', error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * SAVE PINNED MATCHES (Authenticated)
+ * Persists per-user pinned matches for a specific competition.
+ */
+export const savePinnedMatches = async (req, res) => {
+  try {
+    const { competitionId } = req.params;
+    const { matches } = req.body;
+
+    if (!competitionId) {
+      return res.status(400).json({ message: 'competitionId is required' });
+    }
+
+    if (!Array.isArray(matches)) {
+      return res.status(400).json({ message: 'matches must be an array' });
+    }
+
+    // Sanitize payload shape and cap list size.
+    const sanitized = matches
+      .filter((item) => (
+        item
+        && typeof item.key === 'string'
+        && typeof item.label === 'string'
+        && Array.isArray(item.redTeams)
+        && Array.isArray(item.blueTeams)
+      ))
+      .map((item) => ({
+        key: item.key,
+        label: item.label,
+        redTeams: item.redTeams.map((team) => String(team)),
+        blueTeams: item.blueTeams.map((team) => String(team)),
+      }))
+      .slice(0, 20);
+
+    await db.collection('users').doc(req.user.uid).set({
+      pinnedMatchesByCompetition: {
+        [competitionId]: sanitized,
+      },
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+
+    return res.json(sanitized);
+  } catch (error) {
+    console.error('Error saving pinned matches:', error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+/**
  * PROMOTE USER TO ADMIN (Admin only)
  */
 export const promoteUser = async (req, res) => {

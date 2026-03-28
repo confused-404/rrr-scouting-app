@@ -149,6 +149,17 @@ export const authApi = {
   deleteUser: async (uid: string): Promise<void> => {
     await api.delete(`/auth/users/${uid}`);
   },
+  getPinnedMatches: async (competitionId: string): Promise<Array<{ key: string; label: string; redTeams: string[]; blueTeams: string[] }>> => {
+    const response = await api.get(`/auth/pins/${competitionId}`);
+    return response.data;
+  },
+  savePinnedMatches: async (
+    competitionId: string,
+    matches: Array<{ key: string; label: string; redTeams: string[]; blueTeams: string[] }>,
+  ): Promise<Array<{ key: string; label: string; redTeams: string[]; blueTeams: string[] }>> => {
+    const response = await api.put(`/auth/pins/${competitionId}`, { matches });
+    return response.data;
+  },
 };
 
 export const competitionApi = {

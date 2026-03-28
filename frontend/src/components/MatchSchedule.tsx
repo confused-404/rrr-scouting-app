@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Pin } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission } from '../types/form.types';
@@ -117,6 +117,23 @@ const getMatchNumberFromScheduleRow = (match: any): number => {
   return match.match_number || (match.key ? parseInt(match.key.split('m')[1]) : 0);
 };
 
+const getMatchKey = (match: any): string => {
+  if (typeof match.key === 'string' && match.key.trim()) {
+    return match.key;
+  }
+  const comp = match.comp_level || 'qm';
+  const set = match.set_number || 0;
+  const num = getMatchNumberFromScheduleRow(match);
+  return `${comp}-${set}-${num}`;
+};
+
+export type PinnedScheduleMatch = {
+  key: string;
+  label: string;
+  redTeams: string[];
+  blueTeams: string[];
+};
+
 type TeamHistoryModalState = {
   teamNumber: string;
   currentMatchLabel: string;
@@ -126,9 +143,18 @@ type TeamHistoryModalState = {
 type MatchScheduleProps = {
   selectedCompetition?: Competition | null;
   onTeamLookup?: (teamNumber: string) => void;
+  pinnedMatchKeys?: string[];
+  onPinMatch?: (match: PinnedScheduleMatch) => void;
+  onUnpinMatch?: (matchKey: string) => void;
 };
 
-export const MatchSchedule: React.FC<MatchScheduleProps> = ({ selectedCompetition, onTeamLookup }) => {
+export const MatchSchedule: React.FC<MatchScheduleProps> = ({
+  selectedCompetition,
+  onTeamLookup,
+  pinnedMatchKeys,
+  onPinMatch,
+  onUnpinMatch,
+}) => {
   const [matches, setMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'tba' | 'statbotics'>('tba');
@@ -140,6 +166,7 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({ selectedCompetitio
   const [liveCounterSource, setLiveCounterSource] = useState<'forms' | 'official' | 'default'>('default');
   const [liveCounterError, setLiveCounterError] = useState('');
   const normalizedTeamFilter = sanitizeTeamFilter(teamFilter);
+  const canPinMatches = Boolean(onPinMatch || onUnpinMatch);
 
   useEffect(() => {
     if (!selectedCompetition?.eventKey) {
@@ -502,10 +529,43 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({ selectedCompetitio
           ) : (
             visibleMatches
               .map((m: any) => (
-                <div key={m.key} className="bg-white p-3 sm:p-4 rounded-lg shadow">
+                <div key={getMatchKey(m)} className="bg-white p-3 sm:p-4 rounded-lg shadow">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-1">
-                    <div className="font-black uppercase text-sm">
-                      {getMatchLabel(m)}
+                    <div className="flex items-center gap-2">
+                      <div className="font-black uppercase text-sm">
+                        {getMatchLabel(m)}
+                      </div>
+                      {canPinMatches && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matchKey = getMatchKey(m);
+                            const isPinned = Boolean(pinnedMatchKeys?.includes(matchKey));
+                            if (isPinned) {
+                              onUnpinMatch?.(matchKey);
+                              return;
+                            }
+
+                            onPinMatch?.({
+                              key: matchKey,
+                              label: getMatchLabel(m),
+                              redTeams: getTeamNumbers(m.alliances?.red?.team_keys || []),
+                              blueTeams: getTeamNumbers(m.alliances?.blue?.team_keys || []),
+                            });
+                          }}
+                          className={`rounded-md px-2 py-1 text-xs font-semibold transition-colors ${
+                            pinnedMatchKeys?.includes(getMatchKey(m))
+                              ? 'bg-blue-600 text-white hover:bg-blue-700'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                          title={pinnedMatchKeys?.includes(getMatchKey(m)) ? 'Unpin match' : 'Pin match'}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            <Pin size={12} />
+                            {pinnedMatchKeys?.includes(getMatchKey(m)) ? 'Pinned' : 'Pin'}
+                          </span>
+                        </button>
+                      )}
                     </div>
                     <div className="text-xs text-gray-500">
                       {getMatchTime(m)}

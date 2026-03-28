@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, X, Star, ChevronDown, ChevronUp, Trophy, UserCog, Search } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, X, Star, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Trophy, UserCog, Search } from 'lucide-react';
 import { CompetitionManager } from './CompetitionManager';
 import { FormManager } from './FormManager';
 import { ResponseViewer } from './ResponseViewer';
 import { TeamLookup } from './TeamLookup';
-import { MatchSchedule } from './MatchSchedule';
+import { MatchSchedule, type PinnedScheduleMatch } from './MatchSchedule';
 import { UnfinishedAssignments } from './UnfinishedAssignments';
 import { ScoutingTeams } from './ScoutingTeams';
 import { PickListManager } from './PickListManager';
 import { ManageUsers } from './ManageUsers';
-import { competitionApi, formApi, statboticsApi } from '../services/api';
+import { authApi, competitionApi, formApi, statboticsApi } from '../services/api';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission } from '../types/form.types';
 
@@ -143,6 +143,9 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
   const [epaLoadingTeams] = useState<Set<string>>(new Set());
   const [localRating, setLocalRating] = useState<string>('');
   const [superscoutSearch, setSuperscoutSearch] = useState('');
+  const [pinnedMatches, setPinnedMatches] = useState<PinnedScheduleMatch[]>([]);
+  const [pinnedRailOpen, setPinnedRailOpen] = useState(false);
+  const hasLoadedPinsForCompetition = useRef(false);
 
   // ── load active competition ───────────────────────────────────────────────
   useEffect(() => {
@@ -156,6 +159,74 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
     };
     loadActiveCompetition();
   }, []);
+
+  useEffect(() => {
+    hasLoadedPinsForCompetition.current = false;
+
+    if (!activeCompetition?.id) {
+      setPinnedMatches([]);
+      return;
+    }
+
+    const loadPinnedMatches = async () => {
+      // Keep legacy local pins as a fallback in case account sync fails.
+      const storageKey = `adminPinnedMatches:${activeCompetition.id}`;
+      const parseLocalPins = () => {
+        try {
+          const raw = localStorage.getItem(storageKey);
+          if (!raw) return [] as PinnedScheduleMatch[];
+          const parsed = JSON.parse(raw) as PinnedScheduleMatch[];
+          if (!Array.isArray(parsed)) return [] as PinnedScheduleMatch[];
+          return parsed.filter((item) => (
+            item
+            && typeof item.key === 'string'
+            && typeof item.label === 'string'
+            && Array.isArray(item.redTeams)
+            && Array.isArray(item.blueTeams)
+          ));
+        } catch {
+          return [] as PinnedScheduleMatch[];
+        }
+      };
+
+      try {
+        const accountPins = await authApi.getPinnedMatches(activeCompetition.id);
+        if (Array.isArray(accountPins)) {
+          setPinnedMatches(accountPins);
+        } else {
+          setPinnedMatches([]);
+        }
+      } catch {
+        setPinnedMatches(parseLocalPins());
+      } finally {
+        hasLoadedPinsForCompetition.current = true;
+      }
+    };
+
+    loadPinnedMatches();
+  }, [activeCompetition?.id]);
+
+  useEffect(() => {
+    if (!activeCompetition?.id || !hasLoadedPinsForCompetition.current) return;
+
+    const persistPinnedMatches = async () => {
+      const storageKey = `adminPinnedMatches:${activeCompetition.id}`;
+      try {
+        await authApi.savePinnedMatches(activeCompetition.id, pinnedMatches);
+        // Keep local copy as backup cache.
+        localStorage.setItem(storageKey, JSON.stringify(pinnedMatches));
+      } catch {
+        // Fallback: still persist locally if account sync fails.
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(pinnedMatches));
+        } catch {
+          // Ignore storage failures.
+        }
+      }
+    };
+
+    persistPinnedMatches();
+  }, [activeCompetition?.id, pinnedMatches]);
 
   // ── load superscouter data whenever competition changes ───────────────────
   useEffect(() => {
@@ -416,6 +487,17 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
     setScouterNotes(td?.notes ?? '');
     setActiveTab('analytics');
     setAnalyticsTab('teamLookup');
+  };
+
+  const handlePinMatch = (match: PinnedScheduleMatch) => {
+    setPinnedMatches((prev) => {
+      if (prev.some((item) => item.key === match.key)) return prev;
+      return [match, ...prev].slice(0, 20);
+    });
+  };
+
+  const handleUnpinMatch = (matchKey: string) => {
+    setPinnedMatches((prev) => prev.filter((item) => item.key !== matchKey));
   };
 
   // ── star rating widget ────────────────────────────────────────────────────
@@ -812,7 +894,8 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
             ANALYTICS TAB
         ══════════════════════════════════════════════════════════ */}
         {activeTab === 'analytics' && (
-          <div className="space-y-4">
+          <div className="relative">
+            <div className="space-y-4">
             <div className="bg-gray-100 rounded-lg p-2 flex gap-2">
               <button
                 onClick={() => setAnalyticsTab('responses')}
@@ -855,15 +938,110 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
                 <MatchSchedule
                   selectedCompetition={activeCompetition}
                   onTeamLookup={handleScheduleTeamLookup}
+                  pinnedMatchKeys={pinnedMatches.map((match) => match.key)}
+                  onPinMatch={handlePinMatch}
+                  onUnpinMatch={handleUnpinMatch}
                 />
               )}
               {analyticsTab === 'unfinishedAssignments' && (
                 <UnfinishedAssignments selectedCompetition={activeCompetition} />
               )}
             </div>
+
+            </div>
           </div>
         )}
       </div>
+
+      <button
+        type="button"
+        onClick={() => setPinnedRailOpen((prev) => !prev)}
+        className={`hidden xl:flex fixed top-1/2 z-50 -translate-y-1/2 h-12 w-7 items-center justify-center rounded-l-lg bg-white border border-r-0 border-gray-200 shadow-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-[right] duration-300 ease-out ${
+          pinnedRailOpen ? 'right-[280px]' : 'right-0'
+        }`}
+        title={pinnedRailOpen ? 'Hide pinned matches' : 'Show pinned matches'}
+      >
+        {pinnedRailOpen ? <ChevronRight size={16} className="mx-auto" /> : <ChevronLeft size={16} className="mx-auto" />}
+      </button>
+
+      <aside
+        className={`hidden xl:block fixed right-0 top-1/2 z-40 -translate-y-1/2 w-[280px] transition-transform duration-300 ease-out ${
+          pinnedRailOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
+        }`}
+        aria-hidden={!pinnedRailOpen}
+      >
+        <div className="bg-white rounded-l-xl border border-gray-100 shadow-sm p-3 max-h-[calc(100vh-7rem)] overflow-hidden">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-black uppercase tracking-wider text-gray-700">Pinned Matches</h3>
+            {pinnedMatches.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPinnedMatches([])}
+                className="text-xs font-semibold text-gray-500 hover:text-gray-700"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {pinnedMatches.length === 0 ? (
+            <p className="text-xs text-gray-500">
+              Pin matches in Schedule to quick-open team lookups from anywhere in Admin mode.
+            </p>
+          ) : (
+            <div className="space-y-3 overflow-y-auto pr-1 max-h-[calc(100vh-11.5rem)]">
+              {pinnedMatches.map((match) => (
+                <div key={match.key} className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="text-xs font-black uppercase tracking-wider text-gray-700">{match.label}</div>
+                    <button
+                      type="button"
+                      onClick={() => handleUnpinMatch(match.key)}
+                      className="text-[11px] font-semibold text-gray-500 hover:text-red-600"
+                    >
+                      Unpin
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-red-600 mb-1">Red</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {match.redTeams.map((team) => (
+                          <button
+                            key={`desktop-red-${match.key}-${team}`}
+                            type="button"
+                            onClick={() => handleScheduleTeamLookup(team)}
+                            className="px-2 py-1 rounded bg-red-100 text-red-700 text-xs font-bold hover:bg-red-200"
+                          >
+                            {team}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-1">Blue</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {match.blueTeams.map((team) => (
+                          <button
+                            key={`desktop-blue-${match.key}-${team}`}
+                            type="button"
+                            onClick={() => handleScheduleTeamLookup(team)}
+                            className="px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs font-bold hover:bg-blue-200"
+                          >
+                            {team}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
     </div>
   );
 };
