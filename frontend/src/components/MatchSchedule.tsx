@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Download, Pin } from 'lucide-react';
+import { Download, Pin, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission } from '../types/form.types';
@@ -158,7 +158,8 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
   const [loading, setLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'tba' | 'statbotics'>('tba');
   const [teamFilterInput, setTeamFilterInput] = useState<string>('');
-  const [selectedTeamFilter, setSelectedTeamFilter] = useState<string>('');
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [multiTeamMode, setMultiTeamMode] = useState(false);
   const [showTeamSuggestions, setShowTeamSuggestions] = useState(false);
   const [teamNames, setTeamNames] = useState<Record<string, string>>({});
   const [showPastMatches, setShowPastMatches] = useState(true);
@@ -167,7 +168,6 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
   const [liveMatchCounter, setLiveMatchCounter] = useState(1);
   const [liveCounterSource, setLiveCounterSource] = useState<'forms' | 'official' | 'default'>('default');
   const [liveCounterError, setLiveCounterError] = useState('');
-  const normalizedTeamFilter = selectedTeamFilter.trim();
   const canPinMatches = Boolean(onPinMatch || onUnpinMatch);
 
   const teamSuggestions = useMemo(() => {
@@ -209,7 +209,8 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
   useEffect(() => {
     // Reset filter state on competition change to avoid stale team selections.
     setTeamFilterInput('');
-    setSelectedTeamFilter('');
+    setSelectedTeams([]);
+    setMultiTeamMode(false);
     setShowTeamSuggestions(false);
   }, [selectedCompetition?.id, selectedCompetition?.eventKey]);
 
@@ -300,15 +301,14 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
   const sortedAllMatches = getSortedMatches(matches);
 
   const filteredMatches = sortedAllMatches.filter(match => {
-    if (!normalizedTeamFilter) return true;
+    if (selectedTeams.length === 0) return true;
     const allTeamKeys: Array<string | number> = [
       ...(match.alliances?.red?.team_keys || []),
       ...(match.alliances?.blue?.team_keys || []),
     ];
-    return allTeamKeys.some(teamKey => {
-      const num = formatTeamNumber(teamKey);
-      return matchesTeamQuery(num, teamNames[num] ?? '', normalizedTeamFilter);
-    });
+    return selectedTeams.some(filterTeam =>
+      allTeamKeys.some(teamKey => formatTeamNumber(teamKey) === filterTeam)
+    );
   });
 
   const sortedMatches = filteredMatches;
@@ -380,15 +380,14 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
     const sortedLatest = getSortedMatches(latestMatches);
 
     const latestFiltered = sortedLatest.filter((match) => {
-      if (!normalizedTeamFilter) return true;
+      if (selectedTeams.length === 0) return true;
       const allTeamKeys: Array<string | number> = [
         ...(match.alliances?.red?.team_keys || []),
         ...(match.alliances?.blue?.team_keys || []),
       ];
-      return allTeamKeys.some(teamKey => {
-        const num = formatTeamNumber(teamKey);
-        return matchesTeamQuery(num, teamNames[num] ?? '', normalizedTeamFilter);
-      });
+      return selectedTeams.some(filterTeam =>
+        allTeamKeys.some(teamKey => formatTeamNumber(teamKey) === filterTeam)
+      );
     });
 
     const liveCounterForExport = showPastMatches
@@ -421,7 +420,11 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Schedule');
 
     const safeCompetitionName = selectedCompetition.name.replace(/[^a-z0-9]+/gi, '-').replace(/(^-|-$)/g, '');
-    const filterSuffix = normalizedTeamFilter ? `-team-${normalizedTeamFilter}` : '';
+    const filterSuffix = selectedTeams.length === 1
+      ? `-team-${selectedTeams[0]}`
+      : selectedTeams.length > 1
+        ? `-teams-${selectedTeams.join('-')}`
+        : '';
 
     XLSX.writeFile(workbook, `${safeCompetitionName || 'competition'}-schedule${filterSuffix}.xlsx`);
   };
@@ -484,52 +487,97 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
               </select>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">Filter Team:</label>
-              <div className="relative w-full sm:w-64">
-                <input
-                  type="text"
-                  placeholder="Search team # or name"
-                  value={teamFilterInput}
-                  onChange={(e) => {
-                    setTeamFilterInput(e.target.value);
-                    setSelectedTeamFilter('');
-                    setShowTeamSuggestions(true);
-                  }}
-                  onFocus={() => setShowTeamSuggestions(true)}
-                  onBlur={() => setShowTeamSuggestions(false)}
-                  className="px-3 py-2 sm:py-1 border border-gray-300 rounded text-sm w-full"
-                />
-                {showTeamSuggestions && teamSuggestions.length > 0 && (
-                  <ul className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
-                    {teamSuggestions.map((row) => (
-                      <li
-                        key={row.team}
-                        onMouseDown={() => {
-                          setSelectedTeamFilter(row.team);
-                          setTeamFilterInput(`${row.team} - ${row.nickname}`);
-                          setShowTeamSuggestions(false);
-                        }}
-                        className="px-3 py-2 cursor-pointer hover:bg-blue-50 text-sm"
-                      >
-                        <span className="font-bold text-blue-700">{row.team}</span>
-                        <span className="ml-2 text-gray-600">{row.nickname}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              {selectedTeamFilter && (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <label className="text-sm font-medium text-gray-700">Filter Team:</label>
+                <div className="relative w-full sm:w-64">
+                  <input
+                    type="text"
+                    placeholder="Search team # or name"
+                    value={teamFilterInput}
+                    onChange={(e) => {
+                      setTeamFilterInput(e.target.value);
+                      if (!multiTeamMode) setSelectedTeams([]);
+                      setShowTeamSuggestions(true);
+                    }}
+                    onFocus={() => setShowTeamSuggestions(true)}
+                    onBlur={() => setShowTeamSuggestions(false)}
+                    className="px-3 py-2 sm:py-1 border border-gray-300 rounded text-sm w-full"
+                  />
+                  {showTeamSuggestions && teamSuggestions.length > 0 && (
+                    <ul className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                      {teamSuggestions.map((row) => (
+                        <li
+                          key={row.team}
+                          onMouseDown={() => {
+                            if (multiTeamMode) {
+                              if (!selectedTeams.includes(row.team)) {
+                                setSelectedTeams(prev => [...prev, row.team]);
+                              }
+                              setTeamFilterInput('');
+                            } else {
+                              setSelectedTeams([row.team]);
+                              setTeamFilterInput(`${row.team} - ${row.nickname}`);
+                            }
+                            setShowTeamSuggestions(false);
+                          }}
+                          className="px-3 py-2 cursor-pointer hover:bg-blue-50 text-sm"
+                        >
+                          <span className="font-bold text-blue-700">{row.team}</span>
+                          <span className="ml-2 text-gray-600">{row.nickname}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={() => {
-                    setSelectedTeamFilter('');
-                    setTeamFilterInput('');
+                    const next = !multiTeamMode;
+                    setMultiTeamMode(next);
+                    if (!next) {
+                      setSelectedTeams([]);
+                      setTeamFilterInput('');
+                    }
                   }}
-                  className="px-3 py-2 sm:py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 text-sm"
+                  className={`px-3 py-2 sm:py-1 rounded text-sm font-bold transition-colors ${
+                    multiTeamMode ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                  title={multiTeamMode ? 'Multi-team mode ON — click to disable' : 'Click to filter by multiple teams'}
                 >
-                  Clear
+                  +
                 </button>
+                {selectedTeams.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTeams([]);
+                      setTeamFilterInput('');
+                    }}
+                    className="px-3 py-2 sm:py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 text-sm"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {multiTeamMode && selectedTeams.length > 0 && (
+                <div className="flex flex-wrap gap-1 sm:ml-24">
+                  {selectedTeams.map(team => (
+                    <span
+                      key={team}
+                      className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded-full"
+                    >
+                      {team}{teamNames[team] ? ` · ${teamNames[team]}` : ''}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTeams(prev => prev.filter(t => t !== team))}
+                        className="hover:text-blue-600 ml-0.5"
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
 
@@ -562,21 +610,27 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
           </div>
         </div>
 
-        {normalizedTeamFilter && (
+        {selectedTeams.length > 0 && !multiTeamMode && (
           <p className="text-sm text-blue-600">
-            Showing matches for team {normalizedTeamFilter}
-            {teamNames[normalizedTeamFilter] ? ` (${teamNames[normalizedTeamFilter]})` : ''}
+            Showing matches for team {selectedTeams[0]}
+            {teamNames[selectedTeams[0]] ? ` (${teamNames[selectedTeams[0]]})` : ''}
             {` (${filteredMatches.length} matches)`}
           </p>
         )}
 
-        {!normalizedTeamFilter && teamFilterInput.trim() && (
+        {selectedTeams.length > 0 && multiTeamMode && (
+          <p className="text-sm text-blue-600">
+            Showing matches for {selectedTeams.length} team{selectedTeams.length > 1 ? 's' : ''}: {selectedTeams.join(', ')} ({filteredMatches.length} matches)
+          </p>
+        )}
+
+        {selectedTeams.length === 0 && teamFilterInput.trim() && (
           <p className="text-sm text-amber-700">
             Select a team from suggestions to apply the schedule filter.
           </p>
         )}
 
-        {!normalizedTeamFilter && sortedMatches.length > 0 && (
+        {selectedTeams.length === 0 && sortedMatches.length > 0 && (
           <p className="text-sm text-gray-500 mt-2">
             Export downloads all visible matches in the current schedule.
           </p>
@@ -599,9 +653,9 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
           <p className="text-xs text-amber-700 mt-1">{liveCounterError}</p>
         )}
 
-        {normalizedTeamFilter && sortedMatches.length > 0 && (
+        {selectedTeams.length > 0 && sortedMatches.length > 0 && (
           <p className="text-sm text-gray-500 mt-2">
-            Export downloads only the filtered matches for team {normalizedTeamFilter}.
+            Export downloads only the filtered matches.
           </p>
         )}
 
@@ -616,8 +670,8 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
         <div className="space-y-3 sm:space-y-4">
           {visibleMatches.length === 0 ? (
             <div className="p-12 text-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed font-bold italic">
-              {normalizedTeamFilter
-                ? `No visible matches found for team ${normalizedTeamFilter}`
+              {selectedTeams.length > 0
+                ? `No visible matches found for the selected team${selectedTeams.length > 1 ? 's' : ''}.`
                 : 'No visible matches available.'}
             </div>
           ) : (
@@ -670,7 +724,7 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
                       <div className="font-bold text-red-600">Red Alliance</div>
                       <ul className="list-disc list-inside text-sm break-words">
                         {(m.alliances?.red?.team_keys || []).map((tk: string | number) => (
-                          <li key={tk} className={normalizedTeamFilter && formatTeamNumber(tk) === normalizedTeamFilter ? 'font-bold text-red-700' : ''}>
+                          <li key={tk} className={selectedTeams.length > 0 && selectedTeams.includes(formatTeamNumber(tk)) ? 'font-bold text-red-700' : ''}>
                             <button
                               type="button"
                               onClick={() => openTeamHistory(tk, m)}
@@ -686,7 +740,7 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
                       <div className="font-bold text-blue-600">Blue Alliance</div>
                       <ul className="list-disc list-inside text-sm break-words">
                         {(m.alliances?.blue?.team_keys || []).map((tk: string | number) => (
-                          <li key={tk} className={normalizedTeamFilter && formatTeamNumber(tk) === normalizedTeamFilter ? 'font-bold text-blue-700' : ''}>
+                          <li key={tk} className={selectedTeams.length > 0 && selectedTeams.includes(formatTeamNumber(tk)) ? 'font-bold text-blue-700' : ''}>
                             <button
                               type="button"
                               onClick={() => openTeamHistory(tk, m)}
