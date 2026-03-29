@@ -11,6 +11,8 @@ import {
   updateScouterName,
   getPinnedMatches,
   savePinnedMatches,
+  getTeamBank,
+  saveTeamBank,
   promoteUser,
   demoteUser,
   deleteUser,
@@ -31,6 +33,8 @@ router.post('/reset-password', resetPassword);
 router.get('/me', verifyToken, getMe);
 router.get('/pins/:competitionId', verifyToken, getPinnedMatches);
 router.put('/pins/:competitionId', verifyToken, savePinnedMatches);
+router.get('/team-bank/:competitionId', verifyToken, getTeamBank);
+router.put('/team-bank/:competitionId', verifyToken, saveTeamBank);
 
 // ADMIN ONLY
 router.post('/make-admin', verifyToken, isAdmin, makeAdmin);

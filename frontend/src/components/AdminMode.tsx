@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, X, Star, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Trophy, UserCog, Search } from 'lucide-react';
+import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, X, Star, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Trophy, UserCog, Search, Plus } from 'lucide-react';
 import { CompetitionManager } from './CompetitionManager';
 import { FormManager } from './FormManager';
 import { ResponseViewer } from './ResponseViewer';
@@ -147,7 +147,11 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
   const [superscoutTeamNames, setSuperscoutTeamNames] = useState<Record<string, string>>({});
   const [pinnedMatches, setPinnedMatches] = useState<PinnedScheduleMatch[]>([]);
   const [pinnedRailOpen, setPinnedRailOpen] = useState(false);
+  const [teamBankTeams, setTeamBankTeams] = useState<string[]>([]);
+  const [teamBankRailOpen, setTeamBankRailOpen] = useState(false);
+  const [teamBankSearch, setTeamBankSearch] = useState('');
   const hasLoadedPinsForCompetition = useRef(false);
+  const hasLoadedTeamBankForCompetition = useRef(false);
 
   // ── load active competition ───────────────────────────────────────────────
   useEffect(() => {
@@ -229,6 +233,42 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
 
     persistPinnedMatches();
   }, [activeCompetition?.id, pinnedMatches]);
+
+  useEffect(() => {
+    hasLoadedTeamBankForCompetition.current = false;
+
+    if (!activeCompetition?.id) {
+      setTeamBankTeams([]);
+      return;
+    }
+
+    const loadTeamBank = async () => {
+      try {
+        const teams = await authApi.getTeamBank(activeCompetition.id);
+        setTeamBankTeams(Array.isArray(teams) ? teams.map((team) => String(team).trim()).filter(Boolean) : []);
+      } catch {
+        setTeamBankTeams([]);
+      } finally {
+        hasLoadedTeamBankForCompetition.current = true;
+      }
+    };
+
+    loadTeamBank();
+  }, [activeCompetition?.id]);
+
+  useEffect(() => {
+    if (!activeCompetition?.id || !hasLoadedTeamBankForCompetition.current) return;
+
+    const persistTeamBank = async () => {
+      try {
+        await authApi.saveTeamBank(activeCompetition.id, teamBankTeams);
+      } catch {
+        // Ignore sync failures here so UI remains responsive.
+      }
+    };
+
+    persistTeamBank();
+  }, [activeCompetition?.id, teamBankTeams]);
 
   // ── load team names from TBA for name-based search ──────────────────────
   useEffect(() => {
@@ -433,6 +473,18 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
     return rankedTeams.filter(t => matchesTeamQuery(t.team, superscoutTeamNames[t.team] ?? '', q));
   }, [rankedTeams, superscoutSearch, superscoutTeamNames]);
 
+  const teamBankSuggestions = useMemo(() => {
+    const query = teamBankSearch.trim();
+    if (!query) return [] as Array<{ team: string; nickname: string }>;
+
+    return Object.entries(superscoutTeamNames)
+      .map(([team, nickname]) => ({ team, nickname }))
+      .filter((row) => !teamBankTeams.includes(row.team))
+      .filter((row) => matchesTeamQuery(row.team, row.nickname, query))
+      .sort((a, b) => Number(a.team) - Number(b.team))
+      .slice(0, 12);
+  }, [superscoutTeamNames, teamBankSearch, teamBankTeams]);
+
   // ── save superscouter notes + rating ─────────────────────────────────────
   const saveTeamSuperscout = async (team: string, notes: string, rating: number | null) => {
     if (!activeCompetition) return;
@@ -523,6 +575,18 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
 
   const handleUnpinMatch = (matchKey: string) => {
     setPinnedMatches((prev) => prev.filter((item) => item.key !== matchKey));
+  };
+
+  const addTeamToBank = (team: string) => {
+    setTeamBankTeams((prev) => {
+      if (prev.includes(team)) return prev;
+      return [...prev, team].sort((a, b) => Number(a) - Number(b));
+    });
+    setTeamBankSearch('');
+  };
+
+  const removeTeamFromBank = (team: string) => {
+    setTeamBankTeams((prev) => prev.filter((value) => value !== team));
   };
 
   // ── star rating widget ────────────────────────────────────────────────────
@@ -977,6 +1041,116 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
           </div>
         )}
       </div>
+
+      <button
+        type="button"
+        onClick={() => setTeamBankRailOpen((prev) => !prev)}
+        className={`hidden xl:flex fixed top-1/2 z-50 -translate-y-1/2 h-12 w-7 items-center justify-center rounded-r-lg bg-white border border-l-0 border-gray-200 shadow-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-[left] duration-300 ease-out ${
+          teamBankRailOpen ? 'left-[280px]' : 'left-0'
+        }`}
+        title={teamBankRailOpen ? 'Hide team bank' : 'Show team bank'}
+      >
+        {teamBankRailOpen ? <ChevronLeft size={16} className="mx-auto" /> : <ChevronRight size={16} className="mx-auto" />}
+      </button>
+
+      <aside
+        className={`hidden xl:block fixed left-0 top-1/2 z-40 -translate-y-1/2 w-[280px] transition-transform duration-300 ease-out ${
+          teamBankRailOpen ? 'translate-x-0 pointer-events-auto' : '-translate-x-full pointer-events-none'
+        }`}
+        aria-hidden={!teamBankRailOpen}
+      >
+        <div className="bg-white rounded-r-xl border border-gray-100 shadow-sm p-3 max-h-[calc(100vh-7rem)] overflow-hidden">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-black uppercase tracking-wider text-gray-700">Team Bank</h3>
+            {teamBankTeams.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setTeamBankTeams([])}
+                className="text-xs font-semibold text-gray-500 hover:text-gray-700"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {!activeCompetition?.eventKey ? (
+            <p className="text-xs text-amber-700">
+              Set an event key on the active competition to search and add teams.
+            </p>
+          ) : (
+            <div className="mb-3">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Add Team</label>
+              <div className="mt-1 rounded-lg border border-gray-200 bg-white">
+                <div className="px-2 py-1.5 border-b border-gray-100">
+                  <input
+                    type="text"
+                    value={teamBankSearch}
+                    onChange={(e) => setTeamBankSearch(e.target.value)}
+                    placeholder="Search # or name"
+                    className="w-full text-sm bg-transparent outline-none"
+                  />
+                </div>
+                {teamBankSearch.trim() && (
+                  <div className="max-h-40 overflow-y-auto">
+                    {teamBankSuggestions.length === 0 ? (
+                      <p className="px-2 py-2 text-xs text-gray-500">No matching teams.</p>
+                    ) : (
+                      teamBankSuggestions.map((row) => (
+                        <div key={row.team} className="flex items-center justify-between gap-2 px-2 py-1.5 hover:bg-gray-50">
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold text-blue-700">{row.team}</div>
+                            <div className="text-[11px] text-gray-500 truncate">{row.nickname}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => addTeamToBank(row.team)}
+                            className="inline-flex items-center justify-center rounded bg-blue-600 text-white h-6 w-6 hover:bg-blue-700"
+                            title={`Add team ${row.team}`}
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {teamBankTeams.length === 0 ? (
+            <p className="text-xs text-gray-500">
+              Team bank is empty. Search above and click + to add teams.
+            </p>
+          ) : (
+            <div className="space-y-2 overflow-y-auto pr-1 max-h-[calc(100vh-16rem)]">
+              {teamBankTeams.map((team) => (
+                <div key={team} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-2 bg-gray-50">
+                  <button
+                    type="button"
+                    onClick={() => handleScheduleTeamLookup(team)}
+                    className="min-w-0 text-left"
+                    title={`Open team ${team} in Team Lookup`}
+                  >
+                    <div className="text-sm font-black text-blue-700 hover:underline">{team}</div>
+                    {superscoutTeamNames[team] && (
+                      <div className="text-[11px] text-gray-500 truncate">{superscoutTeamNames[team]}</div>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeTeamFromBank(team)}
+                    className="inline-flex items-center justify-center rounded bg-gray-200 text-gray-600 h-6 w-6 hover:bg-red-100 hover:text-red-700"
+                    title={`Remove team ${team}`}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
 
       <button
         type="button"
