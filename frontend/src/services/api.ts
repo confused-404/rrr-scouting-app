@@ -160,6 +160,14 @@ export const authApi = {
     const response = await api.put(`/auth/pins/${competitionId}`, { matches });
     return response.data;
   },
+  getTeamBank: async (competitionId: string): Promise<string[]> => {
+    const response = await api.get(`/auth/team-bank/${competitionId}`);
+    return response.data;
+  },
+  saveTeamBank: async (competitionId: string, teams: string[]): Promise<string[]> => {
+    const response = await api.put(`/auth/team-bank/${competitionId}`, { teams });
+    return response.data;
+  },
 };
 
 export const competitionApi = {

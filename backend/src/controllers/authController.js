@@ -240,6 +240,72 @@ export const savePinnedMatches = async (req, res) => {
 };
 
 /**
+ * GET TEAM BANK (Authenticated)
+ * Returns per-user team bank for a specific competition.
+ */
+export const getTeamBank = async (req, res) => {
+  try {
+    const { competitionId } = req.params;
+    if (!competitionId) {
+      return res.status(400).json({ message: 'competitionId is required' });
+    }
+
+    const userDoc = await db.collection('users').doc(req.user.uid).get();
+    const data = userDoc.exists ? (userDoc.data() || {}) : {};
+    const byCompetition = data.teamBankByCompetition || {};
+    const teams = Array.isArray(byCompetition[competitionId]) ? byCompetition[competitionId] : [];
+
+    return res.json(teams);
+  } catch (error) {
+    console.error('Error fetching team bank:', error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * SAVE TEAM BANK (Authenticated)
+ * Persists per-user team bank for a specific competition.
+ */
+export const saveTeamBank = async (req, res) => {
+  try {
+    const { competitionId } = req.params;
+    const { teams } = req.body;
+
+    if (!competitionId) {
+      return res.status(400).json({ message: 'competitionId is required' });
+    }
+
+    if (!Array.isArray(teams)) {
+      return res.status(400).json({ message: 'teams must be an array' });
+    }
+
+    const sanitized = Array.from(new Set(
+      teams
+        .map((team) => String(team ?? '').trim())
+        .map((team) => {
+          if (!team) return '';
+          if (/^frc\d+$/i.test(team)) return team.replace(/^frc/i, '');
+          const digits = team.match(/\d+/)?.[0] || '';
+          return digits;
+        })
+        .filter(Boolean),
+    )).slice(0, 100);
+
+    await db.collection('users').doc(req.user.uid).set({
+      teamBankByCompetition: {
+        [competitionId]: sanitized,
+      },
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+
+    return res.json(sanitized);
+  } catch (error) {
+    console.error('Error saving team bank:', error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+/**
  * PROMOTE USER TO ADMIN (Admin only)
  */
 export const promoteUser = async (req, res) => {
