@@ -1,5 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import type { Competition } from '../types/competition.types';
+import type {
+  Competition,
+  RobotBreakTimelineOverride,
+  RobotBreakTimelineOverrideStatus,
+} from '../types/competition.types';
 import type { Form, Submission, FormField, PictureFieldValue } from '../types/form.types';
 import { competitionApi, formApi, tbaApi, statboticsApi } from '../services/api';
 import { matchesTeamQuery } from '../utils/teamNameSearch';
@@ -37,16 +41,70 @@ const resolveTeamFieldId = (form: Form): number | null => {
   return fallbackField?.id ?? null;
 };
 
+const parseMatchNumber = (raw: unknown): number | null => {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+  if (raw === null || raw === undefined) return null;
+  const text = String(raw).trim();
+  if (!text) return null;
+  const digits = text.match(/\d+/)?.[0];
+  if (!digits) return null;
+  const parsed = parseInt(digits, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getMatchSortOrder = (match: Record<string, unknown>): number => {
+  const compLevelOrder: Record<string, number> = {
+    qm: 1,
+    ef: 2,
+    qf: 3,
+    sf: 4,
+    f: 5,
+  };
+  const compLevel = typeof match.comp_level === 'string' ? match.comp_level.toLowerCase() : 'qm';
+  const setNumber = typeof match.set_number === 'number' ? match.set_number : 0;
+  const matchNumber = parseMatchNumber(match.match_number) ?? 0;
+  return ((compLevelOrder[compLevel] || 99) * 10000) + (setNumber * 100) + matchNumber;
+};
+
+const getScheduleMatchLabel = (match: Record<string, unknown>): string => {
+  const compLevel = typeof match.comp_level === 'string' ? match.comp_level.toLowerCase() : 'qm';
+  const matchNumber = parseMatchNumber(match.match_number);
+  const setNumber = typeof match.set_number === 'number' ? match.set_number : 0;
+
+  if (compLevel === 'qm') return `QM${matchNumber ?? '?'}`;
+  if (compLevel === 'ef') return `EF${setNumber}-${matchNumber ?? '?'}`;
+  if (compLevel === 'qf') return `QF${setNumber}-${matchNumber ?? '?'}`;
+  if (compLevel === 'sf') return `SF${setNumber}-${matchNumber ?? '?'}`;
+  if (compLevel === 'f') return `F${matchNumber ?? '?'}`;
+  return `M${matchNumber ?? '?'}`;
+};
+
+type TimelinePointStatus = RobotBreakTimelineOverrideStatus | 'mismatch';
+
+type TimelinePoint = {
+  key: string;
+  overrideKey: string;
+  source: 'schedule' | 'mismatch';
+  label: string;
+  sortOrder: number;
+  colorStatus: TimelinePointStatus;
+  editorStatus: RobotBreakTimelineOverrideStatus;
+  description: string;
+  hasOverride: boolean;
+};
+
 interface TeamLookupProps {
   selectedCompetition?: Competition | null;
   superscoutNotes?: string;
   targetTeam?: string;
+  isAdminMode?: boolean;
 }
 
 export const TeamLookup: React.FC<TeamLookupProps> = ({
   selectedCompetition,
   superscoutNotes,
   targetTeam,
+  isAdminMode = false,
 }) => {
   const [forms, setForms] = useState<Form[]>([]);
   const [allSubmissions, setAllSubmissions] = useState<Submission[]>([]);
@@ -59,6 +117,13 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   const [dbSuperscoutTeam, setDbSuperscoutTeam] = useState('');
   const [eventTeams, setEventTeams] = useState<Array<{ team_number: number; nickname: string; key: string }>>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [tbaEventMatches, setTbaEventMatches] = useState<any[]>([]);
+  const [timelineOverrides, setTimelineOverrides] = useState<Record<string, Record<string, RobotBreakTimelineOverride>>>({});
+  const [editingTimelinePoint, setEditingTimelinePoint] = useState<TimelinePoint | null>(null);
+  const [timelineDraftStatus, setTimelineDraftStatus] = useState<RobotBreakTimelineOverrideStatus>('unknown');
+  const [timelineDraftDescription, setTimelineDraftDescription] = useState('');
+  const [timelineSaving, setTimelineSaving] = useState(false);
+  const [timelineEditMode, setTimelineEditMode] = useState(false);
 
   // Teleop balls state (per-match data)
   const [teleopPerMatch, setTeleopPerMatch] = useState<Array<{ value: number; matchNum: string; isCompleted: boolean }>>([]);
@@ -180,6 +245,17 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     })();
   }, [selectedCompetition?.eventKey]);
 
+  useEffect(() => {
+    const eventKey = selectedCompetition?.eventKey;
+    if (!eventKey) { setTbaEventMatches([]); return; }
+    (async () => {
+      try {
+        const matches = await tbaApi.getEventMatches(eventKey) as any[];
+        setTbaEventMatches(matches || []);
+      } catch { /* non-critical */ }
+    })();
+  }, [selectedCompetition?.eventKey]);
+
   const loadAllData = async () => {
     if (!selectedCompetition) return;
     setLoading(true);
@@ -207,7 +283,12 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     setTeleopBallsError('');
     setDbSuperscoutNotes('');
     setDbSuperscoutTeam('');
+    setEditingTimelinePoint(null);
   }, [selectedCompetition?.id]);
+
+  useEffect(() => {
+    setTimelineOverrides(selectedCompetition?.robotBreakTimelineOverrides || {});
+  }, [selectedCompetition?.id, selectedCompetition?.robotBreakTimelineOverrides]);
 
   const filteredSubs = useMemo(() => {
     const normalizedQuery = normalizeTeamNumber(teamQuery);
@@ -373,6 +454,125 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   }, [teamQuery, eventTeams]);
 
   const normalizedQuery = normalizeTeamNumber(teamQuery);
+
+  const teamTimelineOverrides = useMemo(() => {
+    if (!normalizedQuery) return {} as Record<string, RobotBreakTimelineOverride>;
+    return timelineOverrides[normalizedQuery] || {};
+  }, [timelineOverrides, normalizedQuery]);
+
+  const timelinePoints = useMemo(() => {
+    if (!normalizedQuery) return [] as TimelinePoint[];
+
+    const targetTeamKey = `frc${normalizedQuery}`;
+    const didBreakRegex = /did.*break|robot break at all|did the robot break/i;
+    const howBrokeRegex = /how.*(break|broke)|describe.*(break|broke)/i;
+    const matchFieldRegex = /match( number| #|#|num| no\.?|)/i;
+
+    const teamScheduleMatches = (tbaEventMatches || [])
+      .filter((match: Record<string, unknown>) => {
+        const alliances = (match.alliances as {
+          red?: { team_keys?: string[] };
+          blue?: { team_keys?: string[] };
+        } | undefined) || {};
+        const allTeams: string[] = [
+          ...(alliances.red?.team_keys || []),
+          ...(alliances.blue?.team_keys || []),
+        ];
+        return allTeams.some((teamKey) => teamKey === targetTeamKey || teamKey.replace(/^frc/i, '') === normalizedQuery);
+      })
+      .sort((a: Record<string, unknown>, b: Record<string, unknown>) => getMatchSortOrder(a) - getMatchSortOrder(b));
+
+    const scheduleByMatchNumber = new Map<number, Record<string, unknown>>();
+    teamScheduleMatches.forEach((match: Record<string, unknown>) => {
+      const matchNumber = parseMatchNumber(match.match_number);
+      if (matchNumber != null && !scheduleByMatchNumber.has(matchNumber)) {
+        scheduleByMatchNumber.set(matchNumber, match);
+      }
+    });
+
+    const observationsByMatch = new Map<number, Array<{ status: RobotBreakTimelineOverrideStatus; description: string; timestamp: number }>>();
+    const mismatchPoints: TimelinePoint[] = [];
+
+    forms.forEach((form) => {
+      const didBreakField = form.fields.find((field) => didBreakRegex.test(field.label));
+      if (!didBreakField) return;
+
+      const howBrokeField = form.fields.find((field) => howBrokeRegex.test(field.label) && field.id !== didBreakField.id);
+      const matchField = form.fields.find((field) => matchFieldRegex.test(field.label));
+      const formSubs = filteredSubs.filter((sub) => sub.formId === form.id);
+
+      formSubs.forEach((sub) => {
+        const rawStatus = String(sub.data?.[didBreakField.id] ?? '').trim().toLowerCase();
+        const description = howBrokeField ? String(sub.data?.[howBrokeField.id] ?? '').trim() : '';
+        const matchNumber = matchField ? parseMatchNumber(sub.data?.[matchField.id]) : null;
+
+        let status: RobotBreakTimelineOverrideStatus = 'unknown';
+        if (['yes', 'true', '1'].includes(rawStatus)) status = 'broke';
+        if (['no', 'false', '0'].includes(rawStatus)) status = 'ok';
+
+        const timestamp = sub.timestamp ? new Date(sub.timestamp).getTime() : 0;
+        const scheduledMatch = matchNumber != null ? scheduleByMatchNumber.get(matchNumber) : undefined;
+
+        if (scheduledMatch && matchNumber != null) {
+          if (!observationsByMatch.has(matchNumber)) observationsByMatch.set(matchNumber, []);
+          observationsByMatch.get(matchNumber)?.push({ status, description, timestamp });
+          return;
+        }
+
+        mismatchPoints.push({
+          key: `mismatch:${sub.id}`,
+          overrideKey: `mismatch:${sub.id}`,
+          source: 'mismatch',
+          label: matchNumber != null ? `QM${matchNumber}` : 'Unknown',
+          sortOrder: (matchNumber ?? 9999) * 100 + 50,
+          colorStatus: 'mismatch',
+          editorStatus: status,
+          description,
+          hasOverride: Boolean(teamTimelineOverrides[`mismatch:${sub.id}`]),
+        });
+      });
+    });
+
+    const schedulePoints = teamScheduleMatches.map((match: Record<string, unknown>) => {
+      const matchNumber = parseMatchNumber(match.match_number);
+      const matchKey = typeof match.key === 'string' && match.key ? match.key : `match:${getMatchSortOrder(match)}`;
+      const override = teamTimelineOverrides[matchKey];
+      const observations = matchNumber != null ? (observationsByMatch.get(matchNumber) || []) : [];
+
+      let derivedStatus: RobotBreakTimelineOverrideStatus = 'unknown';
+      let description = '';
+
+      if (observations.some((observation) => observation.status === 'broke')) {
+        derivedStatus = 'broke';
+      } else if (observations.some((observation) => observation.status === 'ok')) {
+        derivedStatus = 'ok';
+      }
+
+      const latestWithDescription = [...observations]
+        .filter((observation) => observation.description)
+        .sort((a, b) => b.timestamp - a.timestamp)[0];
+      if (latestWithDescription) {
+        description = latestWithDescription.description;
+      }
+
+      const finalStatus = override?.status ?? derivedStatus;
+      const finalDescription = override?.description ?? description;
+
+      return {
+        key: matchKey,
+        overrideKey: matchKey,
+        source: 'schedule' as const,
+        label: getScheduleMatchLabel(match),
+        sortOrder: getMatchSortOrder(match),
+        colorStatus: finalStatus,
+        editorStatus: finalStatus,
+        description: finalDescription,
+        hasOverride: Boolean(override),
+      };
+    });
+
+    return [...schedulePoints, ...mismatchPoints].sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [filteredSubs, forms, normalizedQuery, tbaEventMatches, teamTimelineOverrides]);
   const targetNormalized = normalizeTeamNumber(targetTeam);
   const fetchedNotes = normalizedQuery && normalizedQuery === dbSuperscoutTeam ? dbSuperscoutNotes : '';
   const propNotes = normalizedQuery && targetNormalized && normalizedQuery === targetNormalized
@@ -380,6 +580,73 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     : '';
   const notesToDisplay = fetchedNotes || propNotes;
   const showNotes = notesToDisplay.length > 0;
+
+  const openTimelineEditor = (point: TimelinePoint) => {
+    if (!isAdminMode) return;
+    setEditingTimelinePoint(point);
+    setTimelineDraftStatus(point.editorStatus);
+    setTimelineDraftDescription(point.description);
+    setTimelineEditMode(false);
+  };
+
+  const saveTimelineOverride = async () => {
+    if (!selectedCompetition?.id || !normalizedQuery || !editingTimelinePoint) return;
+
+    setTimelineSaving(true);
+    try {
+      const nextTeamOverrides = {
+        ...(timelineOverrides[normalizedQuery] || {}),
+        [editingTimelinePoint.overrideKey]: {
+          status: timelineDraftStatus,
+          description: timelineDraftDescription.trim(),
+          updatedAt: new Date().toISOString(),
+        },
+      };
+
+      const nextOverrides = {
+        ...timelineOverrides,
+        [normalizedQuery]: nextTeamOverrides,
+      };
+
+      await competitionApi.update(selectedCompetition.id, {
+        robotBreakTimelineOverrides: nextOverrides,
+      });
+      setTimelineOverrides(nextOverrides);
+      setEditingTimelinePoint(null);
+      setTimelineEditMode(false);
+    } catch (error) {
+      console.error('Failed to save robot break timeline override:', error);
+    } finally {
+      setTimelineSaving(false);
+    }
+  };
+
+  const clearTimelineOverride = async () => {
+    if (!selectedCompetition?.id || !normalizedQuery || !editingTimelinePoint) return;
+
+    setTimelineSaving(true);
+    try {
+      const currentTeamOverrides = { ...(timelineOverrides[normalizedQuery] || {}) };
+      delete currentTeamOverrides[editingTimelinePoint.overrideKey];
+      const nextOverrides = { ...timelineOverrides };
+      if (Object.keys(currentTeamOverrides).length > 0) {
+        nextOverrides[normalizedQuery] = currentTeamOverrides;
+      } else {
+        delete nextOverrides[normalizedQuery];
+      }
+
+      await competitionApi.update(selectedCompetition.id, {
+        robotBreakTimelineOverrides: nextOverrides,
+      });
+      setTimelineOverrides(nextOverrides);
+      setEditingTimelinePoint(null);
+      setTimelineEditMode(false);
+    } catch (error) {
+      console.error('Failed to clear robot break timeline override:', error);
+    } finally {
+      setTimelineSaving(false);
+    }
+  };
 
   if (!selectedCompetition) return <div className="p-10 text-center text-gray-400">No active competition selected</div>;
 
@@ -510,6 +777,75 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
         </div>
       )}
 
+      {/* ── Robot Breakdown Timeline ── */}
+      {normalizedQuery && timelinePoints.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3 bg-red-50 border-b border-red-100">
+            <span className="text-sm">⚠</span>
+            <span className="font-black text-xs uppercase tracking-widest text-red-700">
+              Robot Breakdown Timeline
+            </span>
+          </div>
+          <div className="p-5">
+            <div className="relative z-0 flex items-center gap-5 mb-4 text-xs text-gray-500 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="inline-block w-3 h-3 rounded-full bg-green-500" />
+                <span>Did not break</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="inline-block w-3 h-3 rounded-full bg-orange-400" />
+                <span>Broke</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="inline-block w-3 h-3 rounded-full bg-gray-400" />
+                <span>No data</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="inline-block w-3 h-3 rounded-full bg-red-500" />
+                <span>Form match # did not verify against schedule</span>
+              </div>
+            </div>
+            <div className="relative z-20 overflow-x-auto pb-2">
+              <div className="relative flex items-start min-w-max">
+                {timelinePoints.map((point, idx) => (
+                  <React.Fragment key={idx}>
+                    <div className="flex flex-col items-center flex-shrink-0">
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => openTimelineEditor(point)}
+                          disabled={!isAdminMode}
+                          className={`w-5 h-5 rounded-full border-2 border-white shadow-md ${isAdminMode ? 'cursor-pointer' : 'cursor-default'} ${
+                            point.colorStatus === 'broke'
+                              ? 'bg-orange-400 ring-2 ring-orange-200'
+                              : point.colorStatus === 'ok'
+                                ? 'bg-green-500 ring-2 ring-green-200'
+                                : point.colorStatus === 'mismatch'
+                                  ? 'bg-red-500 ring-2 ring-red-200'
+                                  : 'bg-gray-400 ring-2 ring-gray-200'
+                          }`}
+                        />
+                      </div>
+                      <div className={`mt-1.5 text-[10px] font-bold text-center ${point.colorStatus === 'mismatch' ? 'text-red-600' : 'text-gray-600'}`}>
+                        {point.label}
+                      </div>
+                    </div>
+                    {idx < timelinePoints.length - 1 && (
+                      <div className="h-0.5 bg-gray-200 flex-shrink-0 w-16 mt-[9px]" />
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+            {isAdminMode && (
+              <p className="mt-4 text-xs text-gray-500">
+                Click any dot to set break status and description. Gray dots are schedule matches with no scouting data yet.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="py-20 text-center font-black text-gray-300 animate-pulse tracking-widest uppercase">Fetching Data...</div>
       ) : (
@@ -635,6 +971,127 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
             </div>
           )}
         </>
+      )}
+
+      {editingTimelinePoint && isAdminMode && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+          onClick={() => { setEditingTimelinePoint(null); setTimelineEditMode(false); }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h4 className="text-lg font-bold text-gray-900">Break Timeline Details</h4>
+                <p className="mt-1 text-sm text-gray-500">{editingTimelinePoint.label}</p>
+                {editingTimelinePoint.source === 'mismatch' && (
+                  <p className="mt-1 text-xs font-semibold text-red-600">
+                    This point comes from a form match number that did not line up with the active schedule.
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setEditingTimelinePoint(null); setTimelineEditMode(false); }}
+                className="rounded-md px-2 py-1 text-sm font-semibold text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              {!timelineEditMode ? (
+                <>
+                  <div>
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-500">Status</label>
+                    <p className="mt-1 text-sm font-semibold text-gray-700">
+                      {editingTimelinePoint.colorStatus === 'broke' && 'Broke'}
+                      {editingTimelinePoint.colorStatus === 'ok' && 'Did not break'}
+                      {editingTimelinePoint.colorStatus === 'unknown' && 'No data'}
+                      {editingTimelinePoint.colorStatus === 'mismatch' && 'Mismatch (form match # not in schedule)'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-500">Description</label>
+                    <p className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">
+                      {editingTimelinePoint.description || 'No description provided.'}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-500">Status</label>
+                    <select
+                      value={timelineDraftStatus}
+                      onChange={(event) => setTimelineDraftStatus(event.target.value as RobotBreakTimelineOverrideStatus)}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="unknown">No data</option>
+                      <option value="ok">Did not break</option>
+                      <option value="broke">Broke</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-black uppercase tracking-widest text-gray-500">Description</label>
+                    <textarea
+                      rows={4}
+                      value={timelineDraftDescription}
+                      onChange={(event) => setTimelineDraftDescription(event.target.value)}
+                      placeholder="Add or update the break description..."
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none resize-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={clearTimelineOverride}
+                  disabled={!editingTimelinePoint.hasOverride || timelineSaving}
+                  className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Clear Override
+                </button>
+                {!timelineEditMode ? (
+                  <button
+                    type="button"
+                    onClick={() => setTimelineEditMode(true)}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Edit
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTimelineDraftStatus(editingTimelinePoint.editorStatus);
+                        setTimelineDraftDescription(editingTimelinePoint.description);
+                        setTimelineEditMode(false);
+                      }}
+                      className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveTimelineOverride}
+                      disabled={timelineSaving}
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {timelineSaving ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

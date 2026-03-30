@@ -33,6 +33,14 @@ export type SuperscoutEntry = {
   rating: number | null; // now 1–5 scale
 };
 
+export type RobotBreakTimelineOverrideStatus = 'broke' | 'ok' | 'unknown';
+
+export type RobotBreakTimelineOverride = {
+  status: RobotBreakTimelineOverrideStatus;
+  description: string;
+  updatedAt?: string;
+};
+
 export type Competition = {
   id: string;
   name: string;
@@ -51,6 +59,7 @@ export type Competition = {
 
   // ✅ fixed typing
   superscouterNotes?: Record<string, SuperscoutEntry | string>;
+  robotBreakTimelineOverrides?: Record<string, Record<string, RobotBreakTimelineOverride>>;
 
   createdAt: string;
 };

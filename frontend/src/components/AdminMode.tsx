@@ -1021,6 +1021,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
                   selectedCompetition={activeCompetition}
                   superscoutNotes={scouterNotes}
                   targetTeam={targetTeam}
+                  isAdminMode
                 />
               )}
               {analyticsTab === 'schedule' && (
