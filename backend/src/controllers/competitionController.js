@@ -68,7 +68,7 @@ export const competitionController = {
   // Create competition
   createCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormIds, eventKey, pitMapImageUrl, manualPickLists } = req.body;
+      const { name, season, status, startDate, endDate, activeFormIds, eventKey, pitMapImageUrl, manualPickLists, robotBreakTimelineOverrides } = req.body;
       
       if (!name || !season) {
         return res.status(400).json({ message: 'Name and season are required' });
@@ -84,6 +84,7 @@ export const competitionController = {
         eventKey,
         pitMapImageUrl: pitMapImageUrl || '',
         manualPickLists: manualPickLists || [],
+        robotBreakTimelineOverrides: robotBreakTimelineOverrides || {},
       });
       
       res.status(201).json(newCompetition);
@@ -96,7 +97,7 @@ export const competitionController = {
   // Update competition
   updateCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey, superscouterNotes, pitMapImageUrl, manualPickLists } = req.body;
+      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey, superscouterNotes, pitMapImageUrl, manualPickLists, robotBreakTimelineOverrides } = req.body;
       
       const updatedCompetition = await competitionModel.updateCompetition(req.params.id, {
         ...(name && { name }),
@@ -110,6 +111,7 @@ export const competitionController = {
         ...(scoutingAssignments !== undefined && { scoutingAssignments }),
         ...(eventKey !== undefined && { eventKey }),
         ...(superscouterNotes !== undefined && { superscouterNotes }),
+        ...(robotBreakTimelineOverrides !== undefined && { robotBreakTimelineOverrides }),
         ...(pitMapImageUrl !== undefined && { pitMapImageUrl }),
         ...(manualPickLists !== undefined && { manualPickLists }),
       });
