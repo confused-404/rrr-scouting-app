@@ -20,5 +20,7 @@ router.post('/:id/forms/set-active', verifyToken, competitionController.setActiv
 // Superscouternotesroutes
 router.post('/:id/superscouterNotes', verifyToken, competitionController.saveSuperscouterNotes);
 router.get('/:id/superscouterNotes', competitionController.getSuperscouterNotes);
+router.post('/:id/driveTeamStrategy', verifyToken, competitionController.saveDriveTeamStrategy);
+router.get('/:id/driveTeamStrategy', competitionController.getDriveTeamStrategy);
 
 export default router;

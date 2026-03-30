@@ -14,7 +14,7 @@ import { matchesTeamQuery } from '../utils/teamNameSearch';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission } from '../types/form.types';
 
-type AdminTab = 'competitions' | 'forms' | 'scoutingTeams' | 'analytics' | 'superscout' | 'picklists' | 'manageUsers';
+type AdminTab = 'competitions' | 'forms' | 'scoutingTeams' | 'analytics' | 'superscout' | 'driveTeam' | 'picklists' | 'manageUsers';
 type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule' | 'unfinishedAssignments';
 
 // ─── climbing points by answer ───────────────────────────────────────────────
@@ -637,6 +637,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
             ['scoutingTeams', Users, 'Scouting Teams'],
             ['analytics', BarChart, 'Analytics'],
             ['superscout', ClipboardList, 'Superscouter'],
+            ['driveTeam', ClipboardList, 'Drive Team'],
             ['picklists', ClipboardList, 'Pick Lists'],
             ['manageUsers', UserCog, 'Manage Users'],
           ] as const
@@ -669,6 +670,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
             onTeamSelect={handlePickListTeamSelect}
           />
         )}
+        {activeTab === 'driveTeam' && <div />}
         {activeTab === 'manageUsers' && (
           <ManageUsers selectedCompetition={activeCompetition} />
         )}

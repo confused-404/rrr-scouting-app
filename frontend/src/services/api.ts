@@ -214,6 +214,14 @@ export const competitionApi = {
     const response = await api.get(`/competitions/${competitionId}/superscouterNotes`, { params: { teamNumber } });
     return response.data;
   },
+  saveDriveTeamStrategy: async (competitionId: string, teamNumber: string, matchKey: string, strategy: string): Promise<Competition> => {
+    const response = await api.post(`/competitions/${competitionId}/driveTeamStrategy`, { teamNumber, matchKey, strategy });
+    return response.data;
+  },
+  getDriveTeamStrategy: async (competitionId: string, teamNumber: string, matchKey: string): Promise<{ teamNumber: string; strategy: string }> => {
+    const response = await api.get(`/competitions/${competitionId}/driveTeamStrategy`, { params: { teamNumber, matchKey } });
+    return response.data;
+  },
 };
 
 export const formApi = {
