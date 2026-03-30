@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Edit2, Eye, LogOut, Calendar } from 'lucide-react';
 import { AdminMode } from './components/AdminMode';
+import { AdminTeamMatches } from './components/AdminTeamMatches';
 import { UserMode } from './components/UserMode';
 import { Login } from './components/Login';
 import { useAuth } from './contexts/AuthContext';
@@ -9,7 +10,7 @@ import { competitionApi } from './services/api';
 import { createLogger, formatErrorForLogging } from './utils/logger';
 import './App.css';
 
-type AppMode = 'admin' | 'user';
+type AppMode = 'admin' | 'adminTeamMatches' | 'user';
 
 const appLogger = createLogger('App');
 
@@ -72,7 +73,7 @@ function App() {
 
   // Security check: if a user is not an admin but somehow set mode to admin, kick them back to user mode
   useEffect(() => {
-    if (!isAdmin && mode === 'admin') {
+    if (!isAdmin && (mode === 'admin' || mode === 'adminTeamMatches')) {
       appLogger.warn('Non-admin attempted to access admin mode; reverting to scout mode', {
         uid: currentUser?.uid,
       });
@@ -139,6 +140,20 @@ function App() {
                   </button>
                 )}
 
+                {isAdmin && (
+                  <button
+                    onClick={() => setMode('adminTeamMatches')}
+                    className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${
+                      mode === 'adminTeamMatches'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    <Calendar size={16} />
+                    Drive Team
+                  </button>
+                )}
+
                 <button
                   onClick={() => setMode('user')}
                   className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${
@@ -176,6 +191,8 @@ function App() {
       <div className="max-w-4xl mx-auto px-3 sm:px-4 py-5 sm:py-8">
         {mode === 'admin' && isAdmin ? (
           <AdminMode onCompetitionUpdate={loadCompetitions} />
+        ) : mode === 'adminTeamMatches' && isAdmin ? (
+          <AdminTeamMatches selectedCompetition={selectedCompetition} />
         ) : (
           <UserMode key={userModeKey} selectedCompetition={selectedCompetition} />
         )}

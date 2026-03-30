@@ -59,6 +59,7 @@ export type Competition = {
 
   // ✅ fixed typing
   superscouterNotes?: Record<string, SuperscoutEntry | string>;
+  driveTeamStrategyByTeam?: Record<string, string | Record<string, string>>;
   robotBreakTimelineOverrides?: Record<string, Record<string, RobotBreakTimelineOverride>>;
 
   createdAt: string;

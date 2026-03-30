@@ -12,6 +12,17 @@ export const competitionController = {
     return digits || text;
   },
 
+  normalizeDriveTeamKey: (rawTeam) => {
+    if (rawTeam === null || rawTeam === undefined) return '';
+    const text = String(rawTeam).trim();
+    if (!text) return '';
+    if (/^frc\d+$/i.test(text)) {
+      return text.replace(/^frc/i, '').trim();
+    }
+    const digits = text.match(/\d+/)?.[0];
+    return digits || text;
+  },
+
   // Get all competitions
   getAllCompetitions: async (req, res) => {
     try {
@@ -97,7 +108,7 @@ export const competitionController = {
   // Update competition
   updateCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey, superscouterNotes, pitMapImageUrl, manualPickLists, robotBreakTimelineOverrides } = req.body;
+      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey, superscouterNotes, driveTeamStrategyByTeam, pitMapImageUrl, manualPickLists, robotBreakTimelineOverrides } = req.body;
       
       const updatedCompetition = await competitionModel.updateCompetition(req.params.id, {
         ...(name && { name }),
@@ -111,6 +122,7 @@ export const competitionController = {
         ...(scoutingAssignments !== undefined && { scoutingAssignments }),
         ...(eventKey !== undefined && { eventKey }),
         ...(superscouterNotes !== undefined && { superscouterNotes }),
+        ...(driveTeamStrategyByTeam !== undefined && { driveTeamStrategyByTeam }),
         ...(robotBreakTimelineOverrides !== undefined && { robotBreakTimelineOverrides }),
         ...(pitMapImageUrl !== undefined && { pitMapImageUrl }),
         ...(manualPickLists !== undefined && { manualPickLists }),
@@ -358,6 +370,98 @@ export const competitionController = {
       res.json({ teamNumber: normalizedTeamNumber, notes, rating });
     } catch (error) {
       console.error('Error in getSuperscouterNotes:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  saveDriveTeamStrategy: async (req, res) => {
+    try {
+      const { teamNumber, strategy, matchKey } = req.body;
+      const competitionId = req.params.id;
+      const normalizedTeamNumber = competitionController.normalizeDriveTeamKey(teamNumber);
+      const normalizedMatchKey = typeof matchKey === 'string' ? matchKey.trim() : '';
+
+      if (!normalizedTeamNumber) {
+        return res.status(400).json({ message: 'Team number is required' });
+      }
+
+      if (!normalizedMatchKey) {
+        return res.status(400).json({ message: 'Match key is required' });
+      }
+
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      if (!competition) {
+        return res.status(404).json({ message: 'Competition not found' });
+      }
+
+      const strategyText = typeof strategy === 'string' ? strategy : '';
+      const currentByTeam = competition.driveTeamStrategyByTeam || {};
+      const currentForTeamRaw = currentByTeam[normalizedTeamNumber];
+      const currentForTeam = (
+        currentForTeamRaw && typeof currentForTeamRaw === 'object'
+          ? currentForTeamRaw
+          : {}
+      );
+      const updatedByTeam = {
+        ...currentByTeam,
+        [normalizedTeamNumber]: {
+          ...currentForTeam,
+          [normalizedMatchKey]: strategyText,
+        },
+      };
+
+      const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
+        driveTeamStrategyByTeam: updatedByTeam,
+      });
+
+      res.json(updatedCompetition);
+    } catch (error) {
+      console.error('Error in saveDriveTeamStrategy:', error);
+      res.status(500).json({ message: error.message });
+    }
+  },
+
+  getDriveTeamStrategy: async (req, res) => {
+    try {
+      const { teamNumber, matchKey } = req.query;
+      const competitionId = req.params.id;
+      const normalizedTeamNumber = competitionController.normalizeDriveTeamKey(teamNumber);
+      const normalizedMatchKey = typeof matchKey === 'string' ? matchKey.trim() : '';
+
+      if (!normalizedTeamNumber) {
+        return res.status(400).json({ message: 'Team number is required' });
+      }
+
+      if (!normalizedMatchKey) {
+        return res.status(400).json({ message: 'Match key is required' });
+      }
+
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      if (!competition) {
+        return res.status(404).json({ message: 'Competition not found' });
+      }
+
+      const strategyByTeam = competition.driveTeamStrategyByTeam || {};
+      const directRaw = strategyByTeam[teamNumber];
+      const normalizedRaw = strategyByTeam[normalizedTeamNumber];
+      const frcRaw = strategyByTeam[`frc${normalizedTeamNumber}`];
+      const rawTeamBucket = directRaw ?? normalizedRaw ?? frcRaw;
+
+      let strategy = '';
+
+      if (typeof rawTeamBucket === 'string') {
+        strategy = rawTeamBucket;
+      } else if (rawTeamBucket && typeof rawTeamBucket === 'object') {
+        const byMatch = rawTeamBucket;
+        const directMatch = byMatch[matchKey];
+        const normalizedMatch = byMatch[normalizedMatchKey];
+        const selected = directMatch ?? normalizedMatch;
+        strategy = typeof selected === 'string' ? selected : '';
+      }
+
+      res.json({ teamNumber: normalizedTeamNumber, strategy });
+    } catch (error) {
+      console.error('Error in getDriveTeamStrategy:', error);
       res.status(500).json({ message: error.message });
     }
   },

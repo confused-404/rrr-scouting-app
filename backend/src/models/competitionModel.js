@@ -41,6 +41,7 @@ export const competitionModel = {
         scoutingAssignments: data.scoutingAssignments || [],
         eventKey: data.eventKey,
         superscouterNotes: data.superscouterNotes || {},
+        driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
         robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
         pitMapImageUrl: data.pitMapImageUrl || '',
         manualPickLists: data.manualPickLists || [],
@@ -69,6 +70,7 @@ export const competitionModel = {
         scoutingAssignments: data.scoutingAssignments || [],
         eventKey: data.eventKey,
         superscouterNotes: data.superscouterNotes || {},
+        driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
         robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
         pitMapImageUrl: data.pitMapImageUrl || '',
         manualPickLists: data.manualPickLists || [],
@@ -95,6 +97,7 @@ export const competitionModel = {
       scoutingAssignments: data.scoutingAssignments || [],
       eventKey: data.eventKey,
       superscouterNotes: data.superscouterNotes || {},
+      driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
       robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
       pitMapImageUrl: data.pitMapImageUrl || '',
       manualPickLists: data.manualPickLists || [],
@@ -114,6 +117,7 @@ export const competitionModel = {
       scoutingAssignments: competitionData.scoutingAssignments || [],
       eventKey: competitionData.eventKey,
       superscouterNotes: competitionData.superscouterNotes || {},
+      driveTeamStrategyByTeam: competitionData.driveTeamStrategyByTeam || {},
       robotBreakTimelineOverrides: competitionData.robotBreakTimelineOverrides || {},
       pitMapImageUrl: competitionData.pitMapImageUrl || '',
       manualPickLists: competitionData.manualPickLists || [],
@@ -136,6 +140,7 @@ export const competitionModel = {
       scoutingAssignments: data.scoutingAssignments || [],
       eventKey: data.eventKey,
       superscouterNotes: data.superscouterNotes || {},
+      driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
       robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
       pitMapImageUrl: data.pitMapImageUrl || '',
       manualPickLists: data.manualPickLists || [],
@@ -181,6 +186,7 @@ export const competitionModel = {
     if (competitionData.scoutingAssignments !== undefined) updateData.scoutingAssignments = competitionData.scoutingAssignments;
     if (competitionData.eventKey !== undefined) updateData.eventKey = competitionData.eventKey;
     if (competitionData.superscouterNotes !== undefined) updateData.superscouterNotes = competitionData.superscouterNotes;
+    if (competitionData.driveTeamStrategyByTeam !== undefined) updateData.driveTeamStrategyByTeam = competitionData.driveTeamStrategyByTeam;
     if (competitionData.robotBreakTimelineOverrides !== undefined) updateData.robotBreakTimelineOverrides = competitionData.robotBreakTimelineOverrides;
     if (competitionData.pitMapImageUrl !== undefined) updateData.pitMapImageUrl = competitionData.pitMapImageUrl;
     if (competitionData.manualPickLists !== undefined) updateData.manualPickLists = competitionData.manualPickLists;
