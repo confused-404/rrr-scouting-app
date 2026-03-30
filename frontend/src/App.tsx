@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Edit2, Eye, LogOut, Calendar } from 'lucide-react';
 import { AdminMode } from './components/AdminMode';
 import { AdminTeamMatches } from './components/AdminTeamMatches';
@@ -13,15 +13,25 @@ import './App.css';
 type AppMode = 'admin' | 'adminTeamMatches' | 'user';
 
 const appLogger = createLogger('App');
+const APP_MODE_LANDING_KEY_PREFIX = 'scoutingAppLandingMode:';
+const APP_MODE_SESSION_KEY_PREFIX = 'scoutingAppSessionMode:';
+
+const isAppMode = (value: unknown): value is AppMode => (
+  value === 'admin' || value === 'adminTeamMatches' || value === 'user'
+);
+
+const isAdminLandingMode = (value: unknown): value is 'admin' | 'adminTeamMatches' => (
+  value === 'admin' || value === 'adminTeamMatches'
+);
 
 function App() {
   const [mode, setMode] = useState<AppMode>('user');
   const [selectedCompetition, setSelectedCompetition] = useState<Competition | null>(null);
-  const [userModeKey, setUserModeKey] = useState(0);
   const [modeInitializedForUid, setModeInitializedForUid] = useState<string | null>(null);
+  const pendingRestoredModeRef = useRef<AppMode | null>(null);
   
-  // isAdmin is now pulled from our updated AuthContext
-  const { currentUser, logout, isAdmin } = useAuth();
+  // Roles are pulled from AuthContext custom claims
+  const { currentUser, logout, isAdmin, isDriveTeam } = useAuth();
 
   const loadCompetitions = async () => {
     appLogger.debug('Loading active competition', {
@@ -57,36 +67,91 @@ function App() {
       });
       loadCompetitions();
 
-      // Default each signed-in user to their expected landing mode after refresh/login.
-      if (isAdmin && mode !== 'admin') {
-        setMode('admin');
-        setModeInitializedForUid(currentUser.uid);
-      } else if (!isAdmin && modeInitializedForUid !== currentUser.uid) {
-        setMode('user');
-        setModeInitializedForUid(currentUser.uid);
+      // Use session mode for reload continuity; fall back to admin landing mode for fresh app opens.
+      const sessionKey = `${APP_MODE_SESSION_KEY_PREFIX}${currentUser.uid}`;
+      const landingKey = `${APP_MODE_LANDING_KEY_PREFIX}${currentUser.uid}`;
+
+      let sessionMode: AppMode | null = null;
+      let landingMode: 'admin' | 'adminTeamMatches' | null = null;
+      try {
+        const rawSessionMode = sessionStorage.getItem(sessionKey);
+        if (isAppMode(rawSessionMode)) sessionMode = rawSessionMode;
+
+        const rawLandingMode = localStorage.getItem(landingKey);
+        if (isAdminLandingMode(rawLandingMode)) landingMode = rawLandingMode;
+      } catch {
+        sessionMode = null;
+        landingMode = null;
+      }
+
+      const desiredMode: AppMode = isAdmin
+        ? (sessionMode ?? landingMode ?? 'admin')
+        : (isDriveTeam ? 'adminTeamMatches' : 'user');
+
+      const needsHydration = modeInitializedForUid !== currentUser.uid;
+      if (needsHydration || mode !== desiredMode) {
+        pendingRestoredModeRef.current = desiredMode;
+        setMode(desiredMode);
+        if (needsHydration) {
+          setModeInitializedForUid(currentUser.uid);
+        }
       }
     } else {
       appLogger.info('No authenticated user, rendering login screen');
       setModeInitializedForUid(null);
+      pendingRestoredModeRef.current = null;
     }
-  }, [currentUser, isAdmin, modeInitializedForUid]);
+  }, [currentUser, isAdmin, isDriveTeam, modeInitializedForUid]);
 
-  // Security check: if a user is not an admin but somehow set mode to admin, kick them back to user mode
-  useEffect(() => {
-    if (!isAdmin && (mode === 'admin' || mode === 'adminTeamMatches')) {
-      appLogger.warn('Non-admin attempted to access admin mode; reverting to scout mode', {
-        uid: currentUser?.uid,
-      });
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMode('user');
+  const persistModeSelection = (nextMode: AppMode) => {
+    if (!currentUser) return;
+    const sessionKey = `${APP_MODE_SESSION_KEY_PREFIX}${currentUser.uid}`;
+    const landingKey = `${APP_MODE_LANDING_KEY_PREFIX}${currentUser.uid}`;
+    try {
+      sessionStorage.setItem(sessionKey, nextMode);
+
+      // Persist only admin landing destinations across app closes.
+      if ((isAdmin || isDriveTeam) && (nextMode === 'admin' || nextMode === 'adminTeamMatches')) {
+        localStorage.setItem(landingKey, nextMode);
+      }
+    } catch {
+      // Ignore storage failures; app mode still works in-memory.
     }
-  }, [mode, isAdmin, currentUser?.uid]);
+  };
+
+  const handleModeChange = (nextMode: AppMode) => {
+    setMode(nextMode);
+    persistModeSelection(nextMode);
+  };
+
+  // Security check based on role claims.
+  useEffect(() => {
+    if (isAdmin) return;
+
+    if (isDriveTeam && mode !== 'adminTeamMatches') {
+      appLogger.warn('Drive-team user attempted non-drive mode; reverting to drive team mode', {
+        uid: currentUser?.uid,
+        mode,
+      });
+      setMode('adminTeamMatches');
+      persistModeSelection('adminTeamMatches');
+      return;
+    }
+
+    if (!isDriveTeam && mode !== 'user') {
+      appLogger.warn('Scout user attempted restricted mode; reverting to scout mode', {
+        uid: currentUser?.uid,
+        mode,
+      });
+      setMode('user');
+      persistModeSelection('user');
+    }
+  }, [mode, isAdmin, isDriveTeam, currentUser?.uid]);
 
   // Reload competitions when switching to user mode
   useEffect(() => {
     if (currentUser && mode === 'user') {
       loadCompetitions();
-      setUserModeKey(prev => prev + 1);
     }
   }, [mode, currentUser]);
 
@@ -94,8 +159,9 @@ function App() {
     appLogger.info('App mode changed', {
       mode,
       isAdmin,
+      isDriveTeam,
     });
-  }, [mode, isAdmin]);
+  }, [mode, isAdmin, isDriveTeam]);
 
   const handleLogout = async () => {
     appLogger.info('Logout requested', {
@@ -103,6 +169,21 @@ function App() {
     });
 
     try {
+      if (currentUser) {
+        const sessionKey = `${APP_MODE_SESSION_KEY_PREFIX}${currentUser.uid}`;
+        const landingKey = `${APP_MODE_LANDING_KEY_PREFIX}${currentUser.uid}`;
+        try {
+          sessionStorage.removeItem(sessionKey);
+
+          // On explicit app exit/logout, route admins back to an admin front page next time.
+          if (isAdmin || isDriveTeam) {
+            localStorage.setItem(landingKey, mode === 'adminTeamMatches' ? 'adminTeamMatches' : 'admin');
+          }
+        } catch {
+          // Ignore storage errors on logout.
+        }
+      }
+
       await logout();
     } catch (error) {
       appLogger.error('Logout failed', {
@@ -115,6 +196,16 @@ function App() {
     return <Login />;
   }
 
+  const modeReady = modeInitializedForUid === currentUser.uid;
+
+  if (!modeReady) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-sm text-gray-500">Loading workspace...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200">
@@ -123,12 +214,14 @@ function App() {
             <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Scouting App</h1>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
               <span className="text-xs sm:text-sm text-gray-600 sm:mr-2 break-all">
-                {currentUser.email} {isAdmin && <span className="text-xs font-bold text-blue-600 ml-1">(ADMIN)</span>}
+                {currentUser.email}{' '}
+                {isAdmin && <span className="text-xs font-bold text-blue-600 ml-1">(ADMIN)</span>}
+                {!isAdmin && isDriveTeam && <span className="text-xs font-bold text-emerald-600 ml-1">(DRIVE TEAM)</span>}
               </span>
               <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                 {isAdmin && (
                   <button
-                    onClick={() => setMode('admin')}
+                    onClick={() => handleModeChange('admin')}
                     className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${
                       mode === 'admin'
                         ? 'bg-blue-600 text-white'
@@ -142,7 +235,7 @@ function App() {
 
                 {isAdmin && (
                   <button
-                    onClick={() => setMode('adminTeamMatches')}
+                    onClick={() => handleModeChange('adminTeamMatches')}
                     className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${
                       mode === 'adminTeamMatches'
                         ? 'bg-blue-600 text-white'
@@ -155,16 +248,31 @@ function App() {
                 )}
 
                 <button
-                  onClick={() => setMode('user')}
+                  onClick={() => handleModeChange('user')}
                   className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${
                     mode === 'user'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }`}
+                  hidden={isDriveTeam && !isAdmin}
                 >
                   <Eye size={16} />
                   Scout
                 </button>
+
+                {!isAdmin && isDriveTeam && (
+                  <button
+                    onClick={() => handleModeChange('adminTeamMatches')}
+                    className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${
+                      mode === 'adminTeamMatches'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    <Calendar size={16} />
+                    Drive Team
+                  </button>
+                )}
 
                 <button
                   onClick={handleLogout}
@@ -191,10 +299,10 @@ function App() {
       <div className="max-w-4xl mx-auto px-3 sm:px-4 py-5 sm:py-8">
         {mode === 'admin' && isAdmin ? (
           <AdminMode onCompetitionUpdate={loadCompetitions} />
-        ) : mode === 'adminTeamMatches' && isAdmin ? (
+        ) : mode === 'adminTeamMatches' && (isAdmin || isDriveTeam) ? (
           <AdminTeamMatches selectedCompetition={selectedCompetition} />
         ) : (
-          <UserMode key={userModeKey} selectedCompetition={selectedCompetition} />
+          <UserMode selectedCompetition={selectedCompetition} />
         )}
       </div>
     </div>

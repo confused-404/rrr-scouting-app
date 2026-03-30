@@ -15,6 +15,16 @@ interface UserModeProps {
 
 type UserTab = 'scout' | 'teamLookup' | 'schedule' | 'scoutingSchedule' | 'pitMap';
 
+const USER_MODE_ACTIVE_TAB_STORAGE_KEY = 'userMode.activeTab';
+
+const isUserTab = (value: unknown): value is UserTab => (
+  value === 'scout'
+  || value === 'teamLookup'
+  || value === 'schedule'
+  || value === 'scoutingSchedule'
+  || value === 'pitMap'
+);
+
 type FieldErrors = Record<number, string>;
 
 export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
@@ -26,10 +36,26 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   const [currentFormId, setCurrentFormId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchingForm, setFetchingForm] = useState(true);
-  const [activeTab, setActiveTab] = useState<UserTab>('scout');
+  const [activeTab, setActiveTab] = useState<UserTab>(() => {
+    if (typeof window === 'undefined') return 'scout';
+    try {
+      const raw = sessionStorage.getItem(USER_MODE_ACTIVE_TAB_STORAGE_KEY);
+      return isUserTab(raw) ? raw : 'scout';
+    } catch {
+      return 'scout';
+    }
+  });
   const [targetTeam, setTargetTeam] = useState('');
 
   const [errors, setErrors] = useState<FieldErrors>({});
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(USER_MODE_ACTIVE_TAB_STORAGE_KEY, activeTab);
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (selectedCompetition) {
