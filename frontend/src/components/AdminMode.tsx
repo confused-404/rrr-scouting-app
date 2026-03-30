@@ -17,6 +17,27 @@ import type { Form, Submission } from '../types/form.types';
 type AdminTab = 'competitions' | 'forms' | 'scoutingTeams' | 'analytics' | 'superscout' | 'driveTeam' | 'picklists' | 'manageUsers';
 type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule' | 'unfinishedAssignments';
 
+const ADMIN_ACTIVE_TAB_STORAGE_KEY = 'adminMode.activeTab';
+const ADMIN_ANALYTICS_TAB_STORAGE_KEY = 'adminMode.analyticsTab';
+
+const isAdminTab = (value: unknown): value is AdminTab => (
+  value === 'competitions'
+  || value === 'forms'
+  || value === 'scoutingTeams'
+  || value === 'analytics'
+  || value === 'superscout'
+  || value === 'driveTeam'
+  || value === 'picklists'
+  || value === 'manageUsers'
+);
+
+const isAnalyticsTab = (value: unknown): value is AnalyticsTab => (
+  value === 'responses'
+  || value === 'teamLookup'
+  || value === 'schedule'
+  || value === 'unfinishedAssignments'
+);
+
 // ─── climbing points by answer ───────────────────────────────────────────────
 const CLIMB_POINTS: Record<string, number> = {
   'L1': 10,
@@ -123,9 +144,41 @@ const computeScore = (
 };
 
 export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCompetitionUpdate }) => {
-  const [activeTab, setActiveTab] = useState<AdminTab>('competitions');
-  const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>('responses');
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => {
+    if (typeof window === 'undefined') return 'competitions';
+    try {
+      const raw = sessionStorage.getItem(ADMIN_ACTIVE_TAB_STORAGE_KEY);
+      return isAdminTab(raw) ? raw : 'competitions';
+    } catch {
+      return 'competitions';
+    }
+  });
+  const [analyticsTab, setAnalyticsTab] = useState<AnalyticsTab>(() => {
+    if (typeof window === 'undefined') return 'responses';
+    try {
+      const raw = sessionStorage.getItem(ADMIN_ANALYTICS_TAB_STORAGE_KEY);
+      return isAnalyticsTab(raw) ? raw : 'responses';
+    } catch {
+      return 'responses';
+    }
+  });
   const [activeCompetition, setActiveCompetition] = useState<Competition | null>(null);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(ADMIN_ACTIVE_TAB_STORAGE_KEY, activeTab);
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(ADMIN_ANALYTICS_TAB_STORAGE_KEY, analyticsTab);
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [analyticsTab]);
 
   // ── analytics team state (shared between superscouter & analytics tab) ──
   const [targetTeam, setTargetTeam] = useState('');

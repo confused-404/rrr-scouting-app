@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar, RefreshCw, Save, X } from 'lucide-react';
 import type { Competition } from '../types/competition.types';
-import { competitionApi, statboticsApi, tbaApi } from '../services/api';
+import type { Form, Submission } from '../types/form.types';
+import { competitionApi, formApi, statboticsApi, tbaApi } from '../services/api';
 
 type AdminTeamMatchesProps = {
   selectedCompetition: Competition | null;
@@ -16,6 +17,10 @@ const TEAM_OPTIONS: TeamOption[] = [
   { number: '3006', name: 'Red Rock Robotics' },
   { number: '2726', name: 'Red Pebble Rebels' },
 ];
+
+const DRIVE_TEAM_SELECTED_TEAM_STORAGE_KEY = 'adminTeamMatches.selectedTeam';
+const teamFieldRegex = /team|team number|team #/i;
+const autoPathFieldRegex = /auto.*path|path.*auto|starting position|start position/i;
 
 const normalizeTeamKey = (teamValue: string | number) => {
   const trimmed = String(teamValue).trim().toLowerCase();
@@ -76,8 +81,66 @@ const getMatchTime = (match: Record<string, unknown>) => {
   return new Date(timestamp * 1000).toLocaleString();
 };
 
+const parseSuperscouterEntry = (raw: unknown): { notes: string; rating: number | null } => {
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as { notes?: unknown; rating?: unknown };
+      if (parsed && typeof parsed === 'object') {
+        return {
+          notes: typeof parsed.notes === 'string' ? parsed.notes : '',
+          rating: typeof parsed.rating === 'number' && Number.isFinite(parsed.rating) ? parsed.rating : null,
+        };
+      }
+    } catch {
+      return { notes: raw, rating: null };
+    }
+
+    return { notes: raw, rating: null };
+  }
+
+  if (raw && typeof raw === 'object') {
+    const parsed = raw as { notes?: unknown; rating?: unknown };
+    return {
+      notes: typeof parsed.notes === 'string' ? parsed.notes : '',
+      rating: typeof parsed.rating === 'number' && Number.isFinite(parsed.rating) ? parsed.rating : null,
+    };
+  }
+
+  return { notes: '', rating: null };
+};
+
+const normalizeTeamNumber = (raw: unknown): string | null => {
+  if (raw === null || raw === undefined) return null;
+  const text = String(raw).trim();
+  if (!text) return null;
+  if (text.startsWith('frc')) return text.replace(/^frc/i, '').trim();
+  const digits = text.match(/\d+/)?.[0];
+  return digits || null;
+};
+
+const resolveTeamFieldId = (form: Form): number | null => {
+  if (
+    Number.isInteger(form.teamNumberFieldId)
+    && form.fields.some((field) => field.id === form.teamNumberFieldId)
+  ) {
+    return form.teamNumberFieldId as number;
+  }
+
+  const fallbackField = form.fields.find((field) => teamFieldRegex.test(field.label));
+  return fallbackField?.id ?? null;
+};
+
 export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedCompetition }) => {
-  const [selectedTeam, setSelectedTeam] = useState<string>(TEAM_OPTIONS[0].number);
+  const [selectedTeam, setSelectedTeam] = useState<string>(() => {
+    if (typeof window === 'undefined') return TEAM_OPTIONS[0].number;
+    try {
+      const raw = sessionStorage.getItem(DRIVE_TEAM_SELECTED_TEAM_STORAGE_KEY);
+      const valid = TEAM_OPTIONS.some((team) => team.number === raw);
+      return valid ? (raw as string) : TEAM_OPTIONS[0].number;
+    } catch {
+      return TEAM_OPTIONS[0].number;
+    }
+  });
   const [matches, setMatches] = useState<Array<Record<string, unknown>>>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -85,8 +148,8 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
   const [selectedMatchKey, setSelectedMatchKey] = useState<string | null>(null);
   const [selectedMatchTeam, setSelectedMatchTeam] = useState<string | null>(null);
   const [teamDetails, setTeamDetails] = useState<Record<string, { loading: boolean; error: string; data: Record<string, unknown> | null }>>({});
-
-  const [eventOPRs, setEventOPRs] = useState<Record<string, number>>({});
+  const [scoutingForms, setScoutingForms] = useState<Form[]>([]);
+  const [scoutingSubmissions, setScoutingSubmissions] = useState<Submission[]>([]);
 
   const [strategyValue, setStrategyValue] = useState('');
   const [strategyDraft, setStrategyDraft] = useState('');
@@ -99,28 +162,20 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
   const holdTimerRef = useRef<number | null>(null);
   const holdMovedRef = useRef(false);
 
-  useEffect(() => {
-    if (!selectedCompetition?.eventKey) {
-      setEventOPRs({});
-      return;
-    }
-    const loadOPRs = async () => {
-      try {
-        const data = await tbaApi.getEventOPRs(selectedCompetition.eventKey!);
-        setEventOPRs((data as { oprs?: Record<string, number> }).oprs ?? {});
-      } catch {
-        setEventOPRs({});
-      }
-    };
-    loadOPRs();
-  }, [selectedCompetition?.id, selectedCompetition?.eventKey]);
-
   const isMobileDevice = useMemo(() => {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
     const coarse = window.matchMedia?.('(pointer: coarse)').matches;
     const touchPoints = navigator.maxTouchPoints > 0;
     return Boolean(coarse || touchPoints);
   }, []);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(DRIVE_TEAM_SELECTED_TEAM_STORAGE_KEY, selectedTeam);
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [selectedTeam]);
 
   useEffect(() => {
     const loadMatches = async () => {
@@ -144,6 +199,29 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
 
     loadMatches();
   }, [selectedCompetition?.id, selectedCompetition?.eventKey, refreshToken]);
+
+  useEffect(() => {
+    const loadScoutingData = async () => {
+      if (!selectedCompetition?.id) {
+        setScoutingForms([]);
+        setScoutingSubmissions([]);
+        return;
+      }
+
+      try {
+        const forms = await formApi.getFormsByCompetition(selectedCompetition.id);
+        setScoutingForms(forms);
+
+        const submissionsByForm = await Promise.all(forms.map((form) => formApi.getSubmissions(form.id)));
+        setScoutingSubmissions(submissionsByForm.flat());
+      } catch {
+        setScoutingForms([]);
+        setScoutingSubmissions([]);
+      }
+    };
+
+    loadScoutingData();
+  }, [selectedCompetition?.id]);
 
   const filteredMatches = useMemo(() => {
     const teamKey = normalizeTeamKey(selectedTeam);
@@ -402,11 +480,10 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
       ) : (
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
           <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
-            Click a card to open match details
+            Click a match row to open match details
           </div>
 
-          <div className="overflow-x-auto pb-2">
-            <div className="flex min-w-max gap-4">
+          <div className="space-y-2 sm:space-y-3">
               {filteredMatches.map((match, index) => {
                 const alliances = (match.alliances as {
                   red?: { team_keys?: Array<string | number>; score?: unknown };
@@ -427,7 +504,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                     ref={(element) => {
                       cardRefs.current[index] = element;
                     }}
-                    className={`w-[300px] flex-shrink-0 rounded-xl border p-4 transition-all ${
+                    className={`rounded-xl border p-2.5 sm:p-4 transition-all ${
                       isSelected
                         ? 'border-indigo-400 bg-indigo-50 shadow-md'
                         : isNext
@@ -445,26 +522,26 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                         prefetchMatchTeams(match);
                       }}
                     >
-                      <div className="mb-2 flex items-center justify-between">
-                        <div className="text-sm font-black text-gray-800">{getMatchLabel(match)}</div>
+                      <div className="mb-1.5 flex items-center justify-between sm:mb-2">
+                        <div className="text-xs font-black text-gray-800 sm:text-sm">{getMatchLabel(match)}</div>
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                          className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider sm:text-[10px] ${
                             completed ? 'bg-gray-200 text-gray-700' : 'bg-green-100 text-green-700'
                           }`}
                         >
                           {completed ? 'Completed' : 'Next'}
                         </span>
                       </div>
-                      <div className="mb-3 text-xs text-gray-500">{getMatchTime(match)}</div>
+                      <div className="mb-2 text-[11px] text-gray-500 sm:mb-3 sm:text-xs">{getMatchTime(match)}</div>
 
-                      <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="grid grid-cols-2 gap-2 text-xs sm:gap-3 sm:text-sm">
                         <div>
-                          <div className="mb-1 text-[11px] font-black uppercase tracking-wider text-red-600">Red</div>
+                          <div className="mb-1 text-[10px] font-black uppercase tracking-wider text-red-600 sm:text-[11px]">Red</div>
                           <div className="space-y-1">
                             {redTeams.map((team) => (
                               <div
                                 key={`red-${matchKey}-${team}`}
-                                className={`rounded px-2 py-1 ${
+                                className={`rounded px-1.5 py-0.5 sm:px-2 sm:py-1 ${
                                   team === selectedTeam ? 'bg-red-200 font-bold text-red-900' : 'bg-red-100 text-red-800'
                                 }`}
                               >
@@ -475,12 +552,12 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                         </div>
 
                         <div>
-                          <div className="mb-1 text-[11px] font-black uppercase tracking-wider text-blue-600">Blue</div>
+                          <div className="mb-1 text-[10px] font-black uppercase tracking-wider text-blue-600 sm:text-[11px]">Blue</div>
                           <div className="space-y-1">
                             {blueTeams.map((team) => (
                               <div
                                 key={`blue-${matchKey}-${team}`}
-                                className={`rounded px-2 py-1 ${
+                                className={`rounded px-1.5 py-0.5 sm:px-2 sm:py-1 ${
                                   team === selectedTeam ? 'bg-blue-200 font-bold text-blue-900' : 'bg-blue-100 text-blue-800'
                                 }`}
                               >
@@ -494,7 +571,6 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                   </div>
                 );
               })}
-            </div>
           </div>
 
           {selectedMatch && (
@@ -644,6 +720,8 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                   const detail = selectedMatchTeam ? teamDetails[selectedMatchTeam] : undefined;
                   const epa = (detail?.data?.epa as Record<string, unknown> | undefined) || undefined;
                   const breakdown = (epa?.breakdown as Record<string, unknown> | undefined) || undefined;
+                  const superscouterRaw = selectedMatchTeam ? selectedCompetition.superscouterNotes?.[selectedMatchTeam] : undefined;
+                  const superscouter = parseSuperscouterEntry(superscouterRaw);
 
                   // Statbotics v3 wraps values in {mean, sd} objects; v2 uses plain numbers
                   const readEpa = (val: unknown): number | null => {
@@ -655,7 +733,73 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                     return null;
                   };
 
-                  const opr = selectedMatchTeam ? (eventOPRs[`frc${selectedMatchTeam}`] ?? null) : null;
+                  const autoPathStatsFromForms = (() => {
+                    if (!selectedMatchTeam) return [] as Array<{ label: string; counts: Record<string, number>; options: string[]; totalResponses: number; type: string }>;
+                    const normalizedTeam = normalizeTeamNumber(selectedMatchTeam);
+                    if (!normalizedTeam) return [] as Array<{ label: string; counts: Record<string, number>; options: string[]; totalResponses: number; type: string }>;
+
+                    const summaries: Array<{ label: string; counts: Record<string, number>; options: string[]; totalResponses: number; type: string }> = [];
+
+                    scoutingForms.forEach((form) => {
+                      const teamFieldId = resolveTeamFieldId(form);
+                      if (teamFieldId === null) return;
+
+                      const autoPathFields = form.fields.filter((field) => autoPathFieldRegex.test(field.label));
+                      if (autoPathFields.length === 0) return;
+
+                      const formSubs = scoutingSubmissions.filter((sub) => (
+                        sub.formId === form.id
+                        && normalizeTeamNumber(sub.data?.[teamFieldId]) === normalizedTeam
+                      ));
+
+                      autoPathFields.forEach((field) => {
+                        const counts: Record<string, number> = {};
+                        let totalResponses = 0;
+
+                        formSubs.forEach((sub) => {
+                          const raw = sub.data?.[field.id];
+                          if (raw === undefined || raw === null || raw === '' || (Array.isArray(raw) && raw.length === 0)) return;
+                          totalResponses += 1;
+
+                          if (field.type === 'multiple_select' && Array.isArray(raw)) {
+                            raw.forEach((option) => {
+                              const key = String(option);
+                              counts[key] = (counts[key] || 0) + 1;
+                            });
+                            return;
+                          }
+
+                          if (field.type === 'rank_order' && Array.isArray(raw)) {
+                            const compact = raw
+                              .map((item) => String(item ?? '').trim())
+                              .filter((item) => item !== '');
+                            if (compact.length > 0) {
+                              const rankingString = compact.join(' > ');
+                              counts[rankingString] = (counts[rankingString] || 0) + 1;
+                            }
+                            return;
+                          }
+
+                          const key = String(raw);
+                          counts[key] = (counts[key] || 0) + 1;
+                        });
+
+                        const options = field.type === 'rank_order'
+                          ? Object.keys(counts).sort((a, b) => counts[b] - counts[a])
+                          : (field.options && field.options.length > 0 ? field.options : Object.keys(counts));
+
+                        summaries.push({
+                          label: field.label,
+                          counts,
+                          options,
+                          totalResponses,
+                          type: field.type,
+                        });
+                      });
+                    });
+
+                    return summaries;
+                  })();
 
                   if (!selectedMatchTeam) {
                     return <p className="text-xs text-gray-500">Select a team above to view details in this menu.</p>;
@@ -676,26 +820,66 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                   return (
                     <div className="space-y-2 text-xs text-gray-700">
                       <div className="font-black text-sm text-gray-900">Team {selectedMatchTeam}</div>
-                      <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-                        <div className="rounded bg-gray-50 p-2">
-                          <div className="text-[10px] uppercase tracking-wider text-gray-500">OPR</div>
-                          <div className="font-bold text-gray-800">{opr !== null ? opr.toFixed(1) : 'N/A'}</div>
-                        </div>
-                        <div className="rounded bg-gray-50 p-2">
-                          <div className="text-[10px] uppercase tracking-wider text-gray-500">EPA</div>
-                          <div className="font-bold text-gray-800">{readEpa(epa?.total_points) !== null ? readEpa(epa?.total_points)!.toFixed(1) : 'N/A'}</div>
-                        </div>
-                        <div className="rounded bg-gray-50 p-2">
-                          <div className="text-[10px] uppercase tracking-wider text-gray-500">Auto</div>
-                          <div className="font-bold text-gray-800">{readEpa(breakdown?.auto_points) !== null ? readEpa(breakdown?.auto_points)!.toFixed(1) : 'N/A'}</div>
-                        </div>
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-1">
                         <div className="rounded bg-gray-50 p-2">
                           <div className="text-[10px] uppercase tracking-wider text-gray-500">Teleop</div>
                           <div className="font-bold text-gray-800">{readEpa(breakdown?.teleop_points) !== null ? readEpa(breakdown?.teleop_points)!.toFixed(1) : 'N/A'}</div>
                         </div>
                         <div className="rounded bg-gray-50 p-2">
-                          <div className="text-[10px] uppercase tracking-wider text-gray-500">Endgame</div>
-                          <div className="font-bold text-gray-800">{readEpa(breakdown?.endgame_points) !== null ? readEpa(breakdown?.endgame_points)!.toFixed(1) : 'N/A'}</div>
+                          <div className="text-[10px] uppercase tracking-wider text-gray-500">Superscouter Notes</div>
+                          {superscouter.notes ? (
+                            <div className="mt-1 whitespace-pre-wrap text-xs text-gray-800">{superscouter.notes}</div>
+                          ) : (
+                            <div className="mt-1 text-xs text-gray-500">No superscouter notes yet.</div>
+                          )}
+                          {superscouter.rating !== null && (
+                            <div className="mt-1 text-xs font-semibold text-gray-700">Rating: {superscouter.rating}/5</div>
+                          )}
+                        </div>
+                        <div className="rounded bg-gray-50 p-2">
+                          <div className="text-[10px] uppercase tracking-wider text-gray-500">Auto Path Statistics</div>
+                          <div className="mt-1 text-[10px] text-gray-500">
+                            From scouter form submissions (unofficial, not field-official data).
+                          </div>
+                          {autoPathStatsFromForms.length > 0 ? (
+                            <div className="mt-2 space-y-3">
+                              {autoPathStatsFromForms.map((summary) => (
+                                <div key={summary.label} className="rounded border border-gray-200 bg-white p-2">
+                                  <div className="mb-2 text-[11px] font-black text-gray-700">{summary.label}</div>
+                                  <div className="space-y-1.5">
+                                    {summary.options.map((item) => {
+                                      const count = summary.counts[item] || 0;
+                                      const percentage = summary.totalResponses > 0
+                                        ? ((count / summary.totalResponses) * 100).toFixed(1)
+                                        : '0';
+
+                                      return (
+                                        <div
+                                          key={`${summary.label}-${item}`}
+                                          className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+                                        >
+                                          <span className="text-xs break-words text-gray-700">{item}</span>
+                                          <div className="flex items-center gap-2 sm:min-w-[10rem]">
+                                            <div className="h-2 flex-1 rounded-full bg-gray-200 sm:w-24 sm:flex-none">
+                                              <div
+                                                className="h-2 rounded-full bg-blue-600"
+                                                style={{ width: `${percentage}%` }}
+                                              />
+                                            </div>
+                                            <span className="min-w-[3rem] text-right text-xs font-medium text-gray-600">
+                                              {count} ({percentage}%)
+                                            </span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-xs text-gray-500">No auto path scouting data available for this team.</div>
+                          )}
                         </div>
                       </div>
                     </div>

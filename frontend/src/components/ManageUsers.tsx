@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { UserCog, Save, RefreshCw, ShieldCheck, ShieldOff, Trash2 } from 'lucide-react';
+import { UserCog, Save, RefreshCw, Trash2, X } from 'lucide-react';
 import { authApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Competition } from '../types/competition.types';
@@ -7,7 +7,7 @@ import type { Competition } from '../types/competition.types';
 interface UserRecord {
   uid: string;
   email: string;
-  role: string;
+  role: 'admin' | 'drive' | 'user';
   scouterName: string | null;
 }
 
@@ -22,6 +22,7 @@ export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition })
   const [saving, setSaving] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [draftNames, setDraftNames] = useState<Record<string, string>>({});
+  const [roleModalUser, setRoleModalUser] = useState<UserRecord | null>(null);
 
   const getApiErrorMessage = (error: unknown, fallback: string): string => {
     if (error && typeof error === 'object') {
@@ -87,27 +88,15 @@ export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition })
     return (draftNames[uid] ?? '') !== (user.scouterName ?? '');
   };
 
-  const promoteUser = async (uid: string) => {
+  const setUserRole = async (uid: string, role: 'admin' | 'drive' | 'user') => {
     setActionPending(uid);
     try {
-      await authApi.promoteUser(uid);
-      setUsers(prev => prev.map(u => u.uid === uid ? { ...u, role: 'admin' } : u));
+      await authApi.setUserRole(uid, role);
+      setUsers(prev => prev.map(u => u.uid === uid ? { ...u, role } : u));
+      setRoleModalUser(null);
     } catch (err) {
-      console.error('Error promoting user:', err);
-      alert(getApiErrorMessage(err, 'Failed to promote user'));
-    } finally {
-      setActionPending(null);
-    }
-  };
-
-  const demoteUser = async (uid: string) => {
-    setActionPending(uid);
-    try {
-      await authApi.demoteUser(uid);
-      setUsers(prev => prev.map(u => u.uid === uid ? { ...u, role: 'user' } : u));
-    } catch (err) {
-      console.error('Error demoting user:', err);
-      alert(getApiErrorMessage(err, 'Failed to demote user'));
+      console.error('Error setting user role:', err);
+      alert(getApiErrorMessage(err, 'Failed to update role'));
     } finally {
       setActionPending(null);
     }
@@ -165,9 +154,13 @@ export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition })
           {users.map(user => (
             <div key={user.uid} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-wrap items-center gap-3">
               <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest flex-shrink-0 ${
-                user.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                user.role === 'admin'
+                  ? 'bg-blue-100 text-blue-700'
+                  : user.role === 'drive'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-gray-100 text-gray-600'
               }`}>
-                {user.role === 'admin' ? 'Admin' : 'User'}
+                {user.role === 'admin' ? 'Admin' : user.role === 'drive' ? 'Drive Team' : 'Scout'}
               </span>
               <span className="font-medium text-gray-800 text-sm flex-1 min-w-0 truncate">{user.email}</span>
               {availableScouterNames.length > 0 ? (
@@ -202,27 +195,14 @@ export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition })
               {/* ── Role & delete actions (disabled for own account) ── */}
               {currentUser?.uid !== user.uid && (
                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {user.role !== 'admin' ? (
-                    <button
-                      onClick={() => promoteUser(user.uid)}
-                      disabled={actionPending === user.uid}
-                      title="Promote to Admin"
-                      className="px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    >
-                      <ShieldCheck size={13} />
-                      Promote
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => demoteUser(user.uid)}
-                      disabled={actionPending === user.uid}
-                      title="Demote to User"
-                      className="px-2.5 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    >
-                      <ShieldOff size={13} />
-                      Demote
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setRoleModalUser(user)}
+                    disabled={actionPending === user.uid}
+                    title="Manage position"
+                    className="px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    Manage Position
+                  </button>
                   <button
                     onClick={() => deleteUser(user.uid, user.email)}
                     disabled={actionPending === user.uid}
@@ -236,6 +216,63 @@ export const ManageUsers: React.FC<ManageUsersProps> = ({ selectedCompetition })
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {roleModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => {
+          if (e.target === e.currentTarget) setRoleModalUser(null);
+        }}>
+          <div className="w-full max-w-md rounded-xl bg-white shadow-2xl border border-gray-200">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+              <div>
+                <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">Manage Position</h3>
+                <p className="text-xs text-gray-500 mt-0.5 truncate">{roleModalUser.email}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRoleModalUser(null)}
+                className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              <button
+                onClick={() => setUserRole(roleModalUser.uid, 'admin')}
+                disabled={actionPending === roleModalUser.uid}
+                className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-bold transition-all ${
+                  roleModalUser.role === 'admin'
+                    ? 'border-blue-300 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                } disabled:opacity-50`}
+              >
+                Admin
+              </button>
+              <button
+                onClick={() => setUserRole(roleModalUser.uid, 'drive')}
+                disabled={actionPending === roleModalUser.uid}
+                className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-bold transition-all ${
+                  roleModalUser.role === 'drive'
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                } disabled:opacity-50`}
+              >
+                Drive Team
+              </button>
+              <button
+                onClick={() => setUserRole(roleModalUser.uid, 'user')}
+                disabled={actionPending === roleModalUser.uid}
+                className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-bold transition-all ${
+                  roleModalUser.role === 'user'
+                    ? 'border-gray-300 bg-gray-100 text-gray-800'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                } disabled:opacity-50`}
+              >
+                Scout
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

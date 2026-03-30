@@ -13,6 +13,8 @@ import { createLogger, formatErrorForLogging } from '../utils/logger';
 interface AuthContextType {
   currentUser: User | null;
   isAdmin: boolean;
+  isDriveTeam: boolean;
+  role: 'admin' | 'drive' | 'user';
   scouterName: string | null;
   loading: boolean;
   signup: (email: string, password: string) => Promise<void>;
@@ -34,6 +36,8 @@ export const useAuth = () => {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isDriveTeam, setIsDriveTeam] = useState(false);
+  const [role, setRole] = useState<'admin' | 'drive' | 'user'>('user');
   const [scouterName, setScouterName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -85,6 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setLoading(true);
       setCurrentUser(user);
       authLogger.info('Auth state changed', {
         uid: user?.uid,
@@ -96,10 +101,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Get the ID Token Result to check for custom claims
           // Using true forces a refresh to ensure we get the latest claims
           const tokenResult = await user.getIdTokenResult(true);
-          setIsAdmin(!!tokenResult.claims.admin);
+          const nextIsAdmin = !!tokenResult.claims.admin;
+          const nextIsDrive = !!tokenResult.claims.driveTeam;
+          setIsAdmin(nextIsAdmin);
+          setIsDriveTeam(nextIsDrive);
+          setRole(nextIsAdmin ? 'admin' : (nextIsDrive ? 'drive' : 'user'));
           authLogger.info('User claims loaded', {
             uid: user.uid,
-            isAdmin: !!tokenResult.claims.admin,
+            isAdmin: nextIsAdmin,
+            isDriveTeam: nextIsDrive,
           });
         } catch (error) {
           authLogger.error('Failed to fetch auth claims', {
@@ -107,6 +117,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             error: formatErrorForLogging(error),
           });
           setIsAdmin(false);
+          setIsDriveTeam(false);
+          setRole('user');
         }
         try {
           const profile = await authApi.getCurrentUser() as { scouterName?: string | null };
@@ -116,6 +128,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } else {
         setIsAdmin(false);
+        setIsDriveTeam(false);
+        setRole('user');
         setScouterName(null);
       }
       
@@ -128,6 +142,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const value = {
     currentUser,
     isAdmin,
+    isDriveTeam,
+    role,
     scouterName,
     loading,
     signup,

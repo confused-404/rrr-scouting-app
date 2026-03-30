@@ -2,6 +2,31 @@ import { auth, db } from '../config/firebase.js';
 import admin from 'firebase-admin';
 import { sendMail } from '../config/mailer.js';
 
+const VALID_ROLES = new Set(['admin', 'drive', 'user']);
+
+const claimsForRole = (role) => ({
+  admin: role === 'admin',
+  driveTeam: role === 'drive',
+});
+
+const applyRoleToUser = async (uid, role) => {
+  if (!VALID_ROLES.has(role)) {
+    throw new Error('Invalid role');
+  }
+
+  const userRecord = await auth.getUser(uid);
+  const existingClaims = userRecord.customClaims || {};
+  await auth.setCustomUserClaims(uid, {
+    ...existingClaims,
+    ...claimsForRole(role),
+  });
+
+  await db.collection('users').doc(uid).set({
+    role,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+};
+
 /**
  * SIGNUP
  * Creates a user in Firebase Auth and pushes a 
@@ -46,13 +71,11 @@ export const initializeFirstAdmin = async (req, res) => {
 
     // 2. USE THE API: Set custom claims for the user
     // This makes the user an admin at the security token level
-    await auth.setCustomUserClaims(user.uid, { admin: true });
+    await applyRoleToUser(user.uid, 'admin');
 
-    // 3. Update Firestore to store the role permanently
+    // 3. Keep email in Firestore for convenience
     await db.collection('users').doc(user.uid).set({
       email: user.email,
-      role: 'admin',
-      updatedAt: new Date().toISOString()
     }, { merge: true });
 
     res.json({ message: `Success: ${email} is now an admin and saved to DB.` });
@@ -68,12 +91,7 @@ export const initializeFirstAdmin = async (req, res) => {
 export const makeAdmin = async (req, res) => {
   try {
     const { uid } = req.body;
-    
-    // API Call: Set the custom claim
-    await auth.setCustomUserClaims(uid, { admin: true });
-    
-    // Database Update
-    await db.collection('users').doc(uid).update({ role: 'admin' });
+    await applyRoleToUser(uid, 'admin');
     
     res.json({ message: `User ${uid} promoted to admin.` });
   } catch (error) {
@@ -87,11 +105,17 @@ export const makeAdmin = async (req, res) => {
 export const getMe = async (req, res) => {
   try {
     const doc = await db.collection('users').doc(req.user.uid).get();
+    const docRole = doc.exists ? doc.data().role : null;
+    const role = req.user.admin
+      ? 'admin'
+      : (req.user.driveTeam ? 'drive' : (docRole === 'admin' || docRole === 'drive' ? docRole : 'user'));
     const scouterName = doc.exists ? (doc.data().scouterName || null) : null;
     res.json({
       uid: req.user.uid,
       email: req.user.email,
-      admin: !!req.user.admin,
+      admin: role === 'admin',
+      driveTeam: role === 'drive',
+      role,
       scouterName,
     });
   } catch {
@@ -99,6 +123,8 @@ export const getMe = async (req, res) => {
       uid: req.user.uid,
       email: req.user.email,
       admin: !!req.user.admin,
+      driveTeam: !!req.user.driveTeam,
+      role: req.user.admin ? 'admin' : (req.user.driveTeam ? 'drive' : 'user'),
       scouterName: null,
     });
   }
@@ -130,10 +156,12 @@ export const getAllUsers = async (req, res) => {
       .map(u => {
         const fsData = firestoreMap.get(u.uid) || {};
         const isAdmin = !!(u.customClaims?.admin) || fsData.role === 'admin';
+        const isDrive = !!(u.customClaims?.driveTeam) || fsData.role === 'drive';
+        const role = isAdmin ? 'admin' : (isDrive ? 'drive' : 'user');
         return {
           uid: u.uid,
           email: u.email || fsData.email || '',
-          role: isAdmin ? 'admin' : 'user',
+          role,
           scouterName: fsData.scouterName || null,
         };
       })
@@ -314,8 +342,7 @@ export const promoteUser = async (req, res) => {
     if (uid === req.user.uid) {
       return res.status(400).json({ message: 'You cannot promote yourself.' });
     }
-    await auth.setCustomUserClaims(uid, { admin: true });
-    await db.collection('users').doc(uid).set({ role: 'admin', updatedAt: new Date().toISOString() }, { merge: true });
+    await applyRoleToUser(uid, 'admin');
     res.json({ message: `User ${uid} promoted to admin.` });
   } catch (error) {
     console.error('Error promoting user:', error);
@@ -332,12 +359,36 @@ export const demoteUser = async (req, res) => {
     if (uid === req.user.uid) {
       return res.status(400).json({ message: 'You cannot demote yourself.' });
     }
-    await auth.setCustomUserClaims(uid, { admin: false });
-    await db.collection('users').doc(uid).set({ role: 'user', updatedAt: new Date().toISOString() }, { merge: true });
+    await applyRoleToUser(uid, 'user');
     res.json({ message: `User ${uid} demoted to user.` });
   } catch (error) {
     console.error('Error demoting user:', error);
     res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * SET USER ROLE (Admin only)
+ * Supported roles: admin, drive, user
+ */
+export const setUserRole = async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { role } = req.body;
+
+    if (uid === req.user.uid) {
+      return res.status(400).json({ message: 'You cannot change your own role.' });
+    }
+
+    if (!VALID_ROLES.has(role)) {
+      return res.status(400).json({ message: 'Invalid role. Use admin, drive, or user.' });
+    }
+
+    await applyRoleToUser(uid, role);
+    return res.json({ uid, role });
+  } catch (error) {
+    console.error('Error setting user role:', error);
+    return res.status(500).json({ message: error.message });
   }
 };
 

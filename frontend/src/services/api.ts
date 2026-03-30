@@ -133,7 +133,7 @@ export const authApi = {
     const response = await api.post('/auth/reset-password', { email, code, newPassword });
     return response.data;
   },
-  getAllUsers: async (): Promise<Array<{ uid: string; email: string; role: string; scouterName: string | null }>> => {
+  getAllUsers: async (): Promise<Array<{ uid: string; email: string; role: 'admin' | 'drive' | 'user'; scouterName: string | null }>> => {
     const response = await api.get('/auth/users');
     return response.data;
   },
@@ -145,6 +145,9 @@ export const authApi = {
   },
   demoteUser: async (uid: string): Promise<void> => {
     await api.post(`/auth/users/${uid}/demote`);
+  },
+  setUserRole: async (uid: string, role: 'admin' | 'drive' | 'user'): Promise<void> => {
+    await api.put(`/auth/users/${uid}/role`, { role });
   },
   deleteUser: async (uid: string): Promise<void> => {
     await api.delete(`/auth/users/${uid}`);
