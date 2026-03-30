@@ -381,7 +381,10 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
     });
 
     const quantFields = latestForm.fields.filter(f => f.type === 'number' || f.type === 'ranking');
-    const qualFields = latestForm.fields.filter(f => f.type !== 'number' && f.type !== 'ranking');
+    // Image upload fields are intentionally excluded from CSV exports.
+    const qualFields = latestForm.fields.filter(
+      f => f.type !== 'number' && f.type !== 'ranking' && f.type !== 'picture'
+    );
     const headers = ['Team', ...quantFields.map(f => f.label), ...qualFields.map(f => f.label)];
 
     const csvRows = Object.entries(teamGroups).map(([team, teamSubs]) => {

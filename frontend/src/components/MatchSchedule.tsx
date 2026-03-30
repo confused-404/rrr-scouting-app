@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Download, Pin, X } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission } from '../types/form.types';
 import { formApi, tbaApi, statboticsApi } from '../services/api';
@@ -415,9 +414,23 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
       };
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Schedule');
+    const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const headers = ['Match', 'Red 1', 'Red 2', 'Red 3', 'Blue 1', 'Blue 2', 'Blue 3'];
+    const csvRows = rows.map((row) => [
+      row.Match,
+      row['Red 1'],
+      row['Red 2'],
+      row['Red 3'],
+      row['Blue 1'],
+      row['Blue 2'],
+      row['Blue 3'],
+    ].map(csvEscape).join(','));
+
+    const csvContent = [headers.map(csvEscape).join(','), ...csvRows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
 
     const safeCompetitionName = selectedCompetition.name.replace(/[^a-z0-9]+/gi, '-').replace(/(^-|-$)/g, '');
     const filterSuffix = selectedTeams.length === 1
@@ -426,7 +439,9 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
         ? `-teams-${selectedTeams.join('-')}`
         : '';
 
-    XLSX.writeFile(workbook, `${safeCompetitionName || 'competition'}-schedule${filterSuffix}.xlsx`);
+    link.download = `${safeCompetitionName || 'competition'}-schedule${filterSuffix}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const openTeamHistory = (teamValue: string | number, currentMatch: any) => {
@@ -605,7 +620,7 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300"
             >
               <Download size={16} />
-              Export to Excel
+              Export CSV
             </button>
           </div>
         </div>
