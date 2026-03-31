@@ -496,10 +496,10 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
       ) : (
         <>
           {/* Filter Bar */}
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-3 items-center">
-            <Filter size={18} className="text-gray-400 ml-2" />
+          <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-nowrap gap-2 items-center overflow-x-auto">
+            <Filter size={16} className="text-gray-400 flex-shrink-0" />
             <select
-              className="border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 font-bold"
+              className="w-44 flex-shrink-0 border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 font-bold"
               value={filterFieldId || ''}
               onChange={e => setFilterFieldId(Number(e.target.value))}
             >
@@ -508,7 +508,7 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
               ))}
             </select>
             <select
-              className="border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 font-mono font-bold"
+              className="w-32 flex-shrink-0 border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 font-mono font-bold"
               value={filterOp}
               onChange={e => setFilterOp(e.target.value as FilterOp)}
             >
@@ -521,11 +521,11 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
               placeholder="Search records…"
               value={filterValue}
               onChange={e => setFilterValue(e.target.value)}
-              className="flex-1 border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+              className="min-w-0 flex-1 border-gray-200 rounded-lg text-sm bg-gray-50 px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none font-medium"
             />
             {filterValue && (
-              <button onClick={() => setFilterValue('')} className="p-2 text-gray-400 hover:text-red-500">
-                <X size={20} />
+              <button onClick={() => setFilterValue('')} className="flex-shrink-0 p-2 text-gray-400 hover:text-red-500">
+                <X size={18} />
               </button>
             )}
           </div>
