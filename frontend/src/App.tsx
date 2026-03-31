@@ -197,6 +197,7 @@ function App() {
   }
 
   const modeReady = modeInitializedForUid === currentUser.uid;
+  const isDriveTeamPage = mode === 'adminTeamMatches' && (isAdmin || isDriveTeam);
 
   if (!modeReady) {
     return (
@@ -208,21 +209,21 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-4xl mx-auto px-4 py-3 sm:py-4">
-          <div className="flex flex-col gap-3 sm:gap-4 mb-3 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
-            <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Scouting App</h1>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+      <div className={`${isDriveTeamPage ? 'sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur' : 'bg-white border-b border-gray-200'}`}>
+        <div className={`max-w-4xl mx-auto px-4 ${isDriveTeamPage ? 'py-2 sm:py-2.5' : 'py-3 sm:py-4'}`}>
+          <div className={`flex flex-col ${isDriveTeamPage ? 'gap-2 sm:gap-2.5 mb-1 sm:mb-1.5' : 'gap-3 sm:gap-4 mb-3 sm:mb-4'} sm:flex-row sm:items-center sm:justify-between`}>
+            <h1 className={`${isDriveTeamPage ? 'text-lg sm:text-xl' : 'text-xl sm:text-2xl'} font-semibold text-gray-900`}>Scouting App</h1>
+            <div className={`flex flex-col ${isDriveTeamPage ? 'gap-1.5 sm:flex-row sm:items-center sm:gap-1.5' : 'gap-2 sm:flex-row sm:items-center sm:gap-2'}`}>
               <span className="text-xs sm:text-sm text-gray-600 sm:mr-2 break-all">
                 {currentUser.email}{' '}
                 {isAdmin && <span className="text-xs font-bold text-blue-600 ml-1">(ADMIN)</span>}
                 {!isAdmin && isDriveTeam && <span className="text-xs font-bold text-emerald-600 ml-1">(DRIVE TEAM)</span>}
               </span>
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+              <div className={`grid grid-cols-2 ${isDriveTeamPage ? 'gap-1.5 sm:gap-1.5' : 'gap-2'} sm:flex sm:flex-wrap`}>
                 {isAdmin && (
                   <button
                     onClick={() => handleModeChange('admin')}
-                    className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${
+                    className={`${isDriveTeamPage ? 'px-2.5 py-1.5 text-xs sm:text-sm' : 'px-3 py-2 text-sm'} rounded-md flex items-center justify-center gap-2 ${
                       mode === 'admin'
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -236,7 +237,7 @@ function App() {
                 {isAdmin && (
                   <button
                     onClick={() => handleModeChange('adminTeamMatches')}
-                    className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${
+                    className={`${isDriveTeamPage ? 'px-2.5 py-1.5 text-xs sm:text-sm' : 'px-3 py-2 text-sm'} rounded-md flex items-center justify-center gap-2 ${
                       mode === 'adminTeamMatches'
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -249,7 +250,7 @@ function App() {
 
                 <button
                   onClick={() => handleModeChange('user')}
-                  className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${
+                  className={`${isDriveTeamPage ? 'px-2.5 py-1.5 text-xs sm:text-sm' : 'px-3 py-2 text-sm'} rounded-md flex items-center justify-center gap-2 ${
                     mode === 'user'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -263,7 +264,7 @@ function App() {
                 {!isAdmin && isDriveTeam && (
                   <button
                     onClick={() => handleModeChange('adminTeamMatches')}
-                    className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${
+                    className={`${isDriveTeamPage ? 'px-2.5 py-1.5 text-xs sm:text-sm' : 'px-3 py-2 text-sm'} rounded-md flex items-center justify-center gap-2 ${
                       mode === 'adminTeamMatches'
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -276,7 +277,7 @@ function App() {
 
                 <button
                   onClick={handleLogout}
-                  className="px-3 py-2 rounded-md flex items-center justify-center gap-2 bg-red-600 text-white hover:bg-red-700 text-sm"
+                  className={`${isDriveTeamPage ? 'px-2.5 py-1.5 text-xs sm:text-sm' : 'px-3 py-2 text-sm'} rounded-md flex items-center justify-center gap-2 bg-red-600 text-white hover:bg-red-700`}
                 >
                   <LogOut size={16} />
                   Logout
@@ -296,7 +297,7 @@ function App() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-3 sm:px-4 py-5 sm:py-8">
+      <div className={`max-w-4xl mx-auto px-3 sm:px-4 ${isDriveTeamPage ? 'pt-2 pb-5 sm:pt-2 sm:pb-8' : 'py-5 sm:py-8'}`}>
         {mode === 'admin' && isAdmin ? (
           <AdminMode onCompetitionUpdate={loadCompetitions} />
         ) : mode === 'adminTeamMatches' && (isAdmin || isDriveTeam) ? (

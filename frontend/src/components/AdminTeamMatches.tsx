@@ -240,32 +240,44 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
     });
   }, [matches, selectedTeam]);
 
+  const orderedMatches = useMemo(() => {
+    const nextIndex = filteredMatches.findIndex((match) => !isMatchComplete(match));
+    if (nextIndex <= 0) return filteredMatches;
+
+    const nextMatch = filteredMatches[nextIndex];
+    return [
+      nextMatch,
+      ...filteredMatches.slice(0, nextIndex),
+      ...filteredMatches.slice(nextIndex + 1),
+    ];
+  }, [filteredMatches]);
+
   const nextMatchIndex = useMemo(
-    () => filteredMatches.findIndex((match) => !isMatchComplete(match)),
-    [filteredMatches]
+    () => orderedMatches.findIndex((match) => !isMatchComplete(match)),
+    [orderedMatches]
   );
 
   const selectedMatch = useMemo(() => {
     if (!selectedMatchKey) return null;
-    return filteredMatches.find((match, index) => {
+    return orderedMatches.find((match, index) => {
       const key = String(match.key || `${match.comp_level}-${match.match_number}-${index}`);
       return key === selectedMatchKey;
     }) || null;
-  }, [filteredMatches, selectedMatchKey]);
+  }, [orderedMatches, selectedMatchKey]);
 
 
   useEffect(() => {
-    if (filteredMatches.length === 0) return;
+    if (orderedMatches.length === 0) return;
 
     const targetIndex = nextMatchIndex >= 0 ? nextMatchIndex : 0;
     const target = cardRefs.current[targetIndex];
     if (target) {
       target.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
     }
-  }, [filteredMatches, nextMatchIndex]);
+  }, [orderedMatches, nextMatchIndex]);
 
   useEffect(() => {
-    if (filteredMatches.length === 0) {
+    if (orderedMatches.length === 0) {
       setSelectedMatchKey(null);
       setSelectedMatchTeam(null);
       setTeamDetails({});
@@ -275,7 +287,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
 
     // Clear selection only if the selected match is no longer in the list
     if (selectedMatchKey !== null) {
-      const stillValid = filteredMatches.some((match, index) => {
+      const stillValid = orderedMatches.some((match, index) => {
         const key = String(match.key || `${match.comp_level}-${match.match_number}-${index}`);
         return key === selectedMatchKey;
       });
@@ -286,7 +298,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
         setIsEditingStrategy(false);
       }
     }
-  }, [filteredMatches, selectedMatchKey]);
+  }, [orderedMatches, selectedMatchKey]);
 
   useEffect(() => {
     const loadStrategy = async () => {
@@ -430,15 +442,15 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="sticky top-[60px] z-30 rounded-xl border border-gray-100 bg-white/95 p-2.5 shadow-sm backdrop-blur sm:top-[64px] sm:p-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             {TEAM_OPTIONS.map((team) => (
               <button
                 key={team.number}
                 type="button"
                 onClick={() => setSelectedTeam(team.number)}
-                className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors sm:px-3 sm:py-2 sm:text-sm ${
                   selectedTeam === team.number
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -453,15 +465,15 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
           <button
             type="button"
             onClick={() => setRefreshToken((value) => value + 1)}
-            className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 sm:px-3 sm:py-2 sm:text-sm"
           >
-            <RefreshCw size={14} />
+            <RefreshCw size={13} />
             Refresh
           </button>
         </div>
 
-        <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
-          <Calendar size={15} className="text-gray-500" />
+        <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-600 sm:text-sm">
+          <Calendar size={13} className="text-gray-500 sm:h-[15px] sm:w-[15px]" />
           <span>
             {selectedCompetition.name} ({selectedCompetition.season})
           </span>
@@ -473,7 +485,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
         <div className="rounded-xl border border-gray-100 bg-white p-10 text-center text-gray-400">Loading matches...</div>
       ) : error ? (
         <div className="rounded-xl border border-red-100 bg-red-50 p-6 text-sm text-red-700">{error}</div>
-      ) : filteredMatches.length === 0 ? (
+      ) : orderedMatches.length === 0 ? (
         <div className="rounded-xl border border-gray-100 bg-white p-10 text-center text-gray-500">
           No matches found for team {selectedTeam}.
         </div>
@@ -484,7 +496,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
           </div>
 
           <div className="space-y-2 sm:space-y-3">
-              {filteredMatches.map((match, index) => {
+              {orderedMatches.map((match, index) => {
                 const alliances = (match.alliances as {
                   red?: { team_keys?: Array<string | number>; score?: unknown };
                   blue?: { team_keys?: Array<string | number>; score?: unknown };
