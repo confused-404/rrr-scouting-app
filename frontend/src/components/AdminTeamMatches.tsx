@@ -450,7 +450,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                 key={team.number}
                 type="button"
                 onClick={() => setSelectedTeam(team.number)}
-                className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors sm:px-3 sm:py-2 sm:text-sm ${
+                className={`rounded-lg px-2.5 py-1.5 text-sm font-semibold transition-colors sm:px-3 sm:py-2 ${
                   selectedTeam === team.number
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -465,14 +465,14 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
           <button
             type="button"
             onClick={() => setRefreshToken((value) => value + 1)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 sm:px-3 sm:py-2 sm:text-sm"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-200 sm:px-3 sm:py-2"
           >
             <RefreshCw size={13} />
             Refresh
           </button>
         </div>
 
-        <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-600 sm:text-sm">
+        <div className="mt-2 flex items-center gap-1.5 text-sm text-gray-600">
           <Calendar size={13} className="text-gray-500 sm:h-[15px] sm:w-[15px]" />
           <span>
             {selectedCompetition.name} ({selectedCompetition.season})
@@ -491,7 +491,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
         </div>
       ) : (
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+          <div className="mb-3 text-[15px] font-semibold uppercase tracking-wider text-gray-500">
             Click a match row to open match details
           </div>
 
@@ -535,20 +535,20 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                       }}
                     >
                       <div className="mb-1.5 flex items-center justify-between sm:mb-2">
-                        <div className="text-xs font-black text-gray-800 sm:text-sm">{getMatchLabel(match)}</div>
+                        <div className="text-sm font-black text-gray-800">{getMatchLabel(match)}</div>
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider sm:text-[10px] ${
+                          className={`rounded-full px-2 py-0.5 text-sm font-bold uppercase tracking-wider ${
                             completed ? 'bg-gray-200 text-gray-700' : 'bg-green-100 text-green-700'
                           }`}
                         >
                           {completed ? 'Completed' : 'Next'}
                         </span>
                       </div>
-                      <div className="mb-2 text-[11px] text-gray-500 sm:mb-3 sm:text-xs">{getMatchTime(match)}</div>
+                      <div className="mb-2 text-sm text-gray-500 sm:mb-3">{getMatchTime(match)}</div>
 
-                      <div className="grid grid-cols-2 gap-2 text-xs sm:gap-3 sm:text-sm">
+                      <div className="grid grid-cols-2 gap-2 text-sm sm:gap-3">
                         <div>
-                          <div className="mb-1 text-[10px] font-black uppercase tracking-wider text-red-600 sm:text-[11px]">Red</div>
+                          <div className="mb-1 text-[15px] font-black uppercase tracking-wider text-red-600">Red</div>
                           <div className="space-y-1">
                             {redTeams.map((team) => (
                               <div
@@ -564,7 +564,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                         </div>
 
                         <div>
-                          <div className="mb-1 text-[10px] font-black uppercase tracking-wider text-blue-600 sm:text-[11px]">Blue</div>
+                          <div className="mb-1 text-[15px] font-black uppercase tracking-wider text-blue-600">Blue</div>
                           <div className="space-y-1">
                             {blueTeams.map((team) => (
                               <div
@@ -587,7 +587,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
 
           {selectedMatch && (
             <div className="fixed inset-0 z-50 flex flex-col bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setSelectedMatchKey(null); }}>
-              <div className="relative flex h-full flex-col overflow-y-auto bg-white md:m-auto md:h-auto md:max-h-[90vh] md:w-full md:max-w-2xl md:rounded-2xl md:shadow-2xl">
+              <div className="relative flex h-full flex-col overflow-hidden bg-white md:m-auto md:h-auto md:max-h-[90vh] md:w-full md:max-w-3xl lg:max-w-4xl md:rounded-2xl md:shadow-2xl">
                 <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
                   <div className="text-base font-black uppercase tracking-wider text-gray-800">
                     {getMatchLabel(selectedMatch)} Details
@@ -601,10 +601,10 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                     <X size={24} />
                   </button>
                 </div>
-              <div className="p-4 space-y-3">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
 
               <div className="rounded-xl border border-gray-200 bg-white p-3">
-                <div className="mb-2 text-xs font-black uppercase tracking-wider text-gray-600">Match Strategy</div>
+                <div className="mb-2 text-[15px] font-black uppercase tracking-wider text-gray-600">Match Strategy</div>
                 {strategyLoading ? (
                   <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-400">Loading strategy...</div>
                 ) : isEditingStrategy ? (
@@ -622,7 +622,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                         type="button"
                         onClick={saveStrategy}
                         disabled={strategySaving}
-                        className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                       >
                         <Save size={13} />
                         {strategySaving ? 'Saving...' : 'Save'}
@@ -633,7 +633,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                           setStrategyDraft(strategyValue);
                           setIsEditingStrategy(false);
                         }}
-                        className="rounded-lg bg-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-300"
+                        className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300"
                       >
                         Cancel
                       </button>
@@ -668,7 +668,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                     )}
                   </div>
                 )}
-                {strategyError && <p className="mt-2 text-xs text-red-600">{strategyError}</p>}
+                {strategyError && <p className="mt-2 text-sm text-red-600">{strategyError}</p>}
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 text-sm">
@@ -684,14 +684,14 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                   return (
                     <>
                       <div>
-                        <div className="mb-1 text-[11px] font-black uppercase tracking-wider text-red-600">Red</div>
+                        <div className="mb-1 text-[15px] font-black uppercase tracking-wider text-red-600">Red</div>
                         <div className="flex flex-wrap gap-2">
                           {redTeams.map((team) => (
                             <button
                               type="button"
                               key={`menu-red-${String(selectedMatch.key)}-${team}`}
                               onClick={() => loadTeamDetail(team)}
-                              className={`rounded px-2 py-1 text-xs font-semibold ${
+                              className={`rounded px-2 py-1 text-sm font-semibold ${
                                 selectedMatchTeam === team
                                   ? 'bg-red-200 text-red-900'
                                   : 'bg-red-100 text-red-800 hover:bg-red-200'
@@ -704,14 +704,14 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                       </div>
 
                       <div>
-                        <div className="mb-1 text-[11px] font-black uppercase tracking-wider text-blue-600">Blue</div>
+                        <div className="mb-1 text-[15px] font-black uppercase tracking-wider text-blue-600">Blue</div>
                         <div className="flex flex-wrap gap-2">
                           {blueTeams.map((team) => (
                             <button
                               type="button"
                               key={`menu-blue-${String(selectedMatch.key)}-${team}`}
                               onClick={() => loadTeamDetail(team)}
-                              className={`rounded px-2 py-1 text-xs font-semibold ${
+                              className={`rounded px-2 py-1 text-sm font-semibold ${
                                 selectedMatchTeam === team
                                   ? 'bg-blue-200 text-blue-900'
                                   : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
@@ -814,50 +814,50 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                   })();
 
                   if (!selectedMatchTeam) {
-                    return <p className="text-xs text-gray-500">Select a team above to view details in this menu.</p>;
+                    return <p className="text-sm text-gray-500">Select a team above to view details in this menu.</p>;
                   }
 
                   if (detail?.loading) {
-                    return <p className="text-xs text-gray-400">Loading team {selectedMatchTeam}...</p>;
+                    return <p className="text-sm text-gray-400">Loading team {selectedMatchTeam}...</p>;
                   }
 
                   if (detail?.error) {
-                    return <p className="text-xs text-red-600">{detail.error}</p>;
+                    return <p className="text-sm text-red-600">{detail.error}</p>;
                   }
 
                   if (!detail?.data) {
-                    return <p className="text-xs text-gray-500">Select a team above to view details in this menu.</p>;
+                    return <p className="text-sm text-gray-500">Select a team above to view details in this menu.</p>;
                   }
 
                   return (
-                    <div className="space-y-2 text-xs text-gray-700">
-                      <div className="font-black text-sm text-gray-900">Team {selectedMatchTeam}</div>
+                    <div className="space-y-2 text-sm text-gray-700">
+                      <div className="font-black text-lg text-gray-900">Team {selectedMatchTeam}</div>
                       <div className="grid grid-cols-1 gap-2 md:grid-cols-1">
                         <div className="rounded bg-gray-50 p-2">
-                          <div className="text-[10px] uppercase tracking-wider text-gray-500">Teleop</div>
+                          <div className="text-[15px] uppercase tracking-wider text-gray-500">Teleop</div>
                           <div className="font-bold text-gray-800">{readEpa(breakdown?.teleop_points) !== null ? readEpa(breakdown?.teleop_points)!.toFixed(1) : 'N/A'}</div>
                         </div>
                         <div className="rounded bg-gray-50 p-2">
-                          <div className="text-[10px] uppercase tracking-wider text-gray-500">Superscouter Notes</div>
+                          <div className="text-[15px] uppercase tracking-wider text-gray-500">Superscouter Notes</div>
                           {superscouter.notes ? (
-                            <div className="mt-1 whitespace-pre-wrap text-xs text-gray-800">{superscouter.notes}</div>
+                            <div className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{superscouter.notes}</div>
                           ) : (
-                            <div className="mt-1 text-xs text-gray-500">No superscouter notes yet.</div>
+                            <div className="mt-1 text-sm text-gray-500">No superscouter notes yet.</div>
                           )}
                           {superscouter.rating !== null && (
-                            <div className="mt-1 text-xs font-semibold text-gray-700">Rating: {superscouter.rating}/5</div>
+                            <div className="mt-1 text-sm font-semibold text-gray-700">Rating: {superscouter.rating}/5</div>
                           )}
                         </div>
                         <div className="rounded bg-gray-50 p-2">
-                          <div className="text-[10px] uppercase tracking-wider text-gray-500">Auto Path Statistics</div>
-                          <div className="mt-1 text-[10px] text-gray-500">
+                          <div className="text-[15px] uppercase tracking-wider text-gray-500">Auto Path Statistics</div>
+                          <div className="mt-1 text-sm text-gray-500">
                             From scouter form submissions (unofficial, not field-official data).
                           </div>
                           {autoPathStatsFromForms.length > 0 ? (
                             <div className="mt-2 space-y-3">
                               {autoPathStatsFromForms.map((summary) => (
                                 <div key={summary.label} className="rounded border border-gray-200 bg-white p-2">
-                                  <div className="mb-2 text-[11px] font-black text-gray-700">{summary.label}</div>
+                                  <div className="mb-2 text-[15px] font-black text-gray-700">{summary.label}</div>
                                   <div className="space-y-1.5">
                                     {summary.options.map((item) => {
                                       const count = summary.counts[item] || 0;
@@ -870,7 +870,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                                           key={`${summary.label}-${item}`}
                                           className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
                                         >
-                                          <span className="text-xs break-words text-gray-700">{item}</span>
+                                          <span className="text-sm break-words text-gray-700">{item}</span>
                                           <div className="flex items-center gap-2 sm:min-w-[10rem]">
                                             <div className="h-2 flex-1 rounded-full bg-gray-200 sm:w-24 sm:flex-none">
                                               <div
@@ -878,7 +878,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                                                 style={{ width: `${percentage}%` }}
                                               />
                                             </div>
-                                            <span className="min-w-[3rem] text-right text-xs font-medium text-gray-600">
+                                            <span className="min-w-[3rem] text-right text-sm font-medium text-gray-600">
                                               {count} ({percentage}%)
                                             </span>
                                           </div>
@@ -890,7 +890,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                               ))}
                             </div>
                           ) : (
-                            <div className="mt-1 text-xs text-gray-500">No auto path scouting data available for this team.</div>
+                            <div className="mt-1 text-sm text-gray-500">No auto path scouting data available for this team.</div>
                           )}
                         </div>
                       </div>
