@@ -17,6 +17,24 @@ export type PictureFieldValue = {
   uploadedAt?: string;
 };
 
+export type ConditionOperator = 'equals' | 'not_equals' | 'contains' | 'not_contains';
+
+export interface ConditionRule {
+  type?: 'rule';
+  formId?: string;
+  fieldId: number;
+  operator: ConditionOperator;
+  value: string;
+}
+
+export interface ConditionGroup {
+  type: 'group';
+  combinator: 'and' | 'or';
+  conditions: FormCondition[];
+}
+
+export type FormCondition = ConditionRule | ConditionGroup;
+
 export interface FormField {
   id: number;
   type: FormFieldType;
@@ -30,11 +48,7 @@ export interface FormField {
   max?: number;
 
   // conditional logic
-  condition?: {
-    fieldId: number; 
-    operator: 'equals' | 'not_equals' | 'contains' | 'not_contains';
-    value: string; // FormManager handles this primarily as a string input
-  };
+  condition?: FormCondition;
 }
 
 export interface Form {
