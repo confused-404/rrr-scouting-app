@@ -1,12 +1,34 @@
 // FormManager.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, Layout, Plus, Star, GripVertical } from 'lucide-react';
-import type { FormField as FormFieldType, Form } from '../types/form.types';
+import type {
+    FormField as FormFieldType,
+    Form,
+    FormCondition,
+    ConditionGroup,
+    ConditionRule,
+    ConditionOperator,
+} from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { formApi, competitionApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { createDefaultCondition, normalizeCondition } from '../utils/formConditions';
 
 const teamFieldRegex = /team|team number|team #/i;
+const CONDITION_OPERATORS: Array<{ value: ConditionOperator; label: string }> = [
+    { value: 'equals', label: 'Equals' },
+    { value: 'not_equals', label: 'Not Equals' },
+    { value: 'contains', label: 'Contains' },
+    { value: 'not_contains', label: 'Does Not Contain' },
+];
+
+type ConditionFieldRefOption = {
+    key: string;
+    formId: string;
+    fieldId: number;
+    label: string;
+    formName: string;
+};
 
 export const FormManager: React.FC<{ selectedCompetition?: Competition | null, onCompetitionUpdate?: () => void }> = ({ selectedCompetition, onCompetitionUpdate }) => {
     const { isAdmin } = useAuth();
@@ -351,6 +373,287 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
         setDragOverIndex(null);
     };
 
+    const formsForConditions: Form[] = forms.map((form) => {
+        if (form.id !== selectedForm?.id) return form;
+        return {
+            ...form,
+            name: formName || form.name,
+            fields: formFields,
+        };
+    });
+
+    const getConditionFieldOptions = (targetFieldId: number): ConditionFieldRefOption[] => {
+        const options: ConditionFieldRefOption[] = [];
+
+        for (const form of formsForConditions) {
+            for (const candidate of form.fields) {
+                if (form.id === selectedForm?.id && candidate.id === targetFieldId) continue;
+                options.push({
+                    key: `${form.id}::${candidate.id}`,
+                    formId: form.id,
+                    fieldId: candidate.id,
+                    formName: form.name || 'Untitled Form',
+                    label: candidate.label || `Field ${candidate.id}`,
+                });
+            }
+        }
+
+        return options;
+    };
+
+    const updateConditionTree = (
+        root: FormCondition,
+        path: number[],
+        updater: (node: FormCondition) => FormCondition,
+    ): FormCondition => {
+        if (path.length === 0) return updater(root);
+        if (root.type !== 'group') return root;
+
+        const [index, ...rest] = path;
+        if (index < 0 || index >= root.conditions.length) return root;
+
+        return {
+            ...root,
+            conditions: root.conditions.map((child, childIndex) => {
+                if (childIndex !== index) return child;
+                return updateConditionTree(child, rest, updater);
+            }),
+        };
+    };
+
+    const removeConditionAtPath = (root: FormCondition, path: number[]): FormCondition | undefined => {
+        if (path.length === 0) return undefined;
+        if (root.type !== 'group') return root;
+
+        const [index, ...rest] = path;
+        if (index < 0 || index >= root.conditions.length) return root;
+
+        if (rest.length === 0) {
+            const nextConditions = root.conditions.filter((_, i) => i !== index);
+            if (nextConditions.length === 0) return undefined;
+            return {
+                ...root,
+                conditions: nextConditions,
+            };
+        }
+
+        const nextChild = removeConditionAtPath(root.conditions[index], rest);
+        if (!nextChild) {
+            const nextConditions = root.conditions.filter((_, i) => i !== index);
+            if (nextConditions.length === 0) return undefined;
+            return {
+                ...root,
+                conditions: nextConditions,
+            };
+        }
+
+        return {
+            ...root,
+            conditions: root.conditions.map((child, i) => (i === index ? nextChild : child)),
+        };
+    };
+
+    const renderConditionEditor = (
+        targetField: FormFieldType,
+        node: FormCondition,
+        path: number[],
+        options: ConditionFieldRefOption[],
+    ): React.ReactNode => {
+        if (node.type === 'group') {
+            return (
+                <div className="space-y-3 rounded border border-gray-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-medium text-gray-600">Join conditions with</span>
+                        <select
+                            value={node.combinator}
+                            onChange={(e) => {
+                                const nextCombinator: 'and' | 'or' = e.target.value === 'or' ? 'or' : 'and';
+                                const root = normalizeCondition(targetField.condition, selectedForm?.id || '') || node;
+                                const nextRoot = updateConditionTree(root, path, (current) => {
+                                    if (current.type !== 'group') return current;
+                                    return {
+                                        ...current,
+                                        combinator: nextCombinator,
+                                    };
+                                });
+                                updateField(targetField.id, { condition: nextRoot });
+                            }}
+                            className="px-2 py-1 text-sm border border-gray-300 rounded"
+                        >
+                            <option value="and">AND</option>
+                            <option value="or">OR</option>
+                        </select>
+                    </div>
+
+                    <div className="space-y-3">
+                        {node.conditions.map((child, index) => (
+                            <div key={`${path.join('-')}-${index}`} className="rounded border border-gray-100 bg-gray-50 p-2">
+                                <div className="mb-2 flex items-center justify-between">
+                                    <span className="text-[11px] uppercase tracking-wide text-gray-500">
+                                        {child.type === 'group' ? 'Condition Group' : 'Condition'}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const root = normalizeCondition(targetField.condition, selectedForm?.id || '');
+                                            if (!root) return;
+                                            updateField(targetField.id, { condition: removeConditionAtPath(root, [...path, index]) });
+                                        }}
+                                        className="text-xs text-red-600 hover:text-red-700"
+                                    >
+                                        Remove
+                                    </button>
+                                </div>
+                                {renderConditionEditor(targetField, child, [...path, index], options)}
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const first = options[0];
+                                if (!first) return;
+                                const root = normalizeCondition(targetField.condition, selectedForm?.id || '') || node;
+                                const nextRoot = updateConditionTree(root, path, (current) => {
+                                    if (current.type !== 'group') return current;
+                                    const nextRule: ConditionRule = {
+                                        type: 'rule',
+                                        formId: first.formId,
+                                        fieldId: first.fieldId,
+                                        operator: 'equals',
+                                        value: '',
+                                    };
+                                    return {
+                                        ...current,
+                                        conditions: [...current.conditions, nextRule],
+                                    };
+                                });
+                                updateField(targetField.id, { condition: nextRoot });
+                            }}
+                            className="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-100 rounded hover:bg-blue-200"
+                        >
+                            + Add Condition
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const first = options[0];
+                                if (!first) return;
+                                const root = normalizeCondition(targetField.condition, selectedForm?.id || '') || node;
+                                const nextRoot = updateConditionTree(root, path, (current) => {
+                                    if (current.type !== 'group') return current;
+                                    const nextGroup: ConditionGroup = {
+                                        type: 'group',
+                                        combinator: 'and',
+                                        conditions: [{
+                                            type: 'rule',
+                                            formId: first.formId,
+                                            fieldId: first.fieldId,
+                                            operator: 'equals',
+                                            value: '',
+                                        }],
+                                    };
+                                    return {
+                                        ...current,
+                                        conditions: [...current.conditions, nextGroup],
+                                    };
+                                });
+                                updateField(targetField.id, { condition: nextRoot });
+                            }}
+                            className="px-2 py-1 text-xs font-medium text-indigo-700 bg-indigo-100 rounded hover:bg-indigo-200"
+                        >
+                            + Add Group
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        const rule = node as ConditionRule;
+        const selectedRef = `${rule.formId || selectedForm?.id || ''}::${rule.fieldId}`;
+
+        return (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Question</label>
+                    <select
+                        value={selectedRef}
+                        onChange={(e) => {
+                            const [formId, fieldIdRaw] = e.target.value.split('::');
+                            const nextFieldId = Number(fieldIdRaw);
+                            const root = normalizeCondition(targetField.condition, selectedForm?.id || '') || node;
+                            const nextRoot = updateConditionTree(root, path, (current) => {
+                                if (current.type === 'group') return current;
+                                return {
+                                    ...current,
+                                    formId,
+                                    fieldId: nextFieldId,
+                                };
+                            });
+                            updateField(targetField.id, { condition: nextRoot });
+                        }}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                    >
+                        {options.map((option) => (
+                            <option key={option.key} value={option.key}>
+                                [{option.formName}] {option.label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
+                <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Condition</label>
+                    <select
+                        value={rule.operator}
+                        onChange={(e) => {
+                            const nextOperator = e.target.value as ConditionOperator;
+                            const root = normalizeCondition(targetField.condition, selectedForm?.id || '') || node;
+                            const nextRoot = updateConditionTree(root, path, (current) => {
+                                if (current.type === 'group') return current;
+                                return {
+                                    ...current,
+                                    operator: nextOperator,
+                                };
+                            });
+                            updateField(targetField.id, { condition: nextRoot });
+                        }}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                    >
+                        {CONDITION_OPERATORS.map((operatorOption) => (
+                            <option key={operatorOption.value} value={operatorOption.value}>
+                                {operatorOption.label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
+                <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Value</label>
+                    <input
+                        type="text"
+                        value={rule.value}
+                        onChange={(e) => {
+                            const root = normalizeCondition(targetField.condition, selectedForm?.id || '') || node;
+                            const nextRoot = updateConditionTree(root, path, (current) => {
+                                if (current.type === 'group') return current;
+                                return {
+                                    ...current,
+                                    value: e.target.value,
+                                };
+                            });
+                            updateField(targetField.id, { condition: nextRoot });
+                        }}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                        placeholder="Enter value"
+                    />
+                </div>
+            </div>
+        );
+    };
+
     if (!selectedCompetition) {
         return <div className="p-10 text-center text-gray-400">No active competition selected</div>;
     }
@@ -685,18 +988,28 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
                                     <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                                         <h4 className="text-sm font-medium text-gray-700 mb-3">Conditional Logic</h4>
                                         <div className="space-y-3">
+                                            {(() => {
+                                                const options = getConditionFieldOptions(field.id);
+                                                const normalizedCondition = normalizeCondition(field.condition, selectedForm?.id || '');
+
+                                                return (
+                                                    <>
                                             <div className="flex items-center gap-2">
                                                 <input
                                                     type="checkbox"
                                                     checked={!!field.condition}
                                                     onChange={(e) => {
                                                         if (e.target.checked) {
+                                                            const first = options[0];
+                                                            if (!first) {
+                                                                alert('Add another question (in this or another form) before enabling conditions.');
+                                                                return;
+                                                            }
                                                             updateField(field.id, {
-                                                                condition: {
-                                                                    fieldId: formFields[0]?.id || 0,
-                                                                    operator: 'equals',
-                                                                    value: ''
-                                                                }
+                                                                condition: createDefaultCondition({
+                                                                    formId: first.formId,
+                                                                    fieldId: first.fieldId,
+                                                                }),
                                                             });
                                                         } else {
                                                             updateField(field.id, { condition: undefined });
@@ -707,64 +1020,29 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
                                                 <span className="text-sm text-gray-700">Show this field only when...</span>
                                             </div>
 
-                                            {field.condition && (
-                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                                    <div>
-                                                        <label className="block text-xs font-medium text-gray-600 mb-1">Field</label>
-                                                        <select
-                                                            value={field.condition.fieldId}
-                                                            onChange={(e) => updateField(field.id, {
-                                                                condition: {
-                                                                    ...field.condition!,
-                                                                    fieldId: Number(e.target.value)
-                                                                }
-                                                            })}
-                                                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
-                                                        >
-                                                            {formFields
-                                                                .filter(f => f.id !== field.id)
-                                                                .map(otherField => (
-                                                                    <option key={otherField.id} value={otherField.id}>
-                                                                        {otherField.label || `Field ${otherField.id}`}
-                                                                    </option>
-                                                                ))}
-                                                        </select>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-medium text-gray-600 mb-1">Condition</label>
-                                                        <select
-                                                            value={field.condition.operator}
-                                                            onChange={(e) => updateField(field.id, {
-                                                                condition: {
-                                                                    ...field.condition!,
-                                                                    operator: e.target.value as any
-                                                                }
-                                                            })}
-                                                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
-                                                        >
-                                                            <option value="equals">Equals</option>
-                                                            <option value="not_equals">Not Equals</option>
-                                                            <option value="contains">Contains</option>
-                                                            <option value="not_contains">Does Not Contain</option>
-                                                        </select>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-medium text-gray-600 mb-1">Value</label>
-                                                        <input
-                                                            type="text"
-                                                            value={field.condition.value}
-                                                            onChange={(e) => updateField(field.id, {
-                                                                condition: {
-                                                                    ...field.condition!,
-                                                                    value: e.target.value
-                                                                }
-                                                            })}
-                                                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
-                                                            placeholder="Enter value"
-                                                        />
-                                                    </div>
-                                                </div>
+                                            {field.condition && normalizedCondition && (
+                                                <>
+                                                    <p className="text-xs text-gray-500">
+                                                        You can combine rules with AND/OR and nest groups (example: ((A AND B) OR C)).
+                                                    </p>
+                                                    {renderConditionEditor(field, normalizedCondition, [], options)}
+                                                </>
                                             )}
+
+                                            {field.condition && !normalizedCondition && (
+                                                <p className="text-xs text-red-600">
+                                                    This condition is invalid. Toggle Conditional Logic off and back on to reset it.
+                                                </p>
+                                            )}
+
+                                            {options.length === 0 && (
+                                                <p className="text-xs text-amber-700">
+                                                    No other questions are available yet. Add at least one additional question to build conditions.
+                                                </p>
+                                            )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>

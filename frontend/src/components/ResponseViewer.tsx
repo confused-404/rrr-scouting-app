@@ -7,6 +7,7 @@ import { FormField } from './FormField';
 import { Filter, X, Download, Edit2, Save, AlertTriangle, ChevronLeft } from 'lucide-react';
 import { isPictureFieldValue, submissionValueToText } from '../utils/formValues';
 import { ImageLightbox } from './ImageLightbox';
+import { evaluateCondition } from '../utils/formConditions';
 
 type ExpandedImageState = {
   url: string;
@@ -22,29 +23,25 @@ const toNumber = (v: unknown) =>
 
 // ─── tiny helpers ────────────────────────────────────────────────────────────
 
-const shouldShowField = (field: FormFieldType, data: Record<string, unknown>): boolean => {
-  if (!field.condition) return true;
-  const { fieldId, operator, value } = field.condition;
-  const depVal = data[String(fieldId)];
-  if (depVal === undefined || depVal === null || depVal === '') return false;
-  switch (operator) {
-    case 'equals': return depVal === value;
-    case 'not_equals': return depVal !== value;
-    case 'contains':
-      return Array.isArray(depVal) ? depVal.includes(value) : String(depVal).includes(String(value));
-    case 'not_contains':
-      return Array.isArray(depVal) ? !depVal.includes(value) : !String(depVal).includes(String(value));
-    default: return true;
-  }
+const shouldShowField = (field: FormFieldType, data: Record<string, unknown>, currentFormId: string): boolean => {
+  return evaluateCondition(
+    field.condition,
+    ({ formId, fieldId }) => {
+      if (formId && formId !== currentFormId) return undefined;
+      return data[String(fieldId)];
+    },
+    currentFormId,
+  );
 };
 
 const validateData = (
   fields: FormFieldType[],
   data: Record<string, unknown>,
+  currentFormId: string,
 ): FieldErrors => {
   const errs: FieldErrors = {};
   for (const field of fields) {
-    if (!shouldShowField(field, data)) continue;
+    if (!shouldShowField(field, data, currentFormId)) continue;
     if (!field.required) continue;
     const key = String(field.id);
     const value = data[key];
@@ -115,7 +112,7 @@ const EditModal: React.FC<EditModalProps> = ({
     let changed = false;
     const next = { ...draft };
     for (const field of form.fields) {
-      if (!shouldShowField(field, draft)) {
+      if (!shouldShowField(field, draft, form.id)) {
         const key = String(field.id);
         if (next[key] !== undefined) {
           delete next[key];
@@ -144,7 +141,7 @@ const EditModal: React.FC<EditModalProps> = ({
   };
 
   const handleSave = async () => {
-    const errs = validateData(form.fields, draft);
+    const errs = validateData(form.fields, draft, form.id);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       scrollToField(Number(Object.keys(errs)[0]));
@@ -180,7 +177,7 @@ const EditModal: React.FC<EditModalProps> = ({
     }
   };
 
-  const visibleFields = form.fields.filter(f => shouldShowField(f, draft));
+  const visibleFields = form.fields.filter(f => shouldShowField(f, draft, form.id));
 
   return (
     // Backdrop

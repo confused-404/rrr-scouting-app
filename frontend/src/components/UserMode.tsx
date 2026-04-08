@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Layout, Clock, Image as ImageIcon } from 'lucide-react';
-import type { FormField as FormFieldType } from '../types/form.types';
+import type { FormField as FormFieldType, Form, Submission } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { FormField } from './FormField';
 import { formApi } from '../services/api';
@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { TeamLookup } from './TeamLookup';
 import { MatchSchedule } from './MatchSchedule';
 import { ScoutingScheduleViewer } from './ScoutingScheduleViewer';
+import { evaluateCondition } from '../utils/formConditions';
 
 interface UserModeProps {
   selectedCompetition: Competition | null;
@@ -25,14 +26,33 @@ const isUserTab = (value: unknown): value is UserTab => (
   || value === 'pitMap'
 );
 
+const teamFieldRegex = /team|team number|team #/i;
+
+const normalizeTeamNumber = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  if (text.toLowerCase().startsWith('frc')) return text.slice(3).trim() || null;
+  const digits = text.match(/\d+/)?.[0];
+  return digits || null;
+};
+
+const resolveTeamFieldId = (form: Form): number | null => {
+  if (typeof form.teamNumberFieldId === 'number') return form.teamNumberFieldId;
+  return form.fields.find((field) => teamFieldRegex.test(field.label))?.id ?? null;
+};
+
 type FieldErrors = Record<number, string>;
 
 export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   const { scouterName } = useAuth();
   const [formFields, setFormFields] = useState<FormFieldType[]>([]);
   const [forms, setForms] = useState<{ id: string; name: string }[]>([]);
+  const [competitionForms, setCompetitionForms] = useState<Form[]>([]);
+  const [currentForm, setCurrentForm] = useState<Form | null>(null);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, any>>({});
+  const [crossFormValues, setCrossFormValues] = useState<Record<string, unknown>>({});
   const [currentFormId, setCurrentFormId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchingForm, setFetchingForm] = useState(true);
@@ -83,10 +103,8 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
         .filter(Boolean) as typeof loaded;
 
       const formsToShow = activeForms.length > 0 ? activeForms : loaded;
-      console.log('loaded:', loaded);
-      console.log('activeForms:', activeForms);
-      console.log('formsToShow:', formsToShow);
-      setForms(formsToShow);
+      setCompetitionForms(loaded);
+      setForms(formsToShow.map((form) => ({ id: form.id, name: form.name })));
 
       const defaultId = formsToShow[0]?.id ?? null;
       setSelectedFormId(defaultId);
@@ -102,6 +120,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     const loadFields = async () => {
       if (!selectedFormId) {
         setFormFields([]);
+        setCurrentForm(null);
         setCurrentFormId(null);
         setFetchingForm(false);
         return;
@@ -111,12 +130,14 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
       try {
         const form = await formApi.getForm(selectedFormId);
         setFormFields(form.fields || []);
+        setCurrentForm(form);
         setCurrentFormId(selectedFormId);
         // clear out any previous responses/errors when switching forms
         setResponses({});
         setErrors({});
       } catch (err) {
         console.error('Error loading form fields:', err);
+        setCurrentForm(null);
       } finally {
         setFetchingForm(false);
       }
@@ -124,6 +145,58 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
 
     loadFields();
   }, [selectedFormId]);
+
+  const currentTeamKey = useMemo(() => {
+    if (!currentForm) return null;
+    const teamFieldId = resolveTeamFieldId(currentForm);
+    if (teamFieldId === null) return null;
+    return normalizeTeamNumber(responses[String(teamFieldId)]);
+  }, [currentForm, responses]);
+
+  useEffect(() => {
+    if (!selectedCompetition || !currentTeamKey || competitionForms.length === 0) {
+      setCrossFormValues({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCrossFormValues = async () => {
+      try {
+        const values: Record<string, unknown> = {};
+
+        for (const form of competitionForms) {
+          const teamFieldId = resolveTeamFieldId(form);
+          if (teamFieldId === null) continue;
+
+          const submissions = await formApi.getSubmissions(form.id);
+          const matching = submissions
+            .filter((submission: Submission) => (
+              normalizeTeamNumber(submission.data?.[String(teamFieldId)]) === currentTeamKey
+            ))
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+          const latest = matching[0];
+          if (!latest) continue;
+
+          Object.entries(latest.data || {}).forEach(([fieldId, value]) => {
+            values[`${form.id}:${fieldId}`] = value;
+          });
+        }
+
+        if (!cancelled) setCrossFormValues(values);
+      } catch (error) {
+        console.error('Error loading cross-form conditional context:', error);
+        if (!cancelled) setCrossFormValues({});
+      }
+    };
+
+    loadCrossFormValues();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompetition?.id, competitionForms, currentTeamKey]);
 
   // Clear responses for fields that become hidden due to condition changes
   useEffect(() => {
@@ -246,33 +319,23 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   };
 
   const shouldShowField = (field: FormFieldType): boolean => {
-    if (!field.condition) return true;
+    return evaluateCondition(
+      field.condition,
+      ({ formId, fieldId }) => {
+        const resolvedFormId = formId || currentFormId || '';
+        const key = `${resolvedFormId}:${fieldId}`;
 
-    const { fieldId, operator, value } = field.condition;
-    const dependentValue = responses[String(fieldId)];
-
-    if (dependentValue === undefined || dependentValue === null || dependentValue === '') {
-      return false;
-    }
-
-    switch (operator) {
-      case 'equals':
-        return dependentValue === value;
-      case 'not_equals':
-        return dependentValue !== value;
-      case 'contains':
-        if (Array.isArray(dependentValue)) {
-          return dependentValue.includes(value);
+        if (currentFormId && resolvedFormId === currentFormId) {
+          const localKey = String(fieldId);
+          if (Object.prototype.hasOwnProperty.call(responses, localKey)) {
+            return responses[localKey];
+          }
         }
-        return String(dependentValue).includes(String(value));
-      case 'not_contains':
-        if (Array.isArray(dependentValue)) {
-          return !dependentValue.includes(value);
-        }
-        return !String(dependentValue).includes(String(value));
-      default:
-        return true;
-    }
+
+        return crossFormValues[key];
+      },
+      currentFormId || '',
+    );
   };
 
   const handleSubmit = async () => {

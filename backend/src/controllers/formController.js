@@ -37,16 +37,57 @@ const sanitizeOptions = (field) => {
   return Array.from(new Set(options));
 };
 
-const sanitizeCondition = (condition, fieldIds, currentFieldId) => {
+const sanitizeCondition = (condition, context) => {
   if (!condition) return undefined;
 
-  const fieldId = Number(condition.fieldId);
-  if (!Number.isInteger(fieldId) || !fieldIds.has(fieldId)) {
-    throw createValidationError('Conditional logic must target a valid field.');
+  if (condition.type === 'group') {
+    const combinator = condition.combinator === 'or' ? 'or' : 'and';
+    const rawConditions = Array.isArray(condition.conditions) ? condition.conditions : [];
+    if (rawConditions.length === 0) {
+      throw createValidationError('Conditional logic groups must contain at least one condition.');
+    }
+
+    const sanitizedChildren = rawConditions
+      .map((child) => sanitizeCondition(child, context))
+      .filter(Boolean);
+
+    if (sanitizedChildren.length === 0) {
+      throw createValidationError('Conditional logic groups must contain valid child conditions.');
+    }
+
+    return {
+      type: 'group',
+      combinator,
+      conditions: sanitizedChildren,
+    };
   }
 
-  if (fieldId === currentFieldId) {
+  const fieldId = Number(condition.fieldId);
+  const resolvedFormId = normalizeString(condition.formId) || context.currentFormId;
+
+  if (!Number.isInteger(fieldId)) {
+    throw createValidationError('Conditional logic must target a valid field ID.');
+  }
+
+  const referencesCurrentForm = resolvedFormId === context.currentFormId;
+
+  if (referencesCurrentForm && fieldId === context.currentFieldId) {
     throw createValidationError('A field cannot depend on itself.');
+  }
+
+  if (referencesCurrentForm) {
+    if (!context.currentFormFieldIds.has(fieldId)) {
+      throw createValidationError('Conditional logic must target a valid field in this form.');
+    }
+  } else {
+    const referencedForm = context.formsById.get(resolvedFormId);
+    if (!referencedForm) {
+      throw createValidationError('Conditional logic references an unknown form.');
+    }
+    const referencedFieldIds = new Set((referencedForm.fields || []).map((field) => Number(field.id)));
+    if (!referencedFieldIds.has(fieldId)) {
+      throw createValidationError('Conditional logic references an unknown field in another form.');
+    }
   }
 
   if (!VALID_CONDITION_OPERATORS.has(condition.operator)) {
@@ -54,13 +95,18 @@ const sanitizeCondition = (condition, fieldIds, currentFieldId) => {
   }
 
   return {
+    type: 'rule',
+    formId: resolvedFormId,
     fieldId,
     operator: condition.operator,
     value: condition.value,
   };
 };
 
-const sanitizeFields = (fields) => {
+const sanitizeFields = (fields, options = {}) => {
+  const currentFormId = options.currentFormId || '__current__';
+  const formsById = options.formsById || new Map();
+
   if (!Array.isArray(fields)) {
     throw createValidationError('Fields array is required.');
   }
@@ -117,7 +163,12 @@ const sanitizeFields = (fields) => {
       sanitizedField.options = sanitizeOptions(field);
     }
 
-    const condition = sanitizeCondition(field.condition, fieldIds, id);
+    const condition = sanitizeCondition(field.condition, {
+      currentFormId,
+      currentFieldId: id,
+      currentFormFieldIds: fieldIds,
+      formsById,
+    });
     if (condition) {
       sanitizedField.condition = condition;
     }
@@ -126,32 +177,53 @@ const sanitizeFields = (fields) => {
   });
 };
 
-const shouldIncludeField = (field, values) => {
-  if (!field.condition) return true;
+const evaluateConditionForSubmission = (condition, values, currentFormId) => {
+  if (!condition) return true;
 
-  const dependentValue = values[String(field.condition.fieldId)];
+  if (condition.type === 'group') {
+    const children = Array.isArray(condition.conditions) ? condition.conditions : [];
+    if (children.length === 0) return true;
+
+    if (condition.combinator === 'or') {
+      return children.some((child) => evaluateConditionForSubmission(child, values, currentFormId));
+    }
+    return children.every((child) => evaluateConditionForSubmission(child, values, currentFormId));
+  }
+
+  const referencedFormId = normalizeString(condition.formId) || currentFormId;
+  if (referencedFormId !== currentFormId) {
+    // Submission payload only contains data for one form.
+    return false;
+  }
+
+  const dependentValue = values[String(condition.fieldId)];
   if (dependentValue === undefined || dependentValue === null || dependentValue === '') {
     return false;
   }
 
-  switch (field.condition.operator) {
+  switch (condition.operator) {
     case 'equals':
-      return dependentValue === field.condition.value;
+      return dependentValue === condition.value;
     case 'not_equals':
-      return dependentValue !== field.condition.value;
+      return dependentValue !== condition.value;
     case 'contains':
       if (Array.isArray(dependentValue)) {
-        return dependentValue.includes(field.condition.value);
+        return dependentValue.includes(condition.value);
       }
-      return String(dependentValue).includes(String(field.condition.value));
+      return String(dependentValue).includes(String(condition.value));
     case 'not_contains':
       if (Array.isArray(dependentValue)) {
-        return !dependentValue.includes(field.condition.value);
+        return !dependentValue.includes(condition.value);
       }
-      return !String(dependentValue).includes(String(field.condition.value));
+      return !String(dependentValue).includes(String(condition.value));
     default:
       return true;
   }
+};
+
+const shouldIncludeField = (field, values, currentFormId) => {
+  if (!field.condition) return true;
+  return evaluateConditionForSubmission(field.condition, values, currentFormId);
 };
 
 const sanitizePictureValue = (value) => {
@@ -202,10 +274,13 @@ const sanitizeSubmissionData = (form, payload) => {
   const sanitized = {};
 
   for (const field of form.fields || []) {
-    if (!shouldIncludeField(field, payload)) continue;
-
     const key = String(field.id);
     const rawValue = payload[key];
+
+    if (!shouldIncludeField(field, payload, form.id)) {
+      const hasValue = !(rawValue === '' || rawValue === null || rawValue === undefined || (Array.isArray(rawValue) && rawValue.length === 0));
+      if (!hasValue) continue;
+    }
 
     switch (field.type) {
       case 'text': {
@@ -362,7 +437,12 @@ export const formController = {
         return res.status(400).json({ message: 'Competition ID is required' });
       }
 
-      const sanitizedFields = sanitizeFields(fields);
+      const competitionForms = await formModel.getFormsByCompetition(competitionId);
+      const formsById = new Map(competitionForms.map((form) => [form.id, form]));
+      const sanitizedFields = sanitizeFields(fields, {
+        currentFormId: '__current__',
+        formsById,
+      });
 
       const newForm = await formModel.createForm({
         fields: sanitizedFields,
@@ -390,8 +470,22 @@ export const formController = {
   updateForm: async (req, res) => {
     try {
       const { fields, name } = req.body;
+      const existingForm = await formModel.getFormById(req.params.id);
+      if (!existingForm) {
+        return res.status(404).json({ message: 'Form not found' });
+      }
 
-      const sanitizedFields = sanitizeFields(fields);
+      const competitionForms = await formModel.getFormsByCompetition(existingForm.competitionId);
+      const formsById = new Map(
+        competitionForms
+          .filter((form) => form.id !== req.params.id)
+          .map((form) => [form.id, form])
+      );
+
+      const sanitizedFields = sanitizeFields(fields, {
+        currentFormId: req.params.id,
+        formsById,
+      });
 
       const updateData = { fields: sanitizedFields };
       if (name !== undefined) {
@@ -399,10 +493,6 @@ export const formController = {
       }
 
       const updatedForm = await formModel.updateForm(req.params.id, updateData);
-
-      if (!updatedForm) {
-        return res.status(404).json({ message: 'Form not found' });
-      }
 
       res.json(updatedForm);
     } catch (error) {
