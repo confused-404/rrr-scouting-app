@@ -63,7 +63,8 @@ const sanitizeCondition = (condition, context) => {
   }
 
   const fieldId = Number(condition.fieldId);
-  const resolvedFormId = normalizeString(condition.formId) || context.currentFormId;
+  const rawFormId = normalizeString(condition.formId);
+  const resolvedFormId = (!rawFormId || rawFormId === '__current__') ? context.currentFormId : rawFormId;
 
   if (!Number.isInteger(fieldId)) {
     throw createValidationError('Conditional logic must target a valid field ID.');
@@ -94,13 +95,18 @@ const sanitizeCondition = (condition, context) => {
     throw createValidationError('Conditional logic operator is invalid.');
   }
 
-  return {
+  const sanitizedRule = {
     type: 'rule',
-    formId: resolvedFormId,
     fieldId,
     operator: condition.operator,
     value: condition.value,
   };
+
+  if (!referencesCurrentForm) {
+    sanitizedRule.formId = resolvedFormId;
+  }
+
+  return sanitizedRule;
 };
 
 const sanitizeFields = (fields, options = {}) => {
@@ -190,7 +196,8 @@ const evaluateConditionForSubmission = (condition, values, currentFormId) => {
     return children.every((child) => evaluateConditionForSubmission(child, values, currentFormId));
   }
 
-  const referencedFormId = normalizeString(condition.formId) || currentFormId;
+  const rawFormId = normalizeString(condition.formId);
+  const referencedFormId = (!rawFormId || rawFormId === '__current__') ? currentFormId : rawFormId;
   if (referencedFormId !== currentFormId) {
     // Submission payload only contains data for one form.
     return false;
