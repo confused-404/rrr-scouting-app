@@ -27,7 +27,7 @@ const shouldShowField = (field: FormFieldType, data: Record<string, unknown>, cu
   return evaluateCondition(
     field.condition,
     ({ formId, fieldId }) => {
-      if (formId && formId !== currentFormId) return undefined;
+      if (formId && formId !== '__current__' && formId !== currentFormId) return undefined;
       return data[String(fieldId)];
     },
     currentFormId,

@@ -166,6 +166,8 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
         const values: Record<string, unknown> = {};
 
         for (const form of competitionForms) {
+          if (form.id === currentFormId) continue;
+
           const teamFieldId = resolveTeamFieldId(form);
           if (teamFieldId === null) continue;
 
@@ -322,16 +324,17 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     return evaluateCondition(
       field.condition,
       ({ formId, fieldId }) => {
-        const resolvedFormId = formId || currentFormId || '';
-        const key = `${resolvedFormId}:${fieldId}`;
+        const resolvedFormId = (!formId || formId === '__current__') ? (currentFormId || '') : formId;
 
         if (currentFormId && resolvedFormId === currentFormId) {
           const localKey = String(fieldId);
           if (Object.prototype.hasOwnProperty.call(responses, localKey)) {
             return responses[localKey];
           }
+          return undefined;
         }
 
+        const key = `${resolvedFormId}:${fieldId}`;
         return crossFormValues[key];
       },
       currentFormId || '',

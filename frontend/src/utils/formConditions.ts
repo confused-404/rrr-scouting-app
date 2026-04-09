@@ -78,21 +78,24 @@ const evaluateRule = (
     return false;
   }
 
+  const asTrimmed = (value: unknown) => String(value ?? '').trim();
+  const scalarEquals = (left: unknown, right: unknown) => asTrimmed(left) === asTrimmed(right);
+
   switch (rule.operator) {
     case 'equals':
-      return dependentValue === rule.value;
+      return scalarEquals(dependentValue, rule.value);
     case 'not_equals':
-      return dependentValue !== rule.value;
+      return !scalarEquals(dependentValue, rule.value);
     case 'contains':
       if (Array.isArray(dependentValue)) {
-        return dependentValue.includes(rule.value);
+        return dependentValue.map((entry) => asTrimmed(entry)).includes(asTrimmed(rule.value));
       }
-      return String(dependentValue).includes(String(rule.value));
+      return asTrimmed(dependentValue).includes(asTrimmed(rule.value));
     case 'not_contains':
       if (Array.isArray(dependentValue)) {
-        return !dependentValue.includes(rule.value);
+        return !dependentValue.map((entry) => asTrimmed(entry)).includes(asTrimmed(rule.value));
       }
-      return !String(dependentValue).includes(String(rule.value));
+      return !asTrimmed(dependentValue).includes(asTrimmed(rule.value));
     default:
       return true;
   }
