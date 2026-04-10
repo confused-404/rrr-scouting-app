@@ -244,6 +244,10 @@ export const formApi = {
     const response = await api.post('/forms', { ...form, competitionId });
     return response.data;
   },
+  copyForm: async (id: string, payload: { destinationCompetitionId: string; name?: string }): Promise<Form> => {
+    const response = await api.post(`/forms/${id}/copy`, payload);
+    return response.data;
+  },
   updateForm: async (id: string, form: { fields: FormField[]; name: string; teamNumberFieldId?: number | null }): Promise<Form> => {
     const response = await api.put(`/forms/${id}`, form);
     return response.data;

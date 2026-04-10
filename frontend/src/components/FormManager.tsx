@@ -33,12 +33,16 @@ type ConditionFieldRefOption = {
 export const FormManager: React.FC<{ selectedCompetition?: Competition | null, onCompetitionUpdate?: () => void }> = ({ selectedCompetition, onCompetitionUpdate }) => {
     const { isAdmin } = useAuth();
     const [forms, setForms] = useState<Form[]>([]);
+    const [availableCompetitions, setAvailableCompetitions] = useState<Competition[]>([]);
     const [selectedForm, setSelectedForm] = useState<Form | null>(null);
     const [formFields, setFormFields] = useState<FormFieldType[]>([]);
     const [formName, setFormName] = useState('');
     const [teamNumberFieldId, setTeamNumberFieldId] = useState<number | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [copying, setCopying] = useState(false);
+    const [copyDestinationCompetitionId, setCopyDestinationCompetitionId] = useState('');
+    const [copyFormName, setCopyFormName] = useState('');
 
     // For creation
     const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -56,6 +60,20 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedCompetition]);
+
+    useEffect(() => {
+        const loadCompetitions = async () => {
+            try {
+                const data = await competitionApi.getAll();
+                setAvailableCompetitions(Array.isArray(data) ? data : []);
+            } catch (error) {
+                console.error('Error loading competitions for form copy:', error);
+                setAvailableCompetitions([]);
+            }
+        };
+
+        loadCompetitions();
+    }, []);
 
     // Cleanup autoscroll on unmount
     useEffect(() => {
@@ -120,7 +138,47 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
             setFormFields([...form.fields]);
             setFormName(form.name);
             setTeamNumberFieldId(form.teamNumberFieldId ?? null);
+            setCopyDestinationCompetitionId(selectedCompetition?.id || '');
+            setCopyFormName(`Copy of ${form.name}`);
             setIsEditing(true);
+        }
+    };
+
+    const handleCopyForm = async () => {
+        if (!selectedForm) return;
+
+        if (!copyDestinationCompetitionId) {
+            alert('Choose a destination competition.');
+            return;
+        }
+
+        const nextName = copyFormName.trim();
+        if (!nextName) {
+            alert('Enter a name for the copied form.');
+            return;
+        }
+
+        setCopying(true);
+        try {
+            await formApi.copyForm(selectedForm.id, {
+                destinationCompetitionId: copyDestinationCompetitionId,
+                name: nextName,
+            });
+
+            if (copyDestinationCompetitionId === selectedCompetition?.id) {
+                await loadForms();
+            }
+
+            if (onCompetitionUpdate) {
+                onCompetitionUpdate();
+            }
+
+            alert('Form copied successfully.');
+        } catch (error) {
+            console.error('Error copying form:', error);
+            alert('Error copying form. If this form references questions in another form, make sure the destination competition has matching forms and questions.');
+        } finally {
+            setCopying(false);
         }
     };
 
@@ -794,6 +852,53 @@ export const FormManager: React.FC<{ selectedCompetition?: Competition | null, o
                                             </button>
                                         )}
                                     </p>
+                                </div>
+
+                                <div className="mt-6 max-w-2xl rounded-lg border border-gray-200 bg-gray-50 p-4">
+                                    <h4 className="text-sm font-semibold text-gray-800">Copy Form</h4>
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        Copies questions, options, team-number mapping, and conditional logic only. Submission entries are not copied.
+                                    </p>
+
+                                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Destination Competition</label>
+                                            <select
+                                                value={copyDestinationCompetitionId}
+                                                onChange={(e) => setCopyDestinationCompetitionId(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            >
+                                                <option value="">Select competition</option>
+                                                {availableCompetitions.map((competition) => (
+                                                    <option key={competition.id} value={competition.id}>
+                                                        {competition.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Copied Form Name</label>
+                                            <input
+                                                type="text"
+                                                value={copyFormName}
+                                                onChange={(e) => setCopyFormName(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                placeholder="Copy of form"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 flex justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={handleCopyForm}
+                                            disabled={copying || !selectedForm}
+                                            className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50"
+                                        >
+                                            {copying ? 'Copying...' : 'Copy Form'}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex gap-2">
