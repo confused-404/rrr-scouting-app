@@ -25,6 +25,8 @@ const createValidationError = (message) => {
 
 const normalizeString = (value) => String(value ?? '').trim();
 
+const toLookupKey = (value) => normalizeString(value).toLowerCase();
+
 const sanitizeOptions = (field) => {
   const options = Array.isArray(field.options)
     ? field.options.map((option) => normalizeString(option)).filter(Boolean)
@@ -180,6 +182,91 @@ const sanitizeFields = (fields, options = {}) => {
     }
 
     return sanitizedField;
+  });
+};
+
+const cloneConditionForCompetition = (condition, context) => {
+  if (!condition) return undefined;
+
+  if (condition.type === 'group') {
+    return {
+      type: 'group',
+      combinator: condition.combinator === 'or' ? 'or' : 'and',
+      conditions: (condition.conditions || [])
+        .map((child) => cloneConditionForCompetition(child, context))
+        .filter(Boolean),
+    };
+  }
+
+  const rawFormId = normalizeString(condition.formId);
+  const referencedFormId = rawFormId || context.sourceForm.id;
+
+  if (referencedFormId === context.sourceForm.id) {
+    return {
+      type: 'rule',
+      fieldId: Number(condition.fieldId),
+      operator: condition.operator,
+      value: condition.value,
+    };
+  }
+
+  const sourceReferencedForm = context.sourceFormsById.get(referencedFormId);
+  if (!sourceReferencedForm) {
+    throw createValidationError('Conditional logic references an unknown source form.');
+  }
+
+  const sourceReferencedField = (sourceReferencedForm.fields || []).find(
+    (field) => Number(field.id) === Number(condition.fieldId),
+  );
+  if (!sourceReferencedField) {
+    throw createValidationError(`Conditional logic references an unknown field in source form "${sourceReferencedForm.name || referencedFormId}".`);
+  }
+
+  const destinationReferencedForm = context.destinationFormsByName.get(toLookupKey(sourceReferencedForm.name));
+  if (!destinationReferencedForm) {
+    throw createValidationError(`Conditional logic references form "${sourceReferencedForm.name}" which does not exist in the destination competition.`);
+  }
+
+  const destinationReferencedField = (destinationReferencedForm.fields || []).find((field) => (
+    Number(field.id) === Number(sourceReferencedField.id)
+    || (
+      toLookupKey(field.label) === toLookupKey(sourceReferencedField.label)
+      && normalizeString(field.type) === normalizeString(sourceReferencedField.type)
+    )
+  ));
+
+  if (!destinationReferencedField) {
+    throw createValidationError(
+      `Conditional logic references "${sourceReferencedField.label}" in form "${sourceReferencedForm.name}", but no matching question exists in the destination competition.`,
+    );
+  }
+
+  return {
+    type: 'rule',
+    formId: destinationReferencedForm.id,
+    fieldId: Number(destinationReferencedField.id),
+    operator: condition.operator,
+    value: condition.value,
+  };
+};
+
+const cloneFieldsForCompetition = (fields, context) => {
+  return (fields || []).map((field) => {
+    const clonedField = {
+      ...field,
+      id: Number(field.id),
+      required: Boolean(field.required),
+    };
+
+    if (Array.isArray(field.options)) {
+      clonedField.options = [...field.options];
+    }
+
+    if (field.condition) {
+      clonedField.condition = cloneConditionForCompetition(field.condition, context);
+    }
+
+    return clonedField;
   });
 };
 
@@ -469,6 +556,61 @@ export const formController = {
       res.status(201).json(newForm);
     } catch (error) {
       console.error('Error in createForm:', error);
+      res.status(error.status || 500).json({ message: error.message });
+    }
+  },
+
+  copyForm: async (req, res) => {
+    try {
+      const sourceForm = await formModel.getFormById(req.params.id);
+      if (!sourceForm) {
+        return res.status(404).json({ message: 'Form not found' });
+      }
+
+      const destinationCompetitionId = normalizeString(req.body.destinationCompetitionId);
+      if (!destinationCompetitionId) {
+        return res.status(400).json({ message: 'Destination competition ID is required' });
+      }
+
+      const { competitionModel } = await import('../models/competitionModel.js');
+      const destinationCompetition = await competitionModel.getCompetitionById(destinationCompetitionId);
+      if (!destinationCompetition) {
+        return res.status(404).json({ message: 'Destination competition not found' });
+      }
+
+      const requestedName = normalizeString(req.body.name);
+      const sourceCompetitionForms = await formModel.getFormsByCompetition(sourceForm.competitionId);
+      const destinationCompetitionForms = await formModel.getFormsByCompetition(destinationCompetitionId);
+
+      const sourceFormsById = new Map(sourceCompetitionForms.map((form) => [form.id, form]));
+      const destinationFormsByName = new Map(
+        destinationCompetitionForms.map((form) => [toLookupKey(form.name), form]),
+      );
+
+      const clonedFields = cloneFieldsForCompetition(sourceForm.fields, {
+        sourceForm,
+        sourceFormsById,
+        destinationFormsByName,
+      });
+
+      const sanitizedFields = sanitizeFields(clonedFields, {
+        currentFormId: '__current__',
+        formsById: new Map(destinationCompetitionForms.map((form) => [form.id, form])),
+      });
+
+      const copiedForm = await formModel.createForm({
+        competitionId: destinationCompetitionId,
+        name: requestedName || sourceForm.name || 'Untitled Form',
+        fields: sanitizedFields,
+        teamNumberFieldId: sourceForm.teamNumberFieldId ?? null,
+      });
+
+      const updatedFormIds = [...(destinationCompetition.formIds || []), copiedForm.id];
+      await competitionModel.updateCompetition(destinationCompetitionId, { formIds: updatedFormIds });
+
+      res.status(201).json(copiedForm);
+    } catch (error) {
+      console.error('Error in copyForm:', error);
       res.status(error.status || 500).json({ message: error.message });
     }
   },

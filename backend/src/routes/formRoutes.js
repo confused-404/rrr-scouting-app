@@ -10,6 +10,7 @@ router.get('/', formController.getForms);
 router.get('/competition/:competitionId', formController.getFormsByCompetition);
 router.get('/:id', formController.getForm);
 router.post('/', verifyToken, formController.createForm);
+router.post('/:id/copy', verifyToken, formController.copyForm);
 router.put('/:id', verifyToken, formController.updateForm);
 router.delete('/:id', verifyToken, formController.deleteForm);
 
