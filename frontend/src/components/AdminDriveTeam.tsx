@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import type { Competition } from '../types/competition.types';
-import { competitionApi, tbaApi } from '../services/api';
+import { competitionApi, statboticsApi } from '../services/api';
 
 type AdminDriveTeamProps = {
   selectedCompetition: Competition | null;
@@ -56,14 +56,51 @@ export const AdminDriveTeam: React.FC<AdminDriveTeamProps> = ({ selectedCompetit
       setError('');
 
       try {
-        const data = await tbaApi.getEventTeams(selectedCompetition.eventKey);
-        const teamNumbers: string[] = Array.isArray(data)
-          ? data
-              .map((team) => normalizeTeamNumber((team as Record<string, unknown>).team_number ?? (team as Record<string, unknown>).key))
+        const roster = await statboticsApi.getEventTeams(selectedCompetition.eventKey);
+        const parseTeamNumber = (value: unknown): string => {
+          if (typeof value === 'string' || typeof value === 'number') {
+            return normalizeTeamNumber(value);
+          }
+
+          if (value && typeof value === 'object') {
+            const row = value as Record<string, unknown>;
+            return normalizeTeamNumber(row.team ?? row.team_number ?? row.key ?? row.teamKey ?? row.team_key);
+          }
+
+          return '';
+        };
+
+        const rosterTeams = Array.isArray(roster)
+          ? roster
+              .map(parseTeamNumber)
               .filter(Boolean)
           : [];
 
-        setTeams(Array.from(new Set(teamNumbers)).sort((a, b) => Number(a) - Number(b)));
+        const uniqueTeams = Array.from(new Set(rosterTeams)).sort((a, b) => Number(a) - Number(b));
+
+        if (uniqueTeams.length > 0) {
+          setTeams(uniqueTeams);
+        } else {
+          const matches = await statboticsApi.getEventMatches(selectedCompetition.eventKey);
+          const matchTeams = Array.isArray(matches)
+            ? Array.from(
+                new Set(
+                  matches.flatMap((match) => {
+                    if (!match || typeof match !== 'object') return [];
+                    const row = match as Record<string, unknown>;
+                    const alliances = row.alliances as Record<string, unknown> | undefined;
+                    const red = (row.red ?? alliances?.red ?? row.alliance_red ?? []) as unknown[];
+                    const blue = (row.blue ?? alliances?.blue ?? row.alliance_blue ?? []) as unknown[];
+                    return [
+                      ...Array.isArray(red) ? red.map(parseTeamNumber).filter(Boolean) : [],
+                      ...Array.isArray(blue) ? blue.map(parseTeamNumber).filter(Boolean) : [],
+                    ];
+                  })
+                )
+              ).sort((a, b) => Number(a) - Number(b))
+            : [];
+          setTeams(matchTeams);
+        }
       } catch {
         setError('Could not load teams for this event.');
         setTeams([]);

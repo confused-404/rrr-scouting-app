@@ -309,6 +309,11 @@ export const tbaApi = {
 export const statboticsApi = {
   normalizeEventKey: (eventKey: string) => eventKey.trim().toLowerCase(),
   normalizeTeam: (team: string) => team.trim().replace(/^frc/i, ''),
+  getEvent: async (event: string): Promise<unknown> => {
+    const normalizedEventKey = statboticsApi.normalizeEventKey(event);
+    const response = await api.get(`/statbotics/event/${normalizedEventKey}`);
+    return response.data;
+  },
   getEventMatches: async (eventKey: string): Promise<unknown[]> => {
     const normalizedEventKey = statboticsApi.normalizeEventKey(eventKey);
     const response = await api.get(`/statbotics/event/${normalizedEventKey}/matches`);
@@ -318,6 +323,11 @@ export const statboticsApi = {
     const normalizedTeam = statboticsApi.normalizeTeam(team);
     const normalizedEventKey = statboticsApi.normalizeEventKey(event);
     const response = await api.get(`/statbotics/team_event/${normalizedTeam}/${normalizedEventKey}`);
+    return response.data;
+  },
+  getEventTeams: async (event: string): Promise<unknown[]> => {
+    const normalizedEventKey = statboticsApi.normalizeEventKey(event);
+    const response = await api.get('/statbotics/team_events', { params: { event: normalizedEventKey, limit: 999 } });
     return response.data;
   },
   getTeamEvents: async (params?: { team?: string; year?: string; event?: string; limit?: number; offset?: number }): Promise<unknown[]> => {
