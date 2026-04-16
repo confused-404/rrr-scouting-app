@@ -128,8 +128,8 @@ function App() {
   useEffect(() => {
     if (isAdmin) return;
 
-    if (isDriveTeam && mode !== 'adminTeamMatches') {
-      appLogger.warn('Drive-team user attempted non-drive mode; reverting to drive team mode', {
+    if (isDriveTeam && mode !== 'adminTeamMatches' && mode !== 'user') {
+      appLogger.warn('Drive-team user attempted restricted mode; reverting to drive team mode', {
         uid: currentUser?.uid,
         mode,
       });
@@ -255,7 +255,6 @@ function App() {
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }`}
-                  hidden={isDriveTeam && !isAdmin}
                 >
                   <Eye size={16} />
                   Scout

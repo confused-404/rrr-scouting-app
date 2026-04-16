@@ -44,6 +44,7 @@ export const competitionModel = {
         driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
         robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
         pitMapImageUrl: data.pitMapImageUrl || '',
+        pitLocations: data.pitLocations || {},
         manualPickLists: data.manualPickLists || [],
       };
     });
@@ -73,6 +74,7 @@ export const competitionModel = {
         driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
         robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
         pitMapImageUrl: data.pitMapImageUrl || '',
+        pitLocations: data.pitLocations || {},
         manualPickLists: data.manualPickLists || [],
       };
     });
@@ -100,6 +102,7 @@ export const competitionModel = {
       driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
       robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
       pitMapImageUrl: data.pitMapImageUrl || '',
+      pitLocations: data.pitLocations || {},
       manualPickLists: data.manualPickLists || [],
     };
   },
@@ -120,6 +123,7 @@ export const competitionModel = {
       driveTeamStrategyByTeam: competitionData.driveTeamStrategyByTeam || {},
       robotBreakTimelineOverrides: competitionData.robotBreakTimelineOverrides || {},
       pitMapImageUrl: competitionData.pitMapImageUrl || '',
+      pitLocations: competitionData.pitLocations || {},
       manualPickLists: competitionData.manualPickLists || [],
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -143,6 +147,7 @@ export const competitionModel = {
       driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
       robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
       pitMapImageUrl: data.pitMapImageUrl || '',
+      pitLocations: data.pitLocations || {},
       manualPickLists: data.manualPickLists || [],
     };
   },
@@ -189,9 +194,7 @@ export const competitionModel = {
     if (competitionData.driveTeamStrategyByTeam !== undefined) updateData.driveTeamStrategyByTeam = competitionData.driveTeamStrategyByTeam;
     if (competitionData.robotBreakTimelineOverrides !== undefined) updateData.robotBreakTimelineOverrides = competitionData.robotBreakTimelineOverrides;
     if (competitionData.pitMapImageUrl !== undefined) updateData.pitMapImageUrl = competitionData.pitMapImageUrl;
-    if (competitionData.manualPickLists !== undefined) updateData.manualPickLists = competitionData.manualPickLists;
-    
-    // console.log('Updating competition with:', updateData); // Debug log
+    if (competitionData.pitLocations !== undefined) updateData.pitLocations = competitionData.pitLocations;
     
     await docRef.update(updateData);
     

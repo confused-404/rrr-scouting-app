@@ -150,6 +150,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
   const [teamDetails, setTeamDetails] = useState<Record<string, { loading: boolean; error: string; data: Record<string, unknown> | null }>>({});
   const [scoutingForms, setScoutingForms] = useState<Form[]>([]);
   const [scoutingSubmissions, setScoutingSubmissions] = useState<Submission[]>([]);
+  const [pitLocations, setPitLocations] = useState<Record<string, string>>(() => ({}));
 
   const [strategyValue, setStrategyValue] = useState('');
   const [strategyDraft, setStrategyDraft] = useState('');
@@ -176,6 +177,15 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
       // Ignore storage failures.
     }
   }, [selectedTeam]);
+
+  useEffect(() => {
+    if (!selectedCompetition?.pitLocations) {
+      setPitLocations({});
+      return;
+    }
+
+    setPitLocations(selectedCompetition.pitLocations);
+  }, [selectedCompetition?.pitLocations]);
 
   useEffect(() => {
     const loadMatches = async () => {
@@ -457,7 +467,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                 }`}
                 title={team.name}
               >
-                {team.number} - {team.name}
+                {team.number}
               </button>
             ))}
           </div>
@@ -478,7 +488,6 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
             {selectedCompetition.name} ({selectedCompetition.season})
           </span>
         </div>
-
       </div>
 
       {loading ? (
@@ -832,6 +841,14 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                   return (
                     <div className="space-y-2 text-sm text-gray-700">
                       <div className="font-black text-lg text-gray-900">Team {selectedMatchTeam}</div>
+                      <div className="rounded bg-gray-50 p-3">
+                        <div className="mb-1 text-[15px] uppercase tracking-wider text-gray-500">Pit Location</div>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="text-sm font-semibold text-gray-800">
+                            {pitLocations[selectedMatchTeam] ? pitLocations[selectedMatchTeam] : 'Not assigned'}
+                          </div>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-1 gap-2 md:grid-cols-1">
                         <div className="rounded bg-gray-50 p-2">
                           <div className="text-[15px] uppercase tracking-wider text-gray-500">Teleop</div>

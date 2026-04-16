@@ -9,6 +9,7 @@ import { UnfinishedAssignments } from './UnfinishedAssignments';
 import { ScoutingTeams } from './ScoutingTeams';
 import { PickListManager } from './PickListManager';
 import { ManageUsers } from './ManageUsers';
+import { AdminDriveTeam } from './AdminDriveTeam';
 import { authApi, competitionApi, formApi, statboticsApi, tbaApi } from '../services/api';
 import { matchesTeamQuery } from '../utils/teamNameSearch';
 import type { Competition } from '../types/competition.types';
@@ -723,7 +724,9 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
             onTeamSelect={handlePickListTeamSelect}
           />
         )}
-        {activeTab === 'driveTeam' && <div />}
+        {activeTab === 'driveTeam' && (
+          <AdminDriveTeam selectedCompetition={activeCompetition} onCompetitionUpdate={handleCompetitionUpdate} />
+        )}
         {activeTab === 'manageUsers' && (
           <ManageUsers selectedCompetition={activeCompetition} />
         )}

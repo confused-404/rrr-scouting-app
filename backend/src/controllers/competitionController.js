@@ -79,7 +79,7 @@ export const competitionController = {
   // Create competition
   createCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormIds, eventKey, pitMapImageUrl, manualPickLists, robotBreakTimelineOverrides } = req.body;
+      const { name, season, status, startDate, endDate, activeFormIds, eventKey, pitMapImageUrl, pitLocations, manualPickLists, robotBreakTimelineOverrides } = req.body;
       
       if (!name || !season) {
         return res.status(400).json({ message: 'Name and season are required' });
@@ -94,6 +94,7 @@ export const competitionController = {
         activeFormIds: activeFormIds || [],
         eventKey,
         pitMapImageUrl: pitMapImageUrl || '',
+        pitLocations: pitLocations || {},
         manualPickLists: manualPickLists || [],
         robotBreakTimelineOverrides: robotBreakTimelineOverrides || {},
       });
@@ -108,7 +109,7 @@ export const competitionController = {
   // Update competition
   updateCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey, superscouterNotes, driveTeamStrategyByTeam, pitMapImageUrl, manualPickLists, robotBreakTimelineOverrides } = req.body;
+      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey, superscouterNotes, driveTeamStrategyByTeam, pitMapImageUrl, pitLocations, manualPickLists, robotBreakTimelineOverrides } = req.body;
       
       const updatedCompetition = await competitionModel.updateCompetition(req.params.id, {
         ...(name && { name }),
@@ -125,6 +126,7 @@ export const competitionController = {
         ...(driveTeamStrategyByTeam !== undefined && { driveTeamStrategyByTeam }),
         ...(robotBreakTimelineOverrides !== undefined && { robotBreakTimelineOverrides }),
         ...(pitMapImageUrl !== undefined && { pitMapImageUrl }),
+        ...(pitLocations !== undefined && { pitLocations }),
         ...(manualPickLists !== undefined && { manualPickLists }),
       });
       
