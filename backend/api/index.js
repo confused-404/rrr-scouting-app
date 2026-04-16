@@ -31,7 +31,7 @@ app.use(cors(corsOptions));
 // Explicitly handle preflight
 app.options('*', cors(corsOptions));
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '1mb' }));
 
 // Apply rate limiting and API key validation AFTER CORS
 app.use(rateLimit(100, 60000)); // 100 requests per minute
