@@ -88,8 +88,9 @@ export const AdminDriveTeam: React.FC<AdminDriveTeamProps> = ({ selectedCompetit
                   matches.flatMap((match) => {
                     if (!match || typeof match !== 'object') return [];
                     const row = match as Record<string, unknown>;
-                    const red = row.red || row.alliances?.red || row.alliance_red || [];
-                    const blue = row.blue || row.alliances?.blue || row.alliance_blue || [];
+                    const alliances = row.alliances as Record<string, unknown> | undefined;
+                    const red = (row.red ?? alliances?.red ?? row.alliance_red ?? []) as unknown[];
+                    const blue = (row.blue ?? alliances?.blue ?? row.alliance_blue ?? []) as unknown[];
                     return [
                       ...Array.isArray(red) ? red.map(parseTeamNumber).filter(Boolean) : [],
                       ...Array.isArray(blue) ? blue.map(parseTeamNumber).filter(Boolean) : [],
