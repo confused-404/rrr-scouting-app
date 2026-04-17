@@ -52,32 +52,7 @@ const parseMatchNumber = (raw: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const getMatchSortOrder = (match: Record<string, unknown>): number => {
-  const compLevelOrder: Record<string, number> = {
-    qm: 1,
-    ef: 2,
-    qf: 3,
-    sf: 4,
-    f: 5,
-  };
-  const compLevel = typeof match.comp_level === 'string' ? match.comp_level.toLowerCase() : 'qm';
-  const setNumber = typeof match.set_number === 'number' ? match.set_number : 0;
-  const matchNumber = parseMatchNumber(match.match_number) ?? 0;
-  return ((compLevelOrder[compLevel] || 99) * 10000) + (setNumber * 100) + matchNumber;
-};
-
-const getScheduleMatchLabel = (match: Record<string, unknown>): string => {
-  const compLevel = typeof match.comp_level === 'string' ? match.comp_level.toLowerCase() : 'qm';
-  const matchNumber = parseMatchNumber(match.match_number);
-  const setNumber = typeof match.set_number === 'number' ? match.set_number : 0;
-
-  if (compLevel === 'qm') return `QM${matchNumber ?? '?'}`;
-  if (compLevel === 'ef') return `EF${setNumber}-${matchNumber ?? '?'}`;
-  if (compLevel === 'qf') return `QF${setNumber}-${matchNumber ?? '?'}`;
-  if (compLevel === 'sf') return `SF${setNumber}-${matchNumber ?? '?'}`;
-  if (compLevel === 'f') return `F${matchNumber ?? '?'}`;
-  return `M${matchNumber ?? '?'}`;
-};
+// Removed: getMatchSortOrder and getScheduleMatchLabel - no longer needed with form-based timeline
 
 type TimelinePointStatus = RobotBreakTimelineOverrideStatus | 'mismatch';
 
@@ -117,7 +92,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   const [dbSuperscoutTeam, setDbSuperscoutTeam] = useState('');
   const [eventTeams, setEventTeams] = useState<Array<{ team_number: number; nickname: string; key: string }>>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [tbaEventMatches, setTbaEventMatches] = useState<any[]>([]);
+  // Removed: tbaEventMatches - timeline now uses form data instead of schedule
   const [timelineOverrides, setTimelineOverrides] = useState<Record<string, Record<string, RobotBreakTimelineOverride>>>({});
   const [editingTimelinePoint, setEditingTimelinePoint] = useState<TimelinePoint | null>(null);
   const [timelineDraftStatus, setTimelineDraftStatus] = useState<RobotBreakTimelineOverrideStatus>('unknown');
@@ -245,16 +220,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     })();
   }, [selectedCompetition?.eventKey]);
 
-  useEffect(() => {
-    const eventKey = selectedCompetition?.eventKey;
-    if (!eventKey) { setTbaEventMatches([]); return; }
-    (async () => {
-      try {
-        const matches = await tbaApi.getEventMatches(eventKey) as any[];
-        setTbaEventMatches(matches || []);
-      } catch { /* non-critical */ }
-    })();
-  }, [selectedCompetition?.eventKey]);
+  // Removed: useEffect for fetching TBA event matches - timeline now uses form data only
 
   const loadAllData = async () => {
     if (!selectedCompetition) return;
@@ -463,35 +429,11 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   const timelinePoints = useMemo(() => {
     if (!normalizedQuery) return [] as TimelinePoint[];
 
-    const targetTeamKey = `frc${normalizedQuery}`;
     const didBreakRegex = /did.*break|robot break at all|did the robot break/i;
     const howBrokeRegex = /how.*(break|broke)|describe.*(break|broke)/i;
     const matchFieldRegex = /match( number| #|#|num| no\.?|)/i;
 
-    const teamScheduleMatches = (tbaEventMatches || [])
-      .filter((match: Record<string, unknown>) => {
-        const alliances = (match.alliances as {
-          red?: { team_keys?: string[] };
-          blue?: { team_keys?: string[] };
-        } | undefined) || {};
-        const allTeams: string[] = [
-          ...(alliances.red?.team_keys || []),
-          ...(alliances.blue?.team_keys || []),
-        ];
-        return allTeams.some((teamKey) => teamKey === targetTeamKey || teamKey.replace(/^frc/i, '') === normalizedQuery);
-      })
-      .sort((a: Record<string, unknown>, b: Record<string, unknown>) => getMatchSortOrder(a) - getMatchSortOrder(b));
-
-    const scheduleByMatchNumber = new Map<number, Record<string, unknown>>();
-    teamScheduleMatches.forEach((match: Record<string, unknown>) => {
-      const matchNumber = parseMatchNumber(match.match_number);
-      if (matchNumber != null && !scheduleByMatchNumber.has(matchNumber)) {
-        scheduleByMatchNumber.set(matchNumber, match);
-      }
-    });
-
-    const observationsByMatch = new Map<number, Array<{ status: RobotBreakTimelineOverrideStatus; description: string; timestamp: number }>>();
-    const mismatchPoints: TimelinePoint[] = [];
+    const observationsByMatch = new Map<number, Array<{ status: RobotBreakTimelineOverrideStatus; description: string; timestamp: number; submissionId: string }>>();
 
     forms.forEach((form) => {
       const didBreakField = form.fields.find((field) => didBreakRegex.test(field.label));
@@ -511,33 +453,22 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
         if (['no', 'false', '0'].includes(rawStatus)) status = 'ok';
 
         const timestamp = sub.timestamp ? new Date(sub.timestamp).getTime() : 0;
-        const scheduledMatch = matchNumber != null ? scheduleByMatchNumber.get(matchNumber) : undefined;
 
-        if (scheduledMatch && matchNumber != null) {
+        // Collect all form submissions with match numbers
+        if (matchNumber != null) {
           if (!observationsByMatch.has(matchNumber)) observationsByMatch.set(matchNumber, []);
-          observationsByMatch.get(matchNumber)?.push({ status, description, timestamp });
-          return;
+          observationsByMatch.get(matchNumber)?.push({ status, description, timestamp, submissionId: sub.id });
         }
-
-        mismatchPoints.push({
-          key: `mismatch:${sub.id}`,
-          overrideKey: `mismatch:${sub.id}`,
-          source: 'mismatch',
-          label: matchNumber != null ? `QM${matchNumber}` : 'Unknown',
-          sortOrder: (matchNumber ?? 9999) * 100 + 50,
-          colorStatus: 'mismatch',
-          editorStatus: status,
-          description,
-          hasOverride: Boolean(teamTimelineOverrides[`mismatch:${sub.id}`]),
-        });
       });
     });
 
-    const schedulePoints = teamScheduleMatches.map((match: Record<string, unknown>) => {
-      const matchNumber = parseMatchNumber(match.match_number);
-      const matchKey = typeof match.key === 'string' && match.key ? match.key : `match:${getMatchSortOrder(match)}`;
-      const override = teamTimelineOverrides[matchKey];
-      const observations = matchNumber != null ? (observationsByMatch.get(matchNumber) || []) : [];
+    // Create timeline points directly from form data, ordered by match number
+    const formTimelinePoints: TimelinePoint[] = [];
+    const sortedMatchNumbers = Array.from(observationsByMatch.keys()).sort((a, b) => a - b);
+
+    sortedMatchNumbers.forEach((matchNumber) => {
+      const observations = observationsByMatch.get(matchNumber) || [];
+      const override = teamTimelineOverrides[`form:${matchNumber}`];
 
       let derivedStatus: RobotBreakTimelineOverrideStatus = 'unknown';
       let description = '';
@@ -558,21 +489,21 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
       const finalStatus = override?.status ?? derivedStatus;
       const finalDescription = override?.description ?? description;
 
-      return {
-        key: matchKey,
-        overrideKey: matchKey,
+      formTimelinePoints.push({
+        key: `form:${matchNumber}`,
+        overrideKey: `form:${matchNumber}`,
         source: 'schedule' as const,
-        label: getScheduleMatchLabel(match),
-        sortOrder: getMatchSortOrder(match),
+        label: `QM${matchNumber}`,
+        sortOrder: matchNumber,
         colorStatus: finalStatus,
         editorStatus: finalStatus,
         description: finalDescription,
         hasOverride: Boolean(override),
-      };
+      });
     });
 
-    return [...schedulePoints, ...mismatchPoints].sort((a, b) => a.sortOrder - b.sortOrder);
-  }, [filteredSubs, forms, normalizedQuery, tbaEventMatches, teamTimelineOverrides]);
+    return formTimelinePoints;
+  }, [filteredSubs, forms, normalizedQuery, teamTimelineOverrides]);
   const targetNormalized = normalizeTeamNumber(targetTeam);
   const fetchedNotes = normalizedQuery && normalizedQuery === dbSuperscoutTeam ? dbSuperscoutNotes : '';
   const propNotes = normalizedQuery && targetNormalized && normalizedQuery === targetNormalized
@@ -778,7 +709,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
       )}
 
       {/* ── Robot Breakdown Timeline ── */}
-      {normalizedQuery && timelinePoints.length > 0 && (
+      {normalizedQuery && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="flex items-center gap-2 px-5 py-3 bg-red-50 border-b border-red-100">
             <span className="text-sm">⚠</span>
@@ -800,14 +731,16 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
                 <span className="inline-block w-3 h-3 rounded-full bg-gray-400" />
                 <span>No data</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="inline-block w-3 h-3 rounded-full bg-red-500" />
-                <span>Form match # did not verify against schedule</span>
-              </div>
+
             </div>
             <div className="relative z-20 overflow-x-auto pb-2">
-              <div className="relative flex items-start min-w-max">
-                {timelinePoints.map((point, idx) => (
+              {timelinePoints.length === 0 ? (
+                <div className="p-8 text-center text-sm text-gray-500">
+                  No scheduled matches for this team yet.
+                </div>
+              ) : (
+                <div className="relative flex items-start min-w-max">
+                  {timelinePoints.map((point, idx) => (
                   <React.Fragment key={idx}>
                     <div className="flex flex-col items-center flex-shrink-0">
                       <div className="relative">
@@ -835,7 +768,8 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
                     )}
                   </React.Fragment>
                 ))}
-              </div>
+                </div>
+              )}
             </div>
             {isAdminMode && (
               <p className="mt-4 text-xs text-gray-500">
@@ -1010,7 +944,6 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
                       {editingTimelinePoint.colorStatus === 'broke' && 'Broke'}
                       {editingTimelinePoint.colorStatus === 'ok' && 'Did not break'}
                       {editingTimelinePoint.colorStatus === 'unknown' && 'No data'}
-                      {editingTimelinePoint.colorStatus === 'mismatch' && 'Mismatch (form match # not in schedule)'}
                     </p>
                   </div>
                   <div>
