@@ -197,7 +197,13 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
       setLoading(true);
       setError('');
       try {
-        const data = await tbaApi.getEventMatches(selectedCompetition.eventKey);
+        let data: unknown[] = [];
+        try {
+          data = await tbaApi.getEventMatches(selectedCompetition.eventKey);
+        } catch (tbaError) {
+          console.warn('TBA match load failed, falling back to Statbotics', tbaError);
+          data = await statboticsApi.getEventMatches(selectedCompetition.eventKey);
+        }
         setMatches(Array.isArray(data) ? (data as Array<Record<string, unknown>>) : []);
       } catch {
         setError('Could not load matches for this event.');
@@ -250,17 +256,22 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
     });
   }, [matches, selectedTeam]);
 
-  const orderedMatches = useMemo(() => {
-    const nextIndex = filteredMatches.findIndex((match) => !isMatchComplete(match));
-    if (nextIndex <= 0) return filteredMatches;
+  // For drive team, show all matches if no team-specific matches found
+  const matchesToShow = useMemo(() => {
+    return filteredMatches.length > 0 ? filteredMatches : getSortedMatches(matches);
+  }, [filteredMatches, matches]);
 
-    const nextMatch = filteredMatches[nextIndex];
+  const orderedMatches = useMemo(() => {
+    const nextIndex = matchesToShow.findIndex((match) => !isMatchComplete(match));
+    if (nextIndex <= 0) return matchesToShow;
+
+    const nextMatch = matchesToShow[nextIndex];
     return [
       nextMatch,
-      ...filteredMatches.slice(0, nextIndex),
-      ...filteredMatches.slice(nextIndex + 1),
+      ...matchesToShow.slice(0, nextIndex),
+      ...matchesToShow.slice(nextIndex + 1),
     ];
-  }, [filteredMatches]);
+  }, [matchesToShow]);
 
   const nextMatchIndex = useMemo(
     () => orderedMatches.findIndex((match) => !isMatchComplete(match)),
@@ -496,12 +507,17 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
         <div className="rounded-xl border border-red-100 bg-red-50 p-6 text-sm text-red-700">{error}</div>
       ) : orderedMatches.length === 0 ? (
         <div className="rounded-xl border border-gray-100 bg-white p-10 text-center text-gray-500">
-          No matches found for team {selectedTeam}.
+          No matches found for this event.
         </div>
       ) : (
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
           <div className="mb-3 text-[15px] font-semibold uppercase tracking-wider text-gray-500">
             Click a match row to open match details
+            {filteredMatches.length === 0 && matches.length > 0 && (
+              <span className="block text-sm font-normal normal-case text-gray-400 mt-1">
+                Showing all matches (team {selectedTeam} not found in any matches)
+              </span>
+            )}
           </div>
 
           <div className="space-y-2 sm:space-y-3">
