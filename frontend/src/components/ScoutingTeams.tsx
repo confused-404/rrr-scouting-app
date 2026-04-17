@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Plus, X, Clock } from 'lucide-react';
 import type { Competition, ScoutingTeam, GeneratedAssignment } from '../types/competition.types';
-import { competitionApi, tbaApi } from '../services/api';
+import { competitionApi, tbaApi, statboticsApi } from '../services/api';
 
 export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null }> = ({ selectedCompetition }) => {
   const [teams, setTeams] = useState<ScoutingTeam[]>([]);
@@ -99,10 +99,16 @@ export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null 
 
     setIsGenerating(true);
     try {
-      // Get match schedule from TBA
-      const matchSchedule = await tbaApi.getEventMatches(selectedCompetition.eventKey);
-      const totalMatches = matchSchedule.length;
+      // Get match schedule from TBA, fallback to Statbotics when needed
+      let matchSchedule: unknown[] = [];
+      try {
+        matchSchedule = await tbaApi.getEventMatches(selectedCompetition.eventKey);
+      } catch (tbaError) {
+        console.warn('TBA match load failed during schedule generation, falling back to Statbotics', tbaError);
+        matchSchedule = await statboticsApi.getEventMatches(selectedCompetition.eventKey);
+      }
 
+      const totalMatches = Array.isArray(matchSchedule) ? matchSchedule.length : 0;
       if (totalMatches === 0) {
         alert('No matches found for this event');
         return;
