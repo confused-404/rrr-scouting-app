@@ -17,8 +17,6 @@ const getTeamNumbers = (teamKeys: Array<string | number>) => teamKeys.map((teamK
   return formatTeamNumber(teamKey);
 });
 
-const getAllianceSlot = (teamKeys: Array<string | number>, index: number) => getTeamNumbers(teamKeys)[index] || '';
-
 const getSortedMatches = (matches: any[]) => [...matches].sort((a, b) => {
   const compLevelOrder: Record<string, number> = {
     qm: 1,
@@ -48,9 +46,32 @@ const getSortedMatches = (matches: any[]) => [...matches].sort((a, b) => {
 });
 
 const matchIncludesTeam = (match: any, teamKey: string) => {
-  const redTeams = match.alliances?.red?.team_keys || [];
-  const blueTeams = match.alliances?.blue?.team_keys || [];
-  return [...redTeams, ...blueTeams].some((value: string | number) => normalizeTeamKey(value) === teamKey);
+  const redTeams = getAllianceTeams(match, 'red');
+  const blueTeams = getAllianceTeams(match, 'blue');
+  return [...redTeams, ...blueTeams].some((value: string) => normalizeTeamKey(value) === teamKey);
+};
+
+const getAllianceTeams = (match: any, alliance: 'red' | 'blue'): string[] => {
+  const matchAny = match as Record<string, unknown>;
+  const alliances = matchAny.alliances as Record<string, unknown> | undefined;
+
+  // Try TBA format first
+  if (alliances?.[alliance] && typeof alliances[alliance] === 'object') {
+    const allianceData = alliances[alliance] as Record<string, unknown>;
+    if (Array.isArray(allianceData.team_keys)) {
+      return getTeamNumbers(allianceData.team_keys);
+    }
+  }
+
+  // Try Statbotics format
+  const direct = (matchAny[alliance] ?? alliances?.[alliance] ?? matchAny[`alliance_${alliance}`] ?? []) as unknown[];
+  if (Array.isArray(direct)) {
+    return getTeamNumbers(direct.filter((item): item is string | number => 
+      typeof item === 'string' || typeof item === 'number'
+    ));
+  }
+
+  return [];
 };
 
 const getMatchLabel = (match: any) => `${match.comp_level || ''}${match.match_number || (match.key ? match.key.split('m')[1] : '')}`;
@@ -184,18 +205,38 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
     const eventKey = selectedCompetition?.eventKey;
     if (!eventKey) { setTeamNames({}); return; }
     (async () => {
+      const names: Record<string, string> = {};
+
+      // First, try to load from TBA
       try {
         const teams = await tbaApi.getEventTeams(eventKey) as Array<Record<string, unknown>>;
-        const names: Record<string, string> = {};
         for (const t of teams) {
           const num = String(t.team_number ?? '').trim();
           const nick = String(t.nickname ?? '').trim();
           if (num && nick) names[num] = nick;
         }
-        setTeamNames(names);
-      } catch { /* non-critical */ }
+      } catch (error) {
+        console.warn('Failed to load team names from TBA, will use placeholders from matches', error);
+      }
+
+      // Always supplement with teams from matches (with placeholder names if not from TBA)
+      if (matches.length > 0) {
+        const teamNumbers = new Set<string>();
+        for (const match of matches) {
+          const redTeams = getAllianceTeams(match, 'red');
+          const blueTeams = getAllianceTeams(match, 'blue');
+          [...redTeams, ...blueTeams].forEach(team => teamNumbers.add(team));
+        }
+        for (const teamNum of teamNumbers) {
+          if (!names[teamNum]) {
+            names[teamNum] = `Team ${teamNum}`; // Placeholder name
+          }
+        }
+      }
+
+      setTeamNames(names);
     })();
-  }, [selectedCompetition?.eventKey]);
+  }, [selectedCompetition?.eventKey, matches]);
 
   useEffect(() => {
     if (!selectedCompetition?.eventKey) {
@@ -286,6 +327,7 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
           : await statboticsApi.getEventMatches(selectedCompetition.eventKey);
 
         setMatches(fallbackData || []);
+        setDataSource(fallbackSource); // Update data source to reflect fallback
         setFetchError(`Primary source (${dataSource.toUpperCase()}) failed. Showing ${fallbackSource.toUpperCase()} data instead.`);
       } catch (fallbackError) {
         console.error('Fallback match fetch also failed:', fallbackError);
@@ -301,12 +343,13 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
 
   const filteredMatches = sortedAllMatches.filter(match => {
     if (selectedTeams.length === 0) return true;
-    const allTeamKeys: Array<string | number> = [
-      ...(match.alliances?.red?.team_keys || []),
-      ...(match.alliances?.blue?.team_keys || []),
-    ];
+
+    const redTeams = getAllianceTeams(match, 'red');
+    const blueTeams = getAllianceTeams(match, 'blue');
+    const allTeamKeys = [...redTeams, ...blueTeams];
+
     return selectedTeams.some(filterTeam =>
-      allTeamKeys.some(teamKey => formatTeamNumber(teamKey) === filterTeam)
+      allTeamKeys.some(teamKey => teamKey === filterTeam)
     );
   });
 
@@ -380,12 +423,11 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
 
     const latestFiltered = sortedLatest.filter((match) => {
       if (selectedTeams.length === 0) return true;
-      const allTeamKeys: Array<string | number> = [
-        ...(match.alliances?.red?.team_keys || []),
-        ...(match.alliances?.blue?.team_keys || []),
-      ];
+      const redTeams = getAllianceTeams(match, 'red');
+      const blueTeams = getAllianceTeams(match, 'blue');
+      const allTeamKeys = [...redTeams, ...blueTeams];
       return selectedTeams.some(filterTeam =>
-        allTeamKeys.some(teamKey => formatTeamNumber(teamKey) === filterTeam)
+        allTeamKeys.some(teamKey => teamKey === filterTeam)
       );
     });
 
@@ -400,17 +442,17 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
     if (latestVisible.length === 0) return;
 
     const rows = latestVisible.map((match) => {
-      const redTeams = match.alliances?.red?.team_keys || [];
-      const blueTeams = match.alliances?.blue?.team_keys || [];
+      const redTeams = getAllianceTeams(match, 'red');
+      const blueTeams = getAllianceTeams(match, 'blue');
 
       return {
         Match: getMatchLabel(match),
-        'Red 1': getAllianceSlot(redTeams, 0),
-        'Red 2': getAllianceSlot(redTeams, 1),
-        'Red 3': getAllianceSlot(redTeams, 2),
-        'Blue 1': getAllianceSlot(blueTeams, 0),
-        'Blue 2': getAllianceSlot(blueTeams, 1),
-        'Blue 3': getAllianceSlot(blueTeams, 2),
+        'Red 1': redTeams[0] || '',
+        'Red 2': redTeams[1] || '',
+        'Red 3': redTeams[2] || '',
+        'Blue 1': blueTeams[0] || '',
+        'Blue 2': blueTeams[1] || '',
+        'Blue 3': blueTeams[2] || '',
       };
     });
 
@@ -516,7 +558,10 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
                       setShowTeamSuggestions(true);
                     }}
                     onFocus={() => setShowTeamSuggestions(true)}
-                    onBlur={() => setShowTeamSuggestions(false)}
+                    onBlur={() => {
+                      // Delay hiding suggestions to allow clicks on them
+                      setTimeout(() => setShowTeamSuggestions(false), 150);
+                    }}
                     className="px-3 py-2 sm:py-1 border border-gray-300 rounded text-sm w-full"
                   />
                   {showTeamSuggestions && teamSuggestions.length > 0 && (
@@ -712,8 +757,8 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
                             onPinMatch?.({
                               key: matchKey,
                               label: getMatchLabel(m),
-                              redTeams: getTeamNumbers(m.alliances?.red?.team_keys || []),
-                              blueTeams: getTeamNumbers(m.alliances?.blue?.team_keys || []),
+                            redTeams: getAllianceTeams(m, 'red'),
+                            blueTeams: getAllianceTeams(m, 'blue'),
                             });
                           }}
                           className={`rounded-md px-2 py-1 text-xs font-semibold transition-colors ${
@@ -738,14 +783,14 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
                     <div>
                       <div className="font-bold text-red-600">Red Alliance</div>
                       <ul className="list-disc list-inside text-sm break-words">
-                        {(m.alliances?.red?.team_keys || []).map((tk: string | number) => (
-                          <li key={tk} className={selectedTeams.length > 0 && selectedTeams.includes(formatTeamNumber(tk)) ? 'font-bold text-red-700' : ''}>
+                        {getAllianceTeams(m, 'red').map((tk: string) => (
+                          <li key={tk} className={selectedTeams.length > 0 && selectedTeams.includes(tk) ? 'font-bold text-red-700' : ''}>
                             <button
                               type="button"
                               onClick={() => openTeamHistory(tk, m)}
                               className="font-inherit text-left underline decoration-dotted underline-offset-2 hover:text-red-800"
                             >
-                              {formatTeamNumber(tk)}
+                              {tk}
                             </button>
                           </li>
                         ))}
@@ -754,14 +799,14 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
                     <div>
                       <div className="font-bold text-blue-600">Blue Alliance</div>
                       <ul className="list-disc list-inside text-sm break-words">
-                        {(m.alliances?.blue?.team_keys || []).map((tk: string | number) => (
-                          <li key={tk} className={selectedTeams.length > 0 && selectedTeams.includes(formatTeamNumber(tk)) ? 'font-bold text-blue-700' : ''}>
+                        {getAllianceTeams(m, 'blue').map((tk: string) => (
+                          <li key={tk} className={selectedTeams.length > 0 && selectedTeams.includes(tk) ? 'font-bold text-blue-700' : ''}>
                             <button
                               type="button"
                               onClick={() => openTeamHistory(tk, m)}
                               className="font-inherit text-left underline decoration-dotted underline-offset-2 hover:text-blue-800"
                             >
-                              {formatTeamNumber(tk)}
+                              {tk}
                             </button>
                           </li>
                         ))}
