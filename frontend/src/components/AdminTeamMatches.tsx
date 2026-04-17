@@ -22,6 +22,64 @@ const DRIVE_TEAM_SELECTED_TEAM_STORAGE_KEY = 'adminTeamMatches.selectedTeam';
 const teamFieldRegex = /team|team number|team #/i;
 const autoPathFieldRegex = /auto.*path|path.*auto|starting position|start position/i;
 
+const matchFieldRegex = /match|match number|match #/i;
+
+const parseMatchNumber = (value: unknown): number | null => {
+  if (value == null) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  const match = str.match(/(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+};
+
+const getFormMatchFieldId = (form: Form): string | null => {
+  const field = form.fields.find((f) => matchFieldRegex.test(f.label));
+  return field ? String(field.id) : null;
+};
+
+const getFormLiveMatchCounter = (forms: Form[], submissions: Submission[]): number | null => {
+  const formMatchField = new Map<string, string | null>();
+  forms.forEach((form) => {
+    formMatchField.set(form.id, getFormMatchFieldId(form));
+  });
+
+  let maxSubmittedMatch: number | null = null;
+  submissions.forEach((submission) => {
+    const matchFieldId = formMatchField.get(submission.formId);
+    if (!matchFieldId) return;
+    const matchNumber = parseMatchNumber(submission.data?.[matchFieldId]);
+    if (matchNumber == null) return;
+    if (maxSubmittedMatch == null || matchNumber > maxSubmittedMatch) {
+      maxSubmittedMatch = matchNumber;
+    }
+  });
+
+  return maxSubmittedMatch == null ? null : maxSubmittedMatch + 1;
+};
+
+const getOfficialLiveQualMatch = (rows: Array<Record<string, unknown>>): number | null => {
+  const qualRows = rows
+    .filter((row) => {
+      const compLevel = typeof row.comp_level === 'string' ? row.comp_level.toLowerCase() : '';
+      const key = typeof row.key === 'string' ? row.key.toLowerCase() : '';
+      return compLevel === 'qm' || key.includes('_qm');
+    })
+    .map((row) => ({
+      matchNumber: parseMatchNumber(row.match_number),
+      status: typeof row.status === 'string' ? row.status.toLowerCase() : '',
+    }))
+    .filter((row): row is { matchNumber: number; status: string } => row.matchNumber != null)
+    .sort((a, b) => a.matchNumber - b.matchNumber);
+
+  const firstOpen = qualRows.find((row) => row.status !== 'completed');
+  return firstOpen?.matchNumber ?? null;
+};
+
+const getMatchNumberFromMatch = (match: Record<string, unknown>): number => {
+  return typeof match.match_number === 'number' ? match.match_number :
+         (typeof match.key === 'string' ? parseMatchNumber(match.key.split('m')[1]) || 0 : 0);
+};
+
 const normalizeTeamKey = (teamValue: string | number) => {
   const trimmed = String(teamValue).trim().toLowerCase();
   if (!trimmed) return '';
@@ -158,6 +216,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
   const [strategySaving, setStrategySaving] = useState(false);
   const [strategyError, setStrategyError] = useState('');
   const [isEditingStrategy, setIsEditingStrategy] = useState(false);
+  const [liveMatchCounter, setLiveMatchCounter] = useState(1);
 
   const cardRefs = useRef<Array<HTMLDivElement | null>>([]);
   const holdTimerRef = useRef<number | null>(null);
@@ -239,6 +298,47 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
     loadScoutingData();
   }, [selectedCompetition?.id]);
 
+  useEffect(() => {
+    const fetchLiveCounter = async () => {
+      if (!selectedCompetition?.id) {
+        setLiveMatchCounter(1);
+        return;
+      }
+
+      try {
+        const formCounter = getFormLiveMatchCounter(scoutingForms, scoutingSubmissions);
+
+        let officialCounter: number | null = null;
+        if (selectedCompetition.eventKey) {
+          try {
+            const rows = await statboticsApi.getEventMatches(selectedCompetition.eventKey) as Array<Record<string, unknown>>;
+            officialCounter = getOfficialLiveQualMatch(rows);
+          } catch {
+            // fallback stays null
+          }
+        }
+
+        if (formCounter != null) {
+          setLiveMatchCounter(formCounter);
+          return;
+        }
+
+        if (officialCounter != null) {
+          setLiveMatchCounter(officialCounter);
+          return;
+        }
+
+        setLiveMatchCounter(1);
+      } catch {
+        setLiveMatchCounter(1);
+      }
+    };
+
+    if (scoutingForms.length > 0 || selectedCompetition?.eventKey) {
+      fetchLiveCounter();
+    }
+  }, [selectedCompetition?.id, selectedCompetition?.eventKey, scoutingForms, scoutingSubmissions]);
+
   const filteredMatches = useMemo(() => {
     const teamKey = normalizeTeamKey(selectedTeam);
     return getSortedMatches(matches).filter((match) => {
@@ -262,21 +362,28 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
   }, [filteredMatches, matches]);
 
   const orderedMatches = useMemo(() => {
-    const nextIndex = matchesToShow.findIndex((match) => !isMatchComplete(match));
-    if (nextIndex <= 0) return matchesToShow;
+    // Separate matches into categories based on live match counter
+    const finishedMatches: Array<Record<string, unknown>> = [];
+    const nextMatches: Array<Record<string, unknown>> = [];
+    const upcomingMatches: Array<Record<string, unknown>> = [];
 
-    const nextMatch = matchesToShow[nextIndex];
-    return [
-      nextMatch,
-      ...matchesToShow.slice(0, nextIndex),
-      ...matchesToShow.slice(nextIndex + 1),
-    ];
-  }, [matchesToShow]);
+    matchesToShow.forEach((match) => {
+      const matchNumber = getMatchNumberFromMatch(match);
+      const completed = isMatchComplete(match);
 
-  const nextMatchIndex = useMemo(
-    () => orderedMatches.findIndex((match) => !isMatchComplete(match)),
-    [orderedMatches]
-  );
+      if (matchNumber < liveMatchCounter || completed) {
+        finishedMatches.push(match);
+      } else if (matchNumber === liveMatchCounter) {
+        nextMatches.push(match);
+      } else {
+        upcomingMatches.push(match);
+      }
+    });
+
+    return [...nextMatches, ...upcomingMatches, ...finishedMatches];
+  }, [matchesToShow, liveMatchCounter]);
+
+  const nextMatchIndex = 0; // Next matches are now at the beginning of orderedMatches
 
   const selectedMatch = useMemo(() => {
     if (!selectedMatchKey) return null;
@@ -531,8 +638,9 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                 const blueTeams = (alliances.blue?.team_keys || []).map((team) => formatTeamNumber(team));
 
                 const matchKey = String(match.key || `${match.comp_level}-${match.match_number}-${index}`);
+                const matchNumber = getMatchNumberFromMatch(match);
                 const isNext = nextMatchIndex >= 0 && index === nextMatchIndex;
-                const completed = isMatchComplete(match);
+                const completed = isMatchComplete(match) || matchNumber < liveMatchCounter;
                 const isSelected = selectedMatchKey === matchKey;
 
                 return (
@@ -563,7 +671,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
                         <div className="text-sm font-black text-gray-800">{getMatchLabel(match)}</div>
                         <span
                           className={`rounded-full px-2 py-0.5 text-sm font-bold uppercase tracking-wider ${
-                            completed ? 'bg-gray-200 text-gray-700' : 'bg-green-100 text-green-700'
+                            completed ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
                           }`}
                         >
                           {completed ? 'Completed' : 'Next'}
