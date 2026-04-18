@@ -4,18 +4,17 @@ import admin from 'firebase-admin';
 const COMPETITIONS_COLLECTION = 'competitions';
 
 const convertTimestamp = (timestamp) => {
-  if (!timestamp) return new Date().toISOString();
+  if (!timestamp) return null;
   if (timestamp._seconds) {
     return new Date(timestamp._seconds * 1000).toISOString();
   }
   if (timestamp.toDate) {
     return timestamp.toDate().toISOString();
   }
-  // If it's already a string, return it
   if (typeof timestamp === 'string') {
     return timestamp;
   }
-  return new Date().toISOString();
+  return null;
 };
 
 export const competitionModel = {
@@ -55,16 +54,20 @@ export const competitionModel = {
       .where('status', '==', 'active')
       .get();
     
-    return snapshot.docs.map(doc => {
+    const competitions = snapshot.docs.map(doc => {
       const data = doc.data();
+      const createdAt = convertTimestamp(data.createdAt)
+        || doc.createTime?.toDate().toISOString()
+        || '1970-01-01T00:00:00.000Z';
+
       return {
         id: doc.id,
         name: data.name,
         season: data.season,
         status: data.status,
-        startDate: convertTimestamp(data.startDate),
-        endDate: convertTimestamp(data.endDate),
-        createdAt: convertTimestamp(data.createdAt),
+        startDate: convertTimestamp(data.startDate) || new Date().toISOString(),
+        endDate: convertTimestamp(data.endDate) || new Date().toISOString(),
+        createdAt,
         formIds: data.formIds || [],
         activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
         scoutingTeams: data.scoutingTeams || [],
@@ -78,6 +81,8 @@ export const competitionModel = {
         manualPickLists: data.manualPickLists || [],
       };
     });
+
+    return competitions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
   getCompetitionById: async (id) => {
@@ -108,6 +113,17 @@ export const competitionModel = {
   },
 
   createCompetition: async (competitionData) => {
+    if (competitionData.status === 'active') {
+      const snapshot = await db.collection(COMPETITIONS_COLLECTION)
+        .where('status', '==', 'active')
+        .get();
+      const batch = db.batch();
+      snapshot.docs.forEach((doc) => {
+        batch.update(doc.ref, { status: 'draft' });
+      });
+      await batch.commit();
+    }
+
     const docRef = await db.collection(COMPETITIONS_COLLECTION).add({
       name: competitionData.name,
       season: competitionData.season,
@@ -195,6 +211,7 @@ export const competitionModel = {
     if (competitionData.robotBreakTimelineOverrides !== undefined) updateData.robotBreakTimelineOverrides = competitionData.robotBreakTimelineOverrides;
     if (competitionData.pitMapImageUrl !== undefined) updateData.pitMapImageUrl = competitionData.pitMapImageUrl;
     if (competitionData.pitLocations !== undefined) updateData.pitLocations = competitionData.pitLocations;
+    if (competitionData.manualPickLists !== undefined) updateData.manualPickLists = competitionData.manualPickLists;
     
     await docRef.update(updateData);
     
