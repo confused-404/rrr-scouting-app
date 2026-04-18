@@ -301,8 +301,18 @@ export const tbaApi = {
     return response.data;
   },
   getEventTeams: async (eventKey: string): Promise<unknown[]> => {
-    const response = await api.get(`/tba/event/${eventKey}/teams`);
-    return response.data;
+    try {
+      const response = await api.get(`/tba/event/${eventKey}/teams`);
+      return response.data;
+    } catch (error) {
+      try {
+        // Fallback to Statbotics roster if TBA team list is unavailable.
+        const response = await api.get('/statbotics/team_events', { params: { event: eventKey, limit: 999 } });
+        return response.data;
+      } catch {
+        throw error;
+      }
+    }
   },
 };
 
