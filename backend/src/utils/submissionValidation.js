@@ -6,7 +6,11 @@ const VALID_CONDITION_OPERATORS = new Set([
 ]);
 
 const normalizeString = (value) => String(value ?? '').trim();
-const teamFieldRegex = /team|team number|team #/i;
+const normalizeLabel = (value) => normalizeString(value).replace(/\s+/g, ' ').toLowerCase();
+
+// Keep the heuristic narrow so arbitrary labels containing "team" do not
+// become the team-number field by accident.
+const teamFieldRegex = /^team(?:\s*(?:number|num(?:ber)?|no\.?|#))?(?:\s*\([^)]*\))?$/i;
 
 export const createValidationError = (message) => {
   const error = new Error(message);
@@ -28,7 +32,7 @@ export const resolveTeamNumberFieldId = (form) => {
     return Number(form.teamNumberFieldId);
   }
 
-  return form?.fields?.find((field) => teamFieldRegex.test(normalizeString(field.label)))?.id ?? null;
+  return form?.fields?.find((field) => teamFieldRegex.test(normalizeLabel(field.label)))?.id ?? null;
 };
 
 const resolvePicturePathPrefix = ({ competitionId, formId, fieldId, ownerUid }) => (

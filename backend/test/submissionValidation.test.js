@@ -59,6 +59,26 @@ test('resolveTeamNumberFieldId uses explicit teamNumberFieldId before label matc
   }), 7);
 });
 
+test('resolveTeamNumberFieldId only matches explicit team-number labels', () => {
+  assert.equal(resolveTeamNumberFieldId({
+    fields: [
+      { id: 1, label: 'Opponent Team' },
+      { id: 2, label: 'Team Captain' },
+      { id: 3, label: 'Team Number (FRC)' },
+    ],
+  }), 3);
+});
+
+test('resolveTeamNumberFieldId returns null for ambiguous team labels', () => {
+  assert.equal(resolveTeamNumberFieldId({
+    fields: [
+      { id: 1, label: 'Opponent Team' },
+      { id: 2, label: 'Team Captain' },
+      { id: 3, label: 'Alliance Team' },
+    ],
+  }), null);
+});
+
 test('normalizeTeamNumber strips frc prefix and other text', () => {
   assert.equal(normalizeTeamNumber('frc254'), '254');
   assert.equal(normalizeTeamNumber('Team 1678 Citrus'), '1678');
