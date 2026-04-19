@@ -13,6 +13,11 @@ import {
   isResetLockoutActive,
   isResetRequestCoolingDown,
 } from '../utils/passwordReset.js';
+import {
+  applyClaimsAndProfile,
+  createUserWithProfile,
+  deleteUserAndProfile,
+} from '../utils/authLifecycle.js';
 
 const VALID_ROLES = new Set(['admin', 'drive', 'user']);
 const INITIAL_ADMIN_SETUP_DOC = '_system/initialAdminSetup';
@@ -36,22 +41,27 @@ const timingSafeEqual = (left, right) => {
   return crypto.timingSafeEqual(leftBuffer, rightBuffer);
 };
 
-const applyRoleToUser = async (uid, role) => {
+const applyRoleToUser = async (uid, role, extraProfile = {}) => {
   if (!VALID_ROLES.has(role)) {
     throw new Error('Invalid role');
   }
 
-  const userRecord = await auth.getUser(uid);
-  const existingClaims = userRecord.customClaims || {};
-  await auth.setCustomUserClaims(uid, {
-    ...existingClaims,
-    ...claimsForRole(role),
+  return applyClaimsAndProfile({
+    uid,
+    getUser: (targetUid) => auth.getUser(targetUid),
+    setCustomUserClaims: (targetUid, claims) => auth.setCustomUserClaims(targetUid, claims),
+    buildClaims: (existingClaims) => ({
+      ...existingClaims,
+      ...claimsForRole(role),
+    }),
+    writeUserProfile: async (userRecord) => {
+      await db.collection('users').doc(userRecord.uid).set({
+        role,
+        updatedAt: new Date().toISOString(),
+        ...extraProfile,
+      }, { merge: true });
+    },
   });
-
-  await db.collection('users').doc(uid).set({
-    role,
-    updatedAt: new Date().toISOString(),
-  }, { merge: true });
 };
 
 const hasAnyAdminUser = async () => {
@@ -86,14 +96,18 @@ export const signup = async (req, res) => {
       return res.status(400).json({ message: 'Email and password required' });
     }
     
-    // Admin SDK: Create the user
-    const userRecord = await auth.createUser({ email, password });
-
-    // Admin SDK: Push into Firestore (Creates 'users' collection if it doesn't exist)
-    await db.collection('users').doc(userRecord.uid).set({
-      email: userRecord.email,
-      role: 'user',
-      createdAt: new Date().toISOString()
+    const userRecord = await createUserWithProfile({
+      email,
+      password,
+      createAuthUser: (payload) => auth.createUser(payload),
+      writeUserProfile: async (createdUser) => {
+        await db.collection('users').doc(createdUser.uid).set({
+          email: createdUser.email,
+          role: 'user',
+          createdAt: new Date().toISOString(),
+        });
+      },
+      deleteAuthUser: (uid) => auth.deleteUser(uid),
     });
     
     res.status(201).json({ uid: userRecord.uid, email: userRecord.email });
@@ -142,12 +156,9 @@ export const initializeFirstAdmin = async (req, res) => {
 
     // 2. USE THE API: Set custom claims for the user
     // This makes the user an admin at the security token level
-    await applyRoleToUser(user.uid, 'admin');
-
-    // 3. Keep email in Firestore for convenience
-    await db.collection('users').doc(user.uid).set({
+    await applyRoleToUser(user.uid, 'admin', {
       email: user.email,
-    }, { merge: true });
+    });
 
     await setupRef.set({
       email: normalizedEmail,
@@ -476,8 +487,20 @@ export const deleteUser = async (req, res) => {
     if (uid === req.user.uid) {
       return res.status(400).json({ message: 'You cannot delete your own account.' });
     }
-    await auth.deleteUser(uid);
-    await db.collection('users').doc(uid).delete();
+    await deleteUserAndProfile({
+      uid,
+      getUserProfile: async (targetUid) => {
+        const snapshot = await db.collection('users').doc(targetUid).get();
+        return snapshot.exists ? snapshot.data() : null;
+      },
+      deleteUserProfile: async (targetUid) => {
+        await db.collection('users').doc(targetUid).delete();
+      },
+      restoreUserProfile: async (targetUid, profile) => {
+        await db.collection('users').doc(targetUid).set(profile);
+      },
+      deleteAuthUser: (targetUid) => auth.deleteUser(targetUid),
+    });
     res.json({ message: `User ${uid} deleted.` });
   } catch (error) {
     console.error('Error deleting user:', error);
