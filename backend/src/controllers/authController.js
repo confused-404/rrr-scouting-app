@@ -2,6 +2,17 @@ import { auth, db } from '../config/firebase.js';
 import admin from 'firebase-admin';
 import crypto from 'crypto';
 import { sendMail } from '../config/mailer.js';
+import {
+  GENERIC_RESET_RESPONSE_MESSAGE,
+  INVALID_RESET_CODE_MESSAGE,
+  RESET_LOCKED_MESSAGE,
+  buildClearResetState,
+  buildFailedResetAttemptState,
+  buildIssuedResetState,
+  isResetCodeExpired,
+  isResetLockoutActive,
+  isResetRequestCoolingDown,
+} from '../utils/passwordReset.js';
 
 const VALID_ROLES = new Set(['admin', 'drive', 'user']);
 const INITIAL_ADMIN_SETUP_DOC = '_system/initialAdminSetup';
@@ -503,21 +514,34 @@ export const forgotPassword = async (req, res) => {
     } catch (e) {
       // don't leak whether email exists; respond success anyway
       console.warn('forgotPassword lookup failed:', e.message);
-      return res.status(200).json({ message: 'If an account exists for that email you will receive a code shortly.' });
+      return res.status(200).json({ message: GENERIC_RESET_RESPONSE_MESSAGE });
     }
 
-    // create a 6‑digit numeric code
+    const now = Date.now();
     const code = crypto.randomInt(100000, 1000000).toString();
     const resetCodeSalt = crypto.randomBytes(16).toString('hex');
     const resetCodeHash = hashResetCode(code, resetCodeSalt);
-    const expires = Date.now() + 1000 * 60 * 60; // one hour
-
-    // store on user document
-    await db.collection('users').doc(userRecord.uid).set({
+    const userRef = db.collection('users').doc(userRecord.uid);
+    const issuanceState = buildIssuedResetState({
       resetCodeHash,
       resetCodeSalt,
-      resetExpires: expires,
-    }, { merge: true });
+      now,
+    });
+    const shouldSendCode = await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(userRef);
+      const currentState = snapshot.exists ? (snapshot.data() || {}) : {};
+
+      if (isResetLockoutActive(currentState, now) || isResetRequestCoolingDown(currentState, now)) {
+        return false;
+      }
+
+      transaction.set(userRef, issuanceState, { merge: true });
+      return true;
+    });
+
+    if (!shouldSendCode) {
+      return res.status(200).json({ message: GENERIC_RESET_RESPONSE_MESSAGE });
+    }
 
     // send email
     const text = `Your password reset code is: ${code}\n\nThis code will expire in one hour.`;
@@ -533,7 +557,7 @@ export const forgotPassword = async (req, res) => {
       // cannot probe for existing accounts
     }
 
-    res.status(200).json({ message: 'If an account exists for that email you will receive a code shortly.' });
+    res.status(200).json({ message: GENERIC_RESET_RESPONSE_MESSAGE });
   } catch (error) {
     console.error('forgotPassword error:', error);
     res.status(500).json({ message: 'Error generating reset code' });
@@ -556,42 +580,60 @@ export const resetPassword = async (req, res) => {
     try {
       userRecord = await auth.getUserByEmail(email);
     } catch {
-      return res.status(400).json({ message: 'Invalid or expired code' });
+      return res.status(400).json({ message: INVALID_RESET_CODE_MESSAGE });
     }
-    const userDoc = await db.collection('users').doc(userRecord.uid).get();
-    const data = userDoc.data() || {};
+    const now = Date.now();
+    const userRef = db.collection('users').doc(userRecord.uid);
+    const verificationState = await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(userRef);
+      const data = snapshot.exists ? (snapshot.data() || {}) : {};
 
-    if (
-      !data.resetExpires ||
-      data.resetExpires < Date.now()
-    ) {
-      return res.status(400).json({ message: 'Invalid or expired code' });
+      if (isResetLockoutActive(data, now)) {
+        return { status: 'locked' };
+      }
+
+      if (isResetCodeExpired(data, now)) {
+        return { status: 'invalid' };
+      }
+
+      const hashedProvidedCode = (
+        typeof data.resetCodeSalt === 'string' && data.resetCodeSalt
+          ? hashResetCode(code, data.resetCodeSalt)
+          : null
+      );
+      const legacyCodeMatch = typeof data.resetCode === 'string' && data.resetCode === code;
+      const hashedCodeMatch = hashedProvidedCode !== null
+        && typeof data.resetCodeHash === 'string'
+        && timingSafeEqual(data.resetCodeHash, hashedProvidedCode);
+
+      if (legacyCodeMatch || hashedCodeMatch) {
+        return { status: 'valid' };
+      }
+
+      const nextAttemptState = buildFailedResetAttemptState(data, now);
+      transaction.set(userRef, nextAttemptState, { merge: true });
+
+      return {
+        status: nextAttemptState.resetLockedUntil ? 'locked' : 'invalid',
+      };
+    });
+
+    if (verificationState.status === 'locked') {
+      return res.status(429).json({ message: RESET_LOCKED_MESSAGE });
     }
 
-    const hashedProvidedCode = (
-      typeof data.resetCodeSalt === 'string' && data.resetCodeSalt
-        ? hashResetCode(code, data.resetCodeSalt)
-        : null
-    );
-    const legacyCodeMatch = typeof data.resetCode === 'string' && data.resetCode === code;
-    const hashedCodeMatch = hashedProvidedCode !== null
-      && typeof data.resetCodeHash === 'string'
-      && timingSafeEqual(data.resetCodeHash, hashedProvidedCode);
-
-    if (!legacyCodeMatch && !hashedCodeMatch) {
-      return res.status(400).json({ message: 'Invalid or expired code' });
+    if (verificationState.status !== 'valid') {
+      return res.status(400).json({ message: INVALID_RESET_CODE_MESSAGE });
     }
 
     // update password
     await auth.updateUser(userRecord.uid, { password: newPassword });
 
     // remove the code fields
-    await db.collection('users').doc(userRecord.uid).update({
-      resetCode: admin.firestore.FieldValue.delete(),
-      resetCodeHash: admin.firestore.FieldValue.delete(),
-      resetCodeSalt: admin.firestore.FieldValue.delete(),
-      resetExpires: admin.firestore.FieldValue.delete()
-    });
+    await userRef.set(
+      buildClearResetState(admin.firestore.FieldValue.delete()),
+      { merge: true },
+    );
 
     res.json({ message: 'Password has been reset successfully' });
   } catch (error) {
