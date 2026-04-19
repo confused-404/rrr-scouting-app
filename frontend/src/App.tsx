@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Edit2, Eye, LogOut, Calendar } from 'lucide-react';
+import { Edit2, Eye, LogOut, Calendar, RefreshCw } from 'lucide-react';
 import { AdminMode } from './components/AdminMode';
 import { AdminTeamMatches } from './components/AdminTeamMatches';
 import { UserMode } from './components/UserMode';
 import { Login } from './components/Login';
 import { useAuth } from './contexts/AuthContext';
 import type { Competition } from './types/competition.types';
-import { competitionApi } from './services/api';
+import { clearApiCache, competitionApi } from './services/api';
 import { createLogger, formatErrorForLogging } from './utils/logger';
 import './App.css';
 
@@ -28,6 +28,8 @@ function App() {
   const [mode, setMode] = useState<AppMode>('user');
   const [selectedCompetition, setSelectedCompetition] = useState<Competition | null>(null);
   const [modeInitializedForUid, setModeInitializedForUid] = useState<string | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const pendingRestoredModeRef = useRef<AppMode | null>(null);
   
   // Roles are pulled from AuthContext custom claims
@@ -192,6 +194,18 @@ function App() {
     }
   };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    clearApiCache();
+
+    try {
+      await loadCompetitions();
+      setRefreshVersion((current) => current + 1);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   if (!currentUser) {
     return <Login />;
   }
@@ -275,6 +289,15 @@ function App() {
                 )}
 
                 <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className={`${isDriveTeamPage ? 'px-2.5 py-1.5 text-xs sm:text-sm' : 'px-3 py-2 text-sm'} rounded-md flex items-center justify-center gap-2 bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                  Refresh
+                </button>
+
+                <button
                   onClick={handleLogout}
                   className={`${isDriveTeamPage ? 'px-2.5 py-1.5 text-xs sm:text-sm' : 'px-3 py-2 text-sm'} rounded-md flex items-center justify-center gap-2 bg-red-600 text-white hover:bg-red-700`}
                 >
@@ -298,11 +321,11 @@ function App() {
 
       <div className={`max-w-4xl mx-auto px-3 sm:px-4 ${isDriveTeamPage ? 'pt-2 pb-5 sm:pt-2 sm:pb-8' : 'py-5 sm:py-8'}`}>
         {mode === 'admin' && isAdmin ? (
-          <AdminMode onCompetitionUpdate={loadCompetitions} />
+          <AdminMode key={`admin-${refreshVersion}`} onCompetitionUpdate={loadCompetitions} />
         ) : mode === 'adminTeamMatches' && (isAdmin || isDriveTeam) ? (
-          <AdminTeamMatches selectedCompetition={selectedCompetition} />
+          <AdminTeamMatches key={`admin-team-${refreshVersion}`} selectedCompetition={selectedCompetition} />
         ) : (
-          <UserMode selectedCompetition={selectedCompetition} />
+          <UserMode key={`user-${refreshVersion}`} selectedCompetition={selectedCompetition} />
         )}
       </div>
     </div>

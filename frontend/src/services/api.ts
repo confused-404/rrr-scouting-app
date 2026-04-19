@@ -272,6 +272,20 @@ const runMutation = async <T>(request: () => Promise<T>, invalidationTags: strin
   return result;
 };
 
+export const clearApiCache = (): void => {
+  responseCache.clear();
+  inFlightRequests.clear();
+
+  const storage = getSessionStorage();
+  if (!storage) return;
+
+  try {
+    storage.removeItem(CACHE_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures; memory cache has already been cleared.
+  }
+};
+
 hydratePersistedCache();
 
 api.interceptors.request.use(async (config) => {
