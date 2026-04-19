@@ -34,8 +34,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           <div className="max-w-lg w-full rounded-xl border border-red-200 bg-white p-8 shadow-sm">
             <h1 className="text-2xl font-semibold text-gray-900">Something went wrong</h1>
             <p className="mt-3 text-sm leading-6 text-gray-600">
-              A render error was captured by the frontend logger. Open the browser console and inspect
-              window.__SCOUT_LOGGER__.getLogs() for the full trace.
+              A render error was captured by the frontend logger. Open the browser console for the stack trace.
+              In development, `window.__SCOUT_LOGGER__?.getLogs()` is also available for recent in-memory entries.
             </p>
             <button
               type="button"

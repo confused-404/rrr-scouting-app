@@ -2,7 +2,7 @@ import axios, { AxiosHeaders } from 'axios';
 import { auth } from '../config/firebase';
 import type { Form, FormField, Submission } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
-import { createLogger, formatErrorForLogging, sanitizeForLogging } from '../utils/logger';
+import { createLogger, formatErrorForLogging } from '../utils/logger';
 
 type RequestMetadata = {
   requestId: string;
@@ -326,8 +326,6 @@ api.interceptors.request.use(async (config) => {
     requestId,
     method: nextConfig.method,
     url: nextConfig.url,
-    params: sanitizeForLogging(nextConfig.params),
-    data: sanitizeForLogging(nextConfig.data),
   });
   return nextConfig;
 });
@@ -356,7 +354,6 @@ api.interceptors.response.use(
       durationMs,
       code: error.code,
       error: formatErrorForLogging(error),
-      responseData: sanitizeForLogging(error.response?.data),
     });
     return Promise.reject(error);
   },

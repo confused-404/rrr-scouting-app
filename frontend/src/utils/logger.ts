@@ -29,7 +29,6 @@ interface LoggerApi {
 interface LoggerDebugApi {
   getLogs: () => LogEntry[];
   clearLogs: () => void;
-  exportLogs: () => string;
   setLevel: (level: LogLevel) => void;
   getLevel: () => LogLevel;
 }
@@ -37,16 +36,15 @@ interface LoggerDebugApi {
 declare global {
   interface Window {
     __SCOUT_LOGGER__?: LoggerDebugApi;
-    __SCOUT_LOGS__?: LogEntry[];
   }
 }
 
-const STORAGE_KEY = 'scout-frontend-logs';
 const LOG_LEVEL_STORAGE_KEY = 'scout-log-level';
 const MAX_LOG_ENTRIES = 500;
 const CONSOLE_SCOPE = 'console';
 const REDACTED = '[REDACTED]';
 const SENSITIVE_KEY_PATTERN = /token|secret|password|authorization|api[-_]?key|cookie/i;
+const isDebugApiEnabled = import.meta.env.DEV || import.meta.env.VITE_EXPOSE_DEBUG_LOGGER === 'true';
 
 const levelOrder: Record<LogLevel, number> = {
   debug: 10,
@@ -64,7 +62,7 @@ const rawConsole = {
 };
 
 const sessionId = createId();
-const logEntries = loadStoredLogs();
+const logEntries: LogEntry[] = [];
 let activeLevel = readInitialLevel();
 let consolePatched = false;
 let globalHandlersInstalled = false;
@@ -90,36 +88,8 @@ function isLogLevel(value: unknown): value is LogLevel {
   return value === 'debug' || value === 'info' || value === 'warn' || value === 'error';
 }
 
-function loadStoredLogs(): LogEntry[] {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-
-  try {
-    const rawValue = window.sessionStorage.getItem(STORAGE_KEY);
-    if (!rawValue) {
-      return [];
-    }
-
-    const parsed = JSON.parse(rawValue) as LogEntry[];
-    return Array.isArray(parsed) ? parsed.slice(-MAX_LOG_ENTRIES) : [];
-  } catch {
-    return [];
-  }
-}
-
 function persistLogs(): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  try {
-    const nextLogs = logEntries.slice(-MAX_LOG_ENTRIES);
-    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(nextLogs));
-    window.__SCOUT_LOGS__ = nextLogs;
-  } catch {
-    // Ignore storage errors so logging never breaks the app.
-  }
+  // Intentionally in-memory only. Frontend logs should not persist user data to browser storage.
 }
 
 function shouldPrint(level: LogLevel): boolean {
@@ -343,7 +313,7 @@ export function installGlobalErrorHandlers(): void {
 }
 
 function exposeLoggerApi(): void {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || !isDebugApiEnabled) {
     return;
   }
 
@@ -353,7 +323,6 @@ function exposeLoggerApi(): void {
       logEntries.splice(0, logEntries.length);
       persistLogs();
     },
-    exportLogs: () => JSON.stringify(logEntries, null, 2),
     setLevel: (level: LogLevel) => {
       activeLevel = level;
       window.localStorage.setItem(LOG_LEVEL_STORAGE_KEY, level);
@@ -361,8 +330,6 @@ function exposeLoggerApi(): void {
     },
     getLevel: () => activeLevel,
   };
-
-  window.__SCOUT_LOGS__ = [...logEntries];
 }
 
 export function initializeLogger(): void {
