@@ -52,6 +52,30 @@ test('sanitizeSubmissionData accepts visible conditional fields', () => {
   );
 });
 
+test('sanitizeSubmissionData preserves picture submissions with explicit ownerUid', () => {
+  const form = {
+    id: 'form-a',
+    competitionId: 'comp-1',
+    fields: [
+      { id: 1, type: 'picture', label: 'Robot Photo', required: true },
+    ],
+  };
+
+  const pictureValue = {
+    url: 'https://storage.example/file.jpg',
+    path: 'form-submissions/comp-1/form-a/user-123/1/1700000000000-abc-photo.jpg',
+    name: 'photo.jpg',
+    contentType: 'image/jpeg',
+    size: 12345,
+    ownerUid: 'user-123',
+  };
+
+  assert.deepEqual(
+    sanitizeSubmissionData(form, { 1: pictureValue }, { allowedOwnerUids: ['user-123'] }),
+    { '1': pictureValue },
+  );
+});
+
 test('resolveTeamNumberFieldId uses explicit teamNumberFieldId before label matching', () => {
   assert.equal(resolveTeamNumberFieldId({
     teamNumberFieldId: 7,

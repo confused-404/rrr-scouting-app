@@ -295,6 +295,7 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, up
         size: compressedFile.size,
         bucket: String(storage.app.options.storageBucket || ''),
         uploadedAt: new Date().toISOString(),
+        ownerUid: currentUser.uid,
       });
       setUploadProgress(100);
       formFieldLogger.info('Picture upload completed', {

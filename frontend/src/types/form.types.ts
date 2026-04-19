@@ -15,6 +15,7 @@ export type PictureFieldValue = {
   size: number;
   bucket?: string;
   uploadedAt?: string;
+  ownerUid?: string;
 };
 
 export type SubmissionValue =

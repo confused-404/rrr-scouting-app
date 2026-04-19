@@ -39,6 +39,25 @@ const resolvePicturePathPrefix = ({ competitionId, formId, fieldId, ownerUid }) 
   `form-submissions/${competitionId}/${formId}/${ownerUid}/${fieldId}/`
 );
 
+const extractOwnerUidFromPicturePath = (path) => {
+  if (typeof path !== 'string') {
+    return null;
+  }
+
+  const segments = path.split('/').filter(Boolean);
+  if (segments.length < 6 || segments[0] !== 'form-submissions') {
+    return null;
+  }
+
+  const currentLayoutOwnerUid = /^\d+$/.test(segments[4]) ? segments[3] : null;
+  if (currentLayoutOwnerUid) {
+    return currentLayoutOwnerUid;
+  }
+
+  const legacyLayoutOwnerUid = /^\d+$/.test(segments[3]) ? segments[4] : null;
+  return legacyLayoutOwnerUid || null;
+};
+
 const hasMeaningfulValue = (value) => !(
   value === ''
   || value === null
@@ -61,6 +80,7 @@ const sanitizePictureValue = (value, options) => {
   const contentType = normalizeString(value.contentType);
   const bucket = normalizeString(value.bucket);
   const uploadedAt = normalizeString(value.uploadedAt);
+  const ownerUid = normalizeString(value.ownerUid) || extractOwnerUidFromPicturePath(path);
   const size = Number(value.size);
 
   if (!url || !path) {
@@ -77,14 +97,30 @@ const sanitizePictureValue = (value, options) => {
 
   const allowedOwnerUids = Array.isArray(options?.allowedOwnerUids) ? options.allowedOwnerUids : [];
   const normalizedOwnerUids = allowedOwnerUids.map((uid) => normalizeString(uid)).filter(Boolean);
-  const allowedPrefixes = normalizedOwnerUids.map((ownerUid) => resolvePicturePathPrefix({
+
+  if (!ownerUid) {
+    throw createValidationError('Picture fields must include an ownerUid or a recognizable storage path.');
+  }
+
+  if (normalizedOwnerUids.length > 0 && !normalizedOwnerUids.includes(ownerUid)) {
+    throw createValidationError('Picture upload owner is outside the allowed submission scope.');
+  }
+
+  const allowedPrefixes = normalizedOwnerUids.map((normalizedOwnerUid) => resolvePicturePathPrefix({
+    competitionId: options.competitionId,
+    formId: options.formId,
+    fieldId: options.fieldId,
+    ownerUid: normalizedOwnerUid,
+  }));
+
+  const expectedPrefix = resolvePicturePathPrefix({
     competitionId: options.competitionId,
     formId: options.formId,
     fieldId: options.fieldId,
     ownerUid,
-  }));
+  });
 
-  if (!allowedPrefixes.some((prefix) => path.startsWith(prefix))) {
+  if (!path.startsWith(expectedPrefix) && !allowedPrefixes.some((prefix) => path.startsWith(prefix))) {
     throw createValidationError('Picture upload path is outside the allowed submission scope.');
   }
 
@@ -94,6 +130,7 @@ const sanitizePictureValue = (value, options) => {
     name,
     contentType,
     size,
+    ownerUid,
     ...(bucket ? { bucket } : {}),
     ...(uploadedAt ? { uploadedAt } : {}),
   };
