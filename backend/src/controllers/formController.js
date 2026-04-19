@@ -360,6 +360,38 @@ const sanitizePictureValue = (value) => {
   };
 };
 
+export const sanitizeTeamNumberFieldId = (teamNumberFieldId, fields) => {
+  if (teamNumberFieldId === null || teamNumberFieldId === undefined || teamNumberFieldId === '') {
+    return null;
+  }
+
+  const numericFieldId = Number(teamNumberFieldId);
+  if (!Number.isInteger(numericFieldId)) {
+    throw createValidationError('Team number field must reference a valid numeric field ID.');
+  }
+
+  const fieldExists = fields.some((field) => Number(field.id) === numericFieldId);
+  if (!fieldExists) {
+    throw createValidationError('Team number field must reference an existing field in the form.');
+  }
+
+  return numericFieldId;
+};
+
+export const validateSubmissionCompetition = (form, competitionId) => {
+  if (!form || typeof form !== 'object') {
+    throw createValidationError('Form is required.');
+  }
+
+  if (!competitionId) {
+    throw createValidationError('Competition ID is required.');
+  }
+
+  if (form.competitionId !== competitionId) {
+    throw createValidationError('Competition ID does not match the selected form.');
+  }
+};
+
 const sanitizeSubmissionData = (form, payload) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw createValidationError('Submission data must be an object.');
@@ -525,7 +557,7 @@ export const formController = {
   // Create form
   createForm: async (req, res) => {
     try {
-      const { fields, competitionId, name } = req.body;
+      const { fields, competitionId, name, teamNumberFieldId } = req.body;
 
       if (!competitionId) {
         return res.status(400).json({ message: 'Competition ID is required' });
@@ -537,11 +569,13 @@ export const formController = {
         currentFormId: '__current__',
         formsById,
       });
+      const sanitizedTeamNumberFieldId = sanitizeTeamNumberFieldId(teamNumberFieldId, sanitizedFields);
 
       const newForm = await formModel.createForm({
         fields: sanitizedFields,
         competitionId,
-        name: normalizeString(name) || 'Untitled Form'
+        name: normalizeString(name) || 'Untitled Form',
+        teamNumberFieldId: sanitizedTeamNumberFieldId,
       });
 
       // Add the form ID to the competition's formIds array
@@ -618,7 +652,7 @@ export const formController = {
   // Update form
   updateForm: async (req, res) => {
     try {
-      const { fields, name } = req.body;
+      const { fields, name, teamNumberFieldId } = req.body;
       const existingForm = await formModel.getFormById(req.params.id);
       if (!existingForm) {
         return res.status(404).json({ message: 'Form not found' });
@@ -635,8 +669,12 @@ export const formController = {
         currentFormId: req.params.id,
         formsById,
       });
+      const sanitizedTeamNumberFieldId = sanitizeTeamNumberFieldId(teamNumberFieldId, sanitizedFields);
 
-      const updateData = { fields: sanitizedFields };
+      const updateData = {
+        fields: sanitizedFields,
+        teamNumberFieldId: sanitizedTeamNumberFieldId,
+      };
       if (name !== undefined) {
         updateData.name = normalizeString(name) || 'Untitled Form';
       }
@@ -728,6 +766,8 @@ export const formController = {
       if (!form) {
         return res.status(404).json({ message: 'Form not found' });
       }
+
+      validateSubmissionCompetition(form, competitionId);
 
       const sanitizedData = sanitizeSubmissionData(form, data);
       const newSubmission = await formModel.createSubmission({ formId, competitionId, data: sanitizedData });

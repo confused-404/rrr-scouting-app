@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
@@ -24,7 +23,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     authLogger.info('Signup requested', { email });
 
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      await authApi.signup(email, password);
+      await signInWithEmailAndPassword(auth, email, password);
       authLogger.info('Signup completed', { email });
     } catch (error) {
       authLogger.error('Signup failed', {

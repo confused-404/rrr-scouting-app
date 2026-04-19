@@ -51,7 +51,7 @@ const getApiUrl = (): string => {
 };
 
 const API_BASE_URL = getApiUrl();
-const API_KEY = import.meta.env.VITE_API_KEY || 'dev-key-for-local-testing';
+const API_KEY = import.meta.env.VITE_API_KEY || (import.meta.env.DEV ? 'dev-key-for-local-testing' : '');
 const CACHE_STORAGE_KEY = 'api-cache:v1';
 const FORCE_REFRESH_WINDOW_MS = 15_000;
 

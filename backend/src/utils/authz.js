@@ -14,6 +14,9 @@ export const extractBearerToken = (authorizationHeader) => {
 };
 
 export const getUserRole = (user) => {
+  if (user?.appRole === APP_ROLES.admin) return APP_ROLES.admin;
+  if (user?.appRole === APP_ROLES.drive) return APP_ROLES.drive;
+  if (user?.appRole === APP_ROLES.user) return APP_ROLES.user;
   if (user?.admin === true) return APP_ROLES.admin;
   if (user?.driveTeam === true) return APP_ROLES.drive;
   return APP_ROLES.user;

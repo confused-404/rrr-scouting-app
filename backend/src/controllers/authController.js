@@ -1,5 +1,6 @@
 import { auth, db } from '../config/firebase.js';
 import admin from 'firebase-admin';
+import crypto from 'crypto';
 import { sendMail } from '../config/mailer.js';
 
 const VALID_ROLES = new Set(['admin', 'drive', 'user']);
@@ -8,6 +9,20 @@ const claimsForRole = (role) => ({
   admin: role === 'admin',
   driveTeam: role === 'drive',
 });
+
+const hashResetCode = (code, salt) => (
+  crypto.createHash('sha256').update(`${salt}:${code}`).digest('hex')
+);
+
+const timingSafeEqual = (left, right) => {
+  if (typeof left !== 'string' || typeof right !== 'string') return false;
+
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) return false;
+
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
 
 const applyRoleToUser = async (uid, role) => {
   if (!VALID_ROLES.has(role)) {
@@ -25,6 +40,25 @@ const applyRoleToUser = async (uid, role) => {
     role,
     updatedAt: new Date().toISOString(),
   }, { merge: true });
+};
+
+const hasAnyAdminUser = async () => {
+  const firestoreAdmins = await db.collection('users').where('role', '==', 'admin').limit(1).get();
+  if (!firestoreAdmins.empty) {
+    return true;
+  }
+
+  let pageToken;
+  do {
+    const result = await auth.listUsers(1000, pageToken);
+    const foundAdmin = result.users.some((userRecord) => userRecord.customClaims?.admin === true);
+    if (foundAdmin) {
+      return true;
+    }
+    pageToken = result.pageToken;
+  } while (pageToken);
+
+  return false;
 };
 
 /**
@@ -65,9 +99,18 @@ export const signup = async (req, res) => {
 export const initializeFirstAdmin = async (req, res) => {
   try {
     const { email } = req.body;
+    const normalizedEmail = typeof email === 'string' ? email.trim() : '';
+
+    if (!normalizedEmail) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    if (await hasAnyAdminUser()) {
+      return res.status(409).json({ message: 'Initial admin has already been configured.' });
+    }
 
     // 1. Get user record from the Admin SDK
-    const user = await auth.getUserByEmail(email);
+    const user = await auth.getUserByEmail(normalizedEmail);
 
     // 2. USE THE API: Set custom claims for the user
     // This makes the user an admin at the security token level
@@ -78,7 +121,7 @@ export const initializeFirstAdmin = async (req, res) => {
       email: user.email,
     }, { merge: true });
 
-    res.json({ message: `Success: ${email} is now an admin and saved to DB.` });
+    res.json({ message: `Success: ${normalizedEmail} is now an admin and saved to DB.` });
   } catch (error) {
     console.error('Initialization error:', error);
     res.status(500).json({ message: error.message });
@@ -444,17 +487,17 @@ export const forgotPassword = async (req, res) => {
     }
 
     // create a 6‑digit numeric code
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const resetCodeSalt = crypto.randomBytes(16).toString('hex');
+    const resetCodeHash = hashResetCode(code, resetCodeSalt);
     const expires = Date.now() + 1000 * 60 * 60; // one hour
 
     // store on user document
     await db.collection('users').doc(userRecord.uid).set({
-      resetCode: code,
-      resetExpires: expires
+      resetCodeHash,
+      resetCodeSalt,
+      resetExpires: expires,
     }, { merge: true });
-
-    // log code for development / fallback
-    console.log(`password reset code for ${email}: ${code}`);
 
     // send email
     const text = `Your password reset code is: ${code}\n\nThis code will expire in one hour.`;
@@ -494,10 +537,23 @@ export const resetPassword = async (req, res) => {
     const data = userDoc.data() || {};
 
     if (
-      data.resetCode !== code ||
       !data.resetExpires ||
       data.resetExpires < Date.now()
     ) {
+      return res.status(400).json({ message: 'Invalid or expired code' });
+    }
+
+    const hashedProvidedCode = (
+      typeof data.resetCodeSalt === 'string' && data.resetCodeSalt
+        ? hashResetCode(code, data.resetCodeSalt)
+        : null
+    );
+    const legacyCodeMatch = typeof data.resetCode === 'string' && data.resetCode === code;
+    const hashedCodeMatch = hashedProvidedCode !== null
+      && typeof data.resetCodeHash === 'string'
+      && timingSafeEqual(data.resetCodeHash, hashedProvidedCode);
+
+    if (!legacyCodeMatch && !hashedCodeMatch) {
       return res.status(400).json({ message: 'Invalid or expired code' });
     }
 
@@ -507,6 +563,8 @@ export const resetPassword = async (req, res) => {
     // remove the code fields
     await db.collection('users').doc(userRecord.uid).update({
       resetCode: admin.firestore.FieldValue.delete(),
+      resetCodeHash: admin.firestore.FieldValue.delete(),
+      resetCodeSalt: admin.firestore.FieldValue.delete(),
       resetExpires: admin.firestore.FieldValue.delete()
     });
 

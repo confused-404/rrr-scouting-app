@@ -24,6 +24,12 @@ test('getUserRole resolves custom claims into app roles', () => {
   assert.equal(getUserRole({}), APP_ROLES.user);
 });
 
+test('getUserRole prefers persisted app roles over stale token claims', () => {
+  assert.equal(getUserRole({ appRole: 'user', admin: true }), APP_ROLES.user);
+  assert.equal(getUserRole({ appRole: 'drive', admin: true }), APP_ROLES.drive);
+  assert.equal(getUserRole({ appRole: 'admin', driveTeam: true }), APP_ROLES.admin);
+});
+
 test('hasRequiredRole only permits explicitly allowed roles', () => {
   assert.equal(hasRequiredRole({ admin: true }, ['admin']), true);
   assert.equal(hasRequiredRole({ driveTeam: true }, ['admin']), false);

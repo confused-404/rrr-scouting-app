@@ -1,4 +1,4 @@
-import { auth } from '../config/firebase.js';
+import { auth, db } from '../config/firebase.js';
 import { extractBearerToken, hasRequiredRole, isSetupSecretValid } from '../utils/authz.js';
 
 export const verifyToken = async (req, res, next) => {
@@ -10,7 +10,18 @@ export const verifyToken = async (req, res, next) => {
     }
 
     const decodedToken = await auth.verifyIdToken(token);
-    req.user = decodedToken;
+    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+    const docRole = userDoc.exists ? userDoc.data()?.role : null;
+    const effectiveRole = docRole === 'admin' || docRole === 'drive' || docRole === 'user'
+      ? docRole
+      : (decodedToken.admin ? 'admin' : (decodedToken.driveTeam ? 'drive' : 'user'));
+
+    req.user = {
+      ...decodedToken,
+      appRole: effectiveRole,
+      admin: effectiveRole === 'admin',
+      driveTeam: effectiveRole === 'drive',
+    };
     return next();
   } catch (error) {
     console.error('Auth error:', error);
