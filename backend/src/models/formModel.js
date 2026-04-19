@@ -3,6 +3,7 @@ import admin from 'firebase-admin';
 
 const FORMS_COLLECTION = 'forms';
 const SUBMISSIONS_COLLECTION = 'submissions';
+const COMPETITIONS_COLLECTION = 'competitions';
 const MAX_BATCH_SIZE = 450;
 
 // Helper function to convert Firestore timestamp
@@ -75,6 +76,42 @@ export const formModel = {
     return mapFormDocument(doc);
   },
 
+  createFormForCompetition: async (formData) => {
+    const competitionId = formData?.competitionId;
+    if (!competitionId) {
+      const error = new Error('Competition ID is required');
+      error.status = 400;
+      throw error;
+    }
+
+    const formRef = db.collection(FORMS_COLLECTION).doc();
+    const competitionRef = db.collection(COMPETITIONS_COLLECTION).doc(competitionId);
+
+    await db.runTransaction(async (transaction) => {
+      const competitionDoc = await transaction.get(competitionRef);
+      if (!competitionDoc.exists) {
+        const error = new Error('Competition not found');
+        error.status = 404;
+        throw error;
+      }
+
+      transaction.set(formRef, {
+        ...formData,
+        name: formData.name || 'Untitled Form',
+        isActive: true,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      transaction.update(competitionRef, {
+        formIds: admin.firestore.FieldValue.arrayUnion(formRef.id),
+      });
+    });
+
+    const doc = await formRef.get();
+    return mapFormDocument(doc);
+  },
+
   updateForm: async (id, formData) => {
     const docRef = db.collection(FORMS_COLLECTION).doc(id);
     const doc = await docRef.get();
@@ -115,6 +152,21 @@ export const formModel = {
     await deleteSnapshotDocuments(submissionsSnapshot);
     await formDoc.ref.delete();
     return true;
+  },
+
+  deleteSubmissionsByFormId: async (formId) => {
+    const snapshot = await db.collection(SUBMISSIONS_COLLECTION)
+      .where('formId', '==', formId)
+      .get();
+
+    const docs = snapshot.docs;
+    for (let index = 0; index < docs.length; index += MAX_BATCH_SIZE) {
+      const batch = db.batch();
+      docs.slice(index, index + MAX_BATCH_SIZE).forEach((snapshotDoc) => {
+        batch.delete(snapshotDoc.ref);
+      });
+      await batch.commit();
+    }
   },
 
   // Submission operations

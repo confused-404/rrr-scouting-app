@@ -1,3 +1,4 @@
+import { db } from '../config/firebase.js';
 import { formModel } from '../models/formModel.js';
 import {
   createValidationError,
@@ -8,7 +9,6 @@ import {
   validateSubmissionCompetition,
 } from '../utils/submissionValidation.js';
 import { buildCrossFormValuesForTeam } from '../utils/crossFormValues.js';
-import { stripFormFromCompetitionState } from '../utils/competitionState.js';
 
 const VALID_FIELD_TYPES = new Set([
   'text',
@@ -358,12 +358,6 @@ export const formController = {
         return res.status(400).json({ message: 'Competition ID is required' });
       }
 
-      const { competitionModel } = await import('../models/competitionModel.js');
-      const competition = await competitionModel.getCompetitionById(competitionId);
-      if (!competition) {
-        return res.status(404).json({ message: 'Competition not found' });
-      }
-
       const competitionForms = await formModel.getFormsByCompetition(competitionId);
       const formsById = new Map(competitionForms.map((form) => [form.id, form]));
       const sanitizedFields = sanitizeFields(fields, {
@@ -372,14 +366,12 @@ export const formController = {
       });
       const sanitizedTeamNumberFieldId = sanitizeTeamNumberFieldId(teamNumberFieldId, sanitizedFields);
 
-      const newForm = await formModel.createForm({
+      const newForm = await formModel.createFormForCompetition({
         fields: sanitizedFields,
         competitionId,
         name: normalizeString(name) || 'Untitled Form',
         teamNumberFieldId: sanitizedTeamNumberFieldId,
       });
-
-      await competitionModel.addFormToCompetition(competitionId, newForm.id);
 
       res.status(201).json(newForm);
     } catch (error) {
@@ -398,12 +390,6 @@ export const formController = {
       const destinationCompetitionId = normalizeString(req.body.destinationCompetitionId);
       if (!destinationCompetitionId) {
         return res.status(400).json({ message: 'Destination competition ID is required' });
-      }
-
-      const { competitionModel } = await import('../models/competitionModel.js');
-      const destinationCompetition = await competitionModel.getCompetitionById(destinationCompetitionId);
-      if (!destinationCompetition) {
-        return res.status(404).json({ message: 'Destination competition not found' });
       }
 
       const requestedName = normalizeString(req.body.name);
@@ -426,14 +412,12 @@ export const formController = {
         formsById: new Map(destinationCompetitionForms.map((form) => [form.id, form])),
       });
 
-      const copiedForm = await formModel.createForm({
+      const copiedForm = await formModel.createFormForCompetition({
         competitionId: destinationCompetitionId,
         name: requestedName || sourceForm.name || 'Untitled Form',
         fields: sanitizedFields,
         teamNumberFieldId: sourceForm.teamNumberFieldId ?? null,
       });
-
-      await competitionModel.addFormToCompetition(destinationCompetitionId, copiedForm.id);
 
       res.status(201).json(copiedForm);
     } catch (error) {
@@ -489,9 +473,32 @@ export const formController = {
         return res.status(404).json({ message: 'Form not found' });
       }
 
-      const { competitionModel } = await import('../models/competitionModel.js');
-      await formModel.deleteForm(req.params.id);
-      await competitionModel.removeFormFromCompetition(form.competitionId, req.params.id);
+      const formRef = db.collection('forms').doc(req.params.id);
+      const competitionRef = db.collection('competitions').doc(form.competitionId);
+
+      await db.runTransaction(async (transaction) => {
+        const formDoc = await transaction.get(formRef);
+        if (!formDoc.exists) {
+          return;
+        }
+
+        const competitionDoc = await transaction.get(competitionRef);
+        if (competitionDoc.exists) {
+          const currentCompetition = competitionDoc.data() || {};
+          transaction.update(competitionRef, {
+            formIds: Array.isArray(currentCompetition.formIds)
+              ? currentCompetition.formIds.filter((currentFormId) => currentFormId !== req.params.id)
+              : [],
+            activeFormIds: Array.isArray(currentCompetition.activeFormIds)
+              ? currentCompetition.activeFormIds.filter((currentFormId) => currentFormId !== req.params.id)
+              : [],
+          });
+        }
+
+        transaction.delete(formRef);
+      });
+
+      await formModel.deleteSubmissionsByFormId(req.params.id);
 
       res.json({ message: 'Form deleted successfully' });
     } catch (error) {
