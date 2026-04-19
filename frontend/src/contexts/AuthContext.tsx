@@ -1,6 +1,5 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
@@ -9,29 +8,9 @@ import {
 import { auth } from '../config/firebase';
 import { authApi } from '../services/api';
 import { createLogger, formatErrorForLogging } from '../utils/logger';
-
-interface AuthContextType {
-  currentUser: User | null;
-  isAdmin: boolean;
-  isDriveTeam: boolean;
-  role: 'admin' | 'drive' | 'user';
-  scouterName: string | null;
-  loading: boolean;
-  signup: (email: string, password: string) => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { AuthContext } from './auth-context';
+import { resolveRoleFromTokenClaims, type TokenClaims } from './auth-role';
 const authLogger = createLogger('AuthContext');
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -40,12 +19,122 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [role, setRole] = useState<'admin' | 'drive' | 'user'>('user');
   const [scouterName, setScouterName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const authSessionVersionRef = useRef(0);
+  const profileSyncRequestRef = useRef(0);
+  const isMountedRef = useRef(true);
+
+  const clearProfileState = useCallback(() => {
+    setIsAdmin(false);
+    setIsDriveTeam(false);
+    setRole('user');
+    setScouterName(null);
+  }, []);
+
+  const syncUserProfile = useCallback(async (user: User, options: { forceRefresh?: boolean } = {}) => {
+    try {
+      const tokenResult = await user.getIdTokenResult(Boolean(options.forceRefresh));
+      const tokenIsAdmin = !!tokenResult.claims.admin;
+      const tokenIsDrive = !!tokenResult.claims.driveTeam;
+      const tokenRole = resolveRoleFromTokenClaims(tokenResult.claims as unknown as TokenClaims);
+
+      try {
+        const profile = await authApi.getCurrentUser({ bypassCache: Boolean(options.forceRefresh) }) as {
+          role?: 'admin' | 'drive' | 'user';
+          scouterName?: string | null;
+        };
+        return {
+          uid: user.uid,
+          role: profile.role ?? tokenRole,
+          scouterName: profile.scouterName ?? null,
+          tokenIsAdmin,
+          tokenIsDrive,
+        };
+      } catch (error) {
+        authLogger.warn('Auth profile unavailable; falling back to verified token claims', {
+          uid: user.uid,
+          error: formatErrorForLogging(error),
+        });
+        return {
+          uid: user.uid,
+          role: tokenRole,
+          scouterName: null,
+          tokenIsAdmin,
+          tokenIsDrive,
+        };
+      }
+    } catch (error) {
+      authLogger.error('Failed to synchronize auth profile', {
+        uid: user.uid,
+        error: formatErrorForLogging(error),
+      });
+      return {
+        uid: user.uid,
+        role: 'user' as const,
+        scouterName: null,
+        tokenIsAdmin: false,
+        tokenIsDrive: false,
+      };
+    }
+  }, []);
+
+  const runProfileSync = useCallback(async (
+    user: User,
+    sessionVersion: number,
+    options: { forceRefresh?: boolean } = {},
+  ) => {
+    const requestId = profileSyncRequestRef.current + 1;
+    profileSyncRequestRef.current = requestId;
+
+    const result = await syncUserProfile(user, options);
+    const requestIsStale = (
+      !isMountedRef.current
+      || authSessionVersionRef.current !== sessionVersion
+      || profileSyncRequestRef.current !== requestId
+      || auth.currentUser?.uid !== result.uid
+    );
+
+    if (requestIsStale) {
+      authLogger.debug('Discarded stale auth profile sync result', {
+        uid: result.uid,
+        sessionVersion,
+        activeSessionVersion: authSessionVersionRef.current,
+        requestId,
+        activeRequestId: profileSyncRequestRef.current,
+        currentAuthUid: auth.currentUser?.uid,
+      });
+      return false;
+    }
+
+    setRole(result.role);
+    setIsAdmin(result.role === 'admin');
+    setIsDriveTeam(result.role === 'drive');
+    setScouterName(result.scouterName);
+
+    authLogger.info('User profile synchronized', {
+      uid: result.uid,
+      role: result.role,
+      tokenIsAdmin: result.tokenIsAdmin,
+      tokenIsDrive: result.tokenIsDrive,
+      requestId,
+    });
+
+    return true;
+  }, [syncUserProfile]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      authSessionVersionRef.current += 1;
+      profileSyncRequestRef.current += 1;
+    };
+  }, []);
 
   const signup = async (email: string, password: string) => {
     authLogger.info('Signup requested', { email });
 
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      await authApi.signup(email, password);
+      await signInWithEmailAndPassword(auth, email, password);
       authLogger.info('Signup completed', { email });
     } catch (error) {
       authLogger.error('Signup failed', {
@@ -89,6 +178,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      const sessionVersion = authSessionVersionRef.current + 1;
+      authSessionVersionRef.current = sessionVersion;
       setLoading(true);
       setCurrentUser(user);
       authLogger.info('Auth state changed', {
@@ -97,47 +188,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       
       if (user) {
-        try {
-          // Get the ID Token Result to check for custom claims
-          // Using true forces a refresh to ensure we get the latest claims
-          const tokenResult = await user.getIdTokenResult(true);
-          const nextIsAdmin = !!tokenResult.claims.admin;
-          const nextIsDrive = !!tokenResult.claims.driveTeam;
-          setIsAdmin(nextIsAdmin);
-          setIsDriveTeam(nextIsDrive);
-          setRole(nextIsAdmin ? 'admin' : (nextIsDrive ? 'drive' : 'user'));
-          authLogger.info('User claims loaded', {
-            uid: user.uid,
-            isAdmin: nextIsAdmin,
-            isDriveTeam: nextIsDrive,
-          });
-        } catch (error) {
-          authLogger.error('Failed to fetch auth claims', {
-            uid: user.uid,
-            error: formatErrorForLogging(error),
-          });
-          setIsAdmin(false);
-          setIsDriveTeam(false);
-          setRole('user');
-        }
-        try {
-          const profile = await authApi.getCurrentUser() as { scouterName?: string | null };
-          setScouterName(profile.scouterName ?? null);
-        } catch {
-          setScouterName(null);
-        }
+        await runProfileSync(user, sessionVersion, { forceRefresh: true });
       } else {
-        setIsAdmin(false);
-        setIsDriveTeam(false);
-        setRole('user');
-        setScouterName(null);
+        clearProfileState();
       }
-      
-      setLoading(false);
+
+      if (isMountedRef.current && authSessionVersionRef.current === sessionVersion) {
+        setLoading(false);
+      }
     });
 
     return unsubscribe;
-  }, []);
+  }, [clearProfileState, runProfileSync]);
+
+  useEffect(() => {
+    if (!currentUser) return undefined;
+    const sessionVersion = authSessionVersionRef.current;
+
+    const refreshProfile = () => {
+      void runProfileSync(currentUser, sessionVersion, { forceRefresh: true });
+    };
+
+    const intervalId = window.setInterval(refreshProfile, 60_000);
+    window.addEventListener('focus', refreshProfile);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshProfile);
+    };
+  }, [currentUser, runProfileSync]);
 
   const value = {
     currentUser,

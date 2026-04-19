@@ -116,10 +116,17 @@ export const ScoutingTeams: React.FC<{ selectedCompetition?: Competition | null 
 
       // Create a map of match numbers to times
       const matchTimes = new Map<number, number>();
-      matchSchedule.forEach((match: any) => {
-        const matchNum = match.match_number || (match.key ? parseInt(match.key.split('m')[1]) : 0);
-        if (matchNum && match.time) {
-          matchTimes.set(matchNum, match.time);
+      matchSchedule.forEach((rawMatch) => {
+        if (!rawMatch || typeof rawMatch !== 'object') return;
+
+        const match = rawMatch as { match_number?: unknown; key?: unknown; time?: unknown };
+        const matchKey = typeof match.key === 'string' ? match.key : '';
+        const derivedMatchNumber = matchKey.includes('m') ? Number.parseInt(matchKey.split('m')[1] || '0', 10) : 0;
+        const matchNum = Number(match.match_number ?? derivedMatchNumber);
+        const matchTime = Number(match.time);
+
+        if (Number.isFinite(matchNum) && matchNum > 0 && Number.isFinite(matchTime)) {
+          matchTimes.set(matchNum, matchTime);
         }
       });
 

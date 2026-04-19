@@ -11,7 +11,7 @@ import type {
 } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { formApi, competitionApi } from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import { createDefaultCondition, normalizeCondition } from '../utils/formConditions';
 
 const teamFieldRegex = /team|team number|team #/i;

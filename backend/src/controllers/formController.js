@@ -1,4 +1,17 @@
 import { formModel } from '../models/formModel.js';
+import {
+  createValidationError,
+  normalizeTeamNumber,
+  resolveTeamNumberFieldId,
+  resolveSubmissionNormalizedTeamNumber,
+  sanitizeSubmissionData,
+  sanitizeTeamNumberFieldId,
+  validateSubmissionCompetition,
+} from '../utils/submissionValidation.js';
+import { buildCrossFormValuesForTeam } from '../utils/crossFormValues.js';
+import { assertFormAllowsSubmission, collectCrossFormFieldReferences } from '../utils/submissionAccess.js';
+import { competitionModel } from '../models/competitionModel.js';
+import { getUserRole } from '../utils/authz.js';
 
 const VALID_FIELD_TYPES = new Set([
   'text',
@@ -10,22 +23,64 @@ const VALID_FIELD_TYPES = new Set([
   'picture',
 ]);
 
-const VALID_CONDITION_OPERATORS = new Set([
-  'equals',
-  'not_equals',
-  'contains',
-  'not_contains',
-]);
-
-const createValidationError = (message) => {
-  const error = new Error(message);
-  error.status = 400;
-  return error;
-};
-
 const normalizeString = (value) => String(value ?? '').trim();
 
 const toLookupKey = (value) => normalizeString(value).toLowerCase();
+const canReadPrivilegedForms = (user) => ['admin', 'drive'].includes(getUserRole(user));
+
+const createForbiddenError = (message) => {
+  const error = new Error(message);
+  error.status = 403;
+  return error;
+};
+
+const buildScoutVisibleFormIds = (competition) => {
+  if (!competition || competition.status !== 'active') {
+    return new Set();
+  }
+
+  const activeFormIds = Array.isArray(competition.activeFormIds)
+    ? competition.activeFormIds.filter((formId) => typeof formId === 'string' && formId.trim() !== '')
+    : [];
+
+  return new Set(activeFormIds);
+};
+
+const filterFormsForUser = (forms, competition, user) => {
+  if (canReadPrivilegedForms(user)) {
+    return forms;
+  }
+
+  const visibleFormIds = buildScoutVisibleFormIds(competition);
+  return forms.filter((form) => visibleFormIds.has(form.id));
+};
+
+const assertUserCanReadForm = (form, competition, user) => {
+  if (canReadPrivilegedForms(user)) {
+    return;
+  }
+
+  const visibleFormIds = buildScoutVisibleFormIds(competition);
+  if (!visibleFormIds.has(form.id)) {
+    throw createForbiddenError('The selected form is not currently available to this user.');
+  }
+};
+
+const filterCrossFormReferencesForUser = (referencedFieldsByFormId, visibleFormIds) => {
+  if (!(referencedFieldsByFormId instanceof Map)) {
+    return new Map();
+  }
+
+  const filtered = new Map();
+  for (const [formId, fieldIds] of referencedFieldsByFormId.entries()) {
+    if (!visibleFormIds.has(formId)) {
+      continue;
+    }
+    filtered.set(formId, fieldIds);
+  }
+
+  return filtered;
+};
 
 const sanitizeOptions = (field) => {
   const options = Array.isArray(field.options)
@@ -93,7 +148,7 @@ const sanitizeCondition = (condition, context) => {
     }
   }
 
-  if (!VALID_CONDITION_OPERATORS.has(condition.operator)) {
+  if (!['equals', 'not_equals', 'contains', 'not_contains'].includes(condition.operator)) {
     throw createValidationError('Conditional logic operator is invalid.');
   }
 
@@ -315,174 +370,26 @@ const evaluateConditionForSubmission = (condition, values, currentFormId) => {
   }
 };
 
-const shouldIncludeField = (field, values, currentFormId) => {
-  if (!field.condition) return true;
-  return evaluateConditionForSubmission(field.condition, values, currentFormId);
-};
-
-const sanitizePictureValue = (value) => {
-  if (value === undefined || value === null || value === '') {
-    return undefined;
+const loadCrossFormLookupContext = async ({ competitionId, currentFormId, teamNumber }) => {
+  const normalizedTeam = normalizeTeamNumber(teamNumber);
+  if (!normalizedTeam) {
+    return {
+      forms: await formModel.getFormsByCompetition(competitionId),
+      submissions: [],
+      normalizedTeam,
+    };
   }
 
-  if (typeof value !== 'object' || Array.isArray(value)) {
-    throw createValidationError('Picture fields must be submitted as an object.');
-  }
-
-  const url = normalizeString(value.url);
-  const path = normalizeString(value.path);
-  const name = normalizeString(value.name);
-  const contentType = normalizeString(value.contentType);
-  const bucket = normalizeString(value.bucket);
-  const uploadedAt = normalizeString(value.uploadedAt);
-  const size = Number(value.size);
-
-  if (!url || !path) {
-    throw createValidationError('Picture fields must include both url and path.');
-  }
-
-  if (!Number.isFinite(size) || size <= 0) {
-    throw createValidationError('Picture fields must include a valid file size.');
-  }
-
-  if (process.env.FIREBASE_STORAGE_BUCKET && bucket && bucket !== process.env.FIREBASE_STORAGE_BUCKET) {
-    throw createValidationError('Picture upload bucket does not match server configuration.');
-  }
+  const [forms, submissions] = await Promise.all([
+    formModel.getFormsByCompetition(competitionId),
+    formModel.getSubmissionsByCompetitionAndTeam(competitionId, normalizedTeam),
+  ]);
 
   return {
-    url,
-    path,
-    name,
-    contentType,
-    size,
-    ...(bucket ? { bucket } : {}),
-    ...(uploadedAt ? { uploadedAt } : {}),
+    forms,
+    submissions,
+    normalizedTeam,
   };
-};
-
-const sanitizeSubmissionData = (form, payload) => {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw createValidationError('Submission data must be an object.');
-  }
-
-  const sanitized = {};
-
-  for (const field of form.fields || []) {
-    const key = String(field.id);
-    const rawValue = payload[key];
-
-    if (!shouldIncludeField(field, payload, form.id)) {
-      const hasValue = !(rawValue === '' || rawValue === null || rawValue === undefined || (Array.isArray(rawValue) && rawValue.length === 0));
-      if (!hasValue) continue;
-    }
-
-    switch (field.type) {
-      case 'text': {
-        const text = normalizeString(rawValue);
-        if (!text) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-        sanitized[key] = text;
-        break;
-      }
-
-      case 'number': {
-        if (rawValue === '' || rawValue === null || rawValue === undefined) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-        const numberValue = Number(rawValue);
-        if (!Number.isFinite(numberValue)) {
-          throw createValidationError(`Field "${field.label}" must be a valid number.`);
-        }
-        sanitized[key] = numberValue;
-        break;
-      }
-
-      case 'ranking': {
-        if (rawValue === '' || rawValue === null || rawValue === undefined) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-        const rankingValue = Number(rawValue);
-        if (
-          !Number.isInteger(rankingValue)
-          || rankingValue < field.min
-          || rankingValue > field.max
-        ) {
-          throw createValidationError(
-            `Field "${field.label}" must be an integer from ${field.min} to ${field.max}.`
-          );
-        }
-        sanitized[key] = rankingValue;
-        break;
-      }
-
-      case 'multiple_choice': {
-        const choice = normalizeString(rawValue);
-        if (!choice) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-        if (!field.options.includes(choice)) {
-          throw createValidationError(`Field "${field.label}" contains an invalid option.`);
-        }
-        sanitized[key] = choice;
-        break;
-      }
-
-      case 'multiple_select': {
-        const values = Array.isArray(rawValue)
-          ? rawValue.map((value) => normalizeString(value)).filter(Boolean)
-          : [];
-
-        if (values.length === 0) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-
-        const invalid = values.find((value) => !field.options.includes(value));
-        if (invalid) {
-          throw createValidationError(`Field "${field.label}" contains an invalid option.`);
-        }
-
-        sanitized[key] = Array.from(new Set(values));
-        break;
-      }
-
-      case 'rank_order': {
-        const values = Array.isArray(rawValue)
-          ? rawValue.map((value) => normalizeString(value)).filter(Boolean)
-          : [];
-
-        if (values.length === 0) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-
-        const invalid = values.find((value) => !field.options.includes(value));
-        if (invalid) {
-          throw createValidationError(`Field "${field.label}" contains an invalid ranked option.`);
-        }
-
-        sanitized[key] = values;
-        break;
-      }
-
-      case 'picture': {
-        const pictureValue = sanitizePictureValue(rawValue);
-        if (!pictureValue) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-        sanitized[key] = pictureValue;
-        break;
-      }
-    }
-  }
-
-  return sanitized;
 };
 
 export const formController = {
@@ -490,7 +397,17 @@ export const formController = {
   getForms: async (req, res) => {
     try {
       const forms = await formModel.getAllForms();
-      res.json(forms);
+      if (canReadPrivilegedForms(req.user)) {
+        return res.json(forms);
+      }
+
+      const competitions = await competitionModel.getAllCompetitions();
+      const competitionsById = new Map(competitions.map((competition) => [competition.id, competition]));
+      const visibleForms = forms.filter((form) => {
+        const competition = competitionsById.get(form.competitionId);
+        return buildScoutVisibleFormIds(competition).has(form.id);
+      });
+      res.json(visibleForms);
     } catch (error) {
       console.error('Error in getForms:', error);
       res.status(500).json({ message: error.message });
@@ -500,8 +417,13 @@ export const formController = {
   // Get forms by competition
   getFormsByCompetition: async (req, res) => {
     try {
-      const forms = await formModel.getFormsByCompetition(req.params.competitionId);
-      res.json(forms);
+      const competitionId = normalizeString(req.params.competitionId);
+      const [competition, forms] = await Promise.all([
+        competitionModel.getCompetitionById(competitionId),
+        formModel.getFormsByCompetition(competitionId),
+      ]);
+
+      res.json(filterFormsForUser(forms, competition, req.user));
     } catch (error) {
       console.error('Error in getFormsByCompetition:', error);
       res.status(500).json({ message: error.message });
@@ -515,17 +437,19 @@ export const formController = {
       if (!form) {
         return res.status(404).json({ message: 'Form not found' });
       }
+      const competition = await competitionModel.getCompetitionById(form.competitionId);
+      assertUserCanReadForm(form, competition, req.user);
       res.json(form);
     } catch (error) {
       console.error('Error in getForm:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
   // Create form
   createForm: async (req, res) => {
     try {
-      const { fields, competitionId, name } = req.body;
+      const { fields, competitionId, name, teamNumberFieldId } = req.body;
 
       if (!competitionId) {
         return res.status(400).json({ message: 'Competition ID is required' });
@@ -537,21 +461,14 @@ export const formController = {
         currentFormId: '__current__',
         formsById,
       });
+      const sanitizedTeamNumberFieldId = sanitizeTeamNumberFieldId(teamNumberFieldId, sanitizedFields);
 
-      const newForm = await formModel.createForm({
+      const newForm = await formModel.createFormForCompetition({
         fields: sanitizedFields,
         competitionId,
-        name: normalizeString(name) || 'Untitled Form'
+        name: normalizeString(name) || 'Untitled Form',
+        teamNumberFieldId: sanitizedTeamNumberFieldId,
       });
-
-      // Add the form ID to the competition's formIds array
-      const { competitionModel } = await import('../models/competitionModel.js');
-      const competition = await competitionModel.getCompetitionById(competitionId);
-
-      if (competition) {
-        const updatedFormIds = [...(competition.formIds || []), newForm.id];
-        await competitionModel.updateCompetition(competitionId, { formIds: updatedFormIds });
-      }
 
       res.status(201).json(newForm);
     } catch (error) {
@@ -570,12 +487,6 @@ export const formController = {
       const destinationCompetitionId = normalizeString(req.body.destinationCompetitionId);
       if (!destinationCompetitionId) {
         return res.status(400).json({ message: 'Destination competition ID is required' });
-      }
-
-      const { competitionModel } = await import('../models/competitionModel.js');
-      const destinationCompetition = await competitionModel.getCompetitionById(destinationCompetitionId);
-      if (!destinationCompetition) {
-        return res.status(404).json({ message: 'Destination competition not found' });
       }
 
       const requestedName = normalizeString(req.body.name);
@@ -598,15 +509,12 @@ export const formController = {
         formsById: new Map(destinationCompetitionForms.map((form) => [form.id, form])),
       });
 
-      const copiedForm = await formModel.createForm({
+      const copiedForm = await formModel.createFormForCompetition({
         competitionId: destinationCompetitionId,
         name: requestedName || sourceForm.name || 'Untitled Form',
         fields: sanitizedFields,
         teamNumberFieldId: sourceForm.teamNumberFieldId ?? null,
       });
-
-      const updatedFormIds = [...(destinationCompetition.formIds || []), copiedForm.id];
-      await competitionModel.updateCompetition(destinationCompetitionId, { formIds: updatedFormIds });
 
       res.status(201).json(copiedForm);
     } catch (error) {
@@ -618,7 +526,7 @@ export const formController = {
   // Update form
   updateForm: async (req, res) => {
     try {
-      const { fields, name } = req.body;
+      const { fields, name, teamNumberFieldId } = req.body;
       const existingForm = await formModel.getFormById(req.params.id);
       if (!existingForm) {
         return res.status(404).json({ message: 'Form not found' });
@@ -635,8 +543,12 @@ export const formController = {
         currentFormId: req.params.id,
         formsById,
       });
+      const sanitizedTeamNumberFieldId = sanitizeTeamNumberFieldId(teamNumberFieldId, sanitizedFields);
 
-      const updateData = { fields: sanitizedFields };
+      const updateData = {
+        fields: sanitizedFields,
+        teamNumberFieldId: sanitizedTeamNumberFieldId,
+      };
       if (name !== undefined) {
         updateData.name = normalizeString(name) || 'Untitled Form';
       }
@@ -653,39 +565,15 @@ export const formController = {
   // Delete form
   deleteForm: async (req, res) => {
     try {
-      const form = await formModel.getFormById(req.params.id);
-      if (!form) {
-        return res.status(404).json({ message: 'Form not found' });
-      }
-
       const deleted = await formModel.deleteForm(req.params.id);
-
       if (!deleted) {
         return res.status(404).json({ message: 'Form not found' });
-      }
-
-      // Remove the form ID from the competition's formIds array
-      const { competitionModel } = await import('../models/competitionModel.js');
-      const competition = await competitionModel.getCompetitionById(form.competitionId);
-
-      if (competition) {
-        const updatedFormIds = (competition.formIds || []).filter(id => id !== req.params.id);
-        const updateData = { formIds: updatedFormIds };
-
-        let activeIds = competition.activeFormIds || [];
-        if (!Array.isArray(activeIds) && competition.activeFormId) {
-          activeIds = [competition.activeFormId];
-        }
-        activeIds = activeIds.filter(id => id !== req.params.id);
-        updateData.activeFormIds = activeIds;
-
-        await competitionModel.updateCompetition(form.competitionId, updateData);
       }
 
       res.json({ message: 'Form deleted successfully' });
     } catch (error) {
       console.error('Error in deleteForm:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -711,6 +599,53 @@ export const formController = {
     }
   },
 
+  getCrossFormValuesByTeam: async (req, res) => {
+    try {
+      const competitionId = normalizeString(req.params.competitionId);
+      const currentFormId = normalizeString(req.query.currentFormId);
+      const teamNumber = normalizeString(req.query.teamNumber);
+
+      if (!competitionId || !currentFormId || !teamNumber) {
+        return res.status(400).json({ message: 'competitionId, currentFormId, and teamNumber are required.' });
+      }
+
+      const currentForm = await formModel.getFormById(currentFormId);
+      if (!currentForm) {
+        return res.status(404).json({ message: 'Form not found' });
+      }
+
+      validateSubmissionCompetition(currentForm, competitionId);
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      assertUserCanReadForm(currentForm, competition, req.user);
+      const visibleFormIds = canReadPrivilegedForms(req.user)
+        ? null
+        : buildScoutVisibleFormIds(competition);
+      const referencedFieldsByFormId = collectCrossFormFieldReferences(currentForm);
+      const { forms, submissions } = await loadCrossFormLookupContext({
+        competitionId,
+        currentFormId,
+        teamNumber,
+      });
+      const allowedForms = canReadPrivilegedForms(req.user)
+        ? forms
+        : forms.filter((form) => visibleFormIds.has(form.id));
+      const values = buildCrossFormValuesForTeam({
+        competitionId,
+        currentFormId,
+        teamNumber,
+        forms: allowedForms,
+        submissions,
+        referencedFieldsByFormId: canReadPrivilegedForms(req.user)
+          ? referencedFieldsByFormId
+          : filterCrossFormReferencesForUser(referencedFieldsByFormId, visibleFormIds),
+      });
+      return res.json(values);
+    } catch (error) {
+      console.error('Error in getCrossFormValuesByTeam:', error);
+      return res.status(error.status || 500).json({ message: error.message });
+    }
+  },
+
   // Create submission
   createSubmission: async (req, res) => {
     try {
@@ -729,8 +664,36 @@ export const formController = {
         return res.status(404).json({ message: 'Form not found' });
       }
 
-      const sanitizedData = sanitizeSubmissionData(form, data);
-      const newSubmission = await formModel.createSubmission({ formId, competitionId, data: sanitizedData });
+      validateSubmissionCompetition(form, competitionId);
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      assertFormAllowsSubmission(competition, formId);
+      const teamNumberFieldId = resolveTeamNumberFieldId(form);
+      const normalizedTeam = resolveSubmissionNormalizedTeamNumber(form, data);
+      const referencedFieldsByFormId = collectCrossFormFieldReferences(form);
+      const crossFormValues = teamNumberFieldId === null
+        ? {}
+        : buildCrossFormValuesForTeam({
+          competitionId,
+          currentFormId: form.id,
+          teamNumber: normalizedTeam,
+          ...(await loadCrossFormLookupContext({
+            competitionId,
+            currentFormId: form.id,
+            teamNumber: normalizedTeam,
+          })),
+          referencedFieldsByFormId,
+        });
+
+      const sanitizedData = sanitizeSubmissionData(form, data, {
+        crossFormValues,
+        allowedOwnerUids: [req.user.uid],
+      });
+      const newSubmission = await formModel.createSubmission({
+        formId,
+        competitionId,
+        data: sanitizedData,
+        normalizedTeamNumber: normalizedTeam,
+      });
       res.status(201).json(newSubmission);
     } catch (error) {
       console.error('Error in createSubmission:', error);
@@ -741,7 +704,7 @@ export const formController = {
   /**
    * Update an existing submission in-place (admin only).
    * Validates the incoming data against the original form's field definitions,
-   * then writes only the `data` field back to Firestore without touching
+   * then writes the sanitized payload back to Firestore without touching
    * formId, competitionId, or the original timestamp.
    */
   updateSubmission: async (req, res) => {
@@ -765,10 +728,51 @@ export const formController = {
         return res.status(404).json({ message: 'Form definition not found' });
       }
 
-      // Sanitize & validate using the same logic as createSubmission
-      const sanitizedData = sanitizeSubmissionData(form, data);
+      validateSubmissionCompetition(form, existingSubmission.competitionId);
 
-      const updatedSubmission = await formModel.updateSubmission(id, sanitizedData);
+      const teamNumberFieldId = resolveTeamNumberFieldId(form);
+      const currentTeamNumber = teamNumberFieldId === null
+        ? null
+        : data[String(teamNumberFieldId)] ?? existingSubmission.data?.[String(teamNumberFieldId)];
+      const normalizedTeam = teamNumberFieldId === null
+        ? null
+        : normalizeTeamNumber(currentTeamNumber);
+      const existingOwnerUids = Object.values(existingSubmission.data || {})
+        .filter((value) => value && typeof value === 'object' && !Array.isArray(value) && typeof value.path === 'string')
+        .map((value) => {
+          const match = String(value.path).match(/^form-submissions\/[^/]+\/[^/]+\/([^/]+)\/\d+\//);
+          return match?.[1] || '';
+        })
+        .filter(Boolean);
+      const allowedOwnerUids = Array.from(new Set([req.user.uid, ...existingOwnerUids]));
+      const referencedFieldsByFormId = collectCrossFormFieldReferences(form);
+      const crossFormData = teamNumberFieldId === null || !normalizedTeam
+        ? { forms: [], submissions: [] }
+        : await loadCrossFormLookupContext({
+          competitionId: existingSubmission.competitionId,
+          currentFormId: form.id,
+          teamNumber: normalizedTeam,
+        });
+      const crossFormValues = teamNumberFieldId === null || !normalizedTeam
+        ? {}
+        : buildCrossFormValuesForTeam({
+          competitionId: existingSubmission.competitionId,
+          currentFormId: form.id,
+          teamNumber: normalizedTeam,
+          forms: crossFormData.forms,
+          submissions: crossFormData.submissions,
+          referencedFieldsByFormId,
+        });
+
+      const sanitizedData = sanitizeSubmissionData(form, data, {
+        crossFormValues,
+        allowedOwnerUids,
+      });
+
+      const updatedSubmission = await formModel.updateSubmission(id, {
+        data: sanitizedData,
+        normalizedTeamNumber: normalizedTeam,
+      });
       res.json(updatedSubmission);
     } catch (error) {
       console.error('Error in updateSubmission:', error);

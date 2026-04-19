@@ -1,4 +1,7 @@
+import { db } from '../config/firebase.js';
 import { competitionModel } from '../models/competitionModel.js';
+import { buildCreateCompetitionInput, buildUpdateCompetitionInput } from '../utils/competitionPayload.js';
+import { serializeCompetition, serializeCompetitionList } from '../utils/competitionResponse.js';
 
 export const competitionController = {
   normalizeSuperscoutTeamKey: (rawTeam) => {
@@ -27,10 +30,10 @@ export const competitionController = {
   getAllCompetitions: async (req, res) => {
     try {
       const competitions = await competitionModel.getAllCompetitions();
-      res.json(competitions);
+      res.json(serializeCompetitionList(competitions, req.user));
     } catch (error) {
       console.error('Error in getAllCompetitions:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -41,10 +44,10 @@ export const competitionController = {
       if (competitions.length === 0) {
         return res.json(null); // Return null if no active competition
       }
-      res.json(competitions[0]); // Return the single active competition
+      res.json(serializeCompetition(competitions[0], req.user)); // Return the single active competition
     } catch (error) {
       console.error('Error in getActiveCompetitions:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -55,10 +58,10 @@ export const competitionController = {
       if (competitions.length === 0) {
         return res.status(404).json({ message: 'No active competition found' });
       }
-      res.json(competitions[0]);
+      res.json(serializeCompetition(competitions[0], req.user));
     } catch (error) {
       console.error('Error in getActiveCompetition:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -69,66 +72,38 @@ export const competitionController = {
       if (!competition) {
         return res.status(404).json({ message: 'Competition not found' });
       }
-      res.json(competition);
+      res.json(serializeCompetition(competition, req.user));
     } catch (error) {
       console.error('Error in getCompetition:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
   // Create competition
   createCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormIds, eventKey, pitMapImageUrl, pitLocations, manualPickLists, robotBreakTimelineOverrides } = req.body;
+      const input = buildCreateCompetitionInput(req.body);
       
-      if (!name || !season) {
+      if (!input.name || !input.season) {
         return res.status(400).json({ message: 'Name and season are required' });
       }
 
-      const newCompetition = await competitionModel.createCompetition({
-        name,
-        season,
-        status: status || 'draft',
-        startDate: startDate || new Date().toISOString(),
-        endDate: endDate || new Date().toISOString(),
-        activeFormIds: activeFormIds || [],
-        eventKey,
-        pitMapImageUrl: pitMapImageUrl || '',
-        pitLocations: pitLocations || {},
-        manualPickLists: manualPickLists || [],
-        robotBreakTimelineOverrides: robotBreakTimelineOverrides || {},
-      });
+      const newCompetition = await competitionModel.createCompetition(input);
       
       res.status(201).json(newCompetition);
     } catch (error) {
       console.error('Error in createCompetition:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
   // Update competition
   updateCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey, superscouterNotes, driveTeamStrategyByTeam, pitMapImageUrl, pitLocations, manualPickLists, robotBreakTimelineOverrides } = req.body;
-      
-      const updatedCompetition = await competitionModel.updateCompetition(req.params.id, {
-        ...(name && { name }),
-        ...(season && { season }),
-        ...(status && { status }),
-        ...(startDate && { startDate }),
-        ...(endDate && { endDate }),
-        ...(activeFormIds !== undefined && { activeFormIds }),
-        ...(activeFormId !== undefined && { activeFormId }),
-        ...(scoutingTeams !== undefined && { scoutingTeams }),
-        ...(scoutingAssignments !== undefined && { scoutingAssignments }),
-        ...(eventKey !== undefined && { eventKey }),
-        ...(superscouterNotes !== undefined && { superscouterNotes }),
-        ...(driveTeamStrategyByTeam !== undefined && { driveTeamStrategyByTeam }),
-        ...(robotBreakTimelineOverrides !== undefined && { robotBreakTimelineOverrides }),
-        ...(pitMapImageUrl !== undefined && { pitMapImageUrl }),
-        ...(pitLocations !== undefined && { pitLocations }),
-        ...(manualPickLists !== undefined && { manualPickLists }),
-      });
+      const updatedCompetition = await competitionModel.updateCompetition(
+        req.params.id,
+        buildUpdateCompetitionInput(req.body),
+      );
       
       if (!updatedCompetition) {
         return res.status(404).json({ message: 'Competition not found' });
@@ -137,7 +112,7 @@ export const competitionController = {
       res.json(updatedCompetition);
     } catch (error) {
       console.error('Error in updateCompetition:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -176,10 +151,7 @@ export const competitionController = {
         return res.status(400).json({ message: 'Form ID already exists in this competition' });
       }
 
-      const updatedFormIds = [...competition.formIds, formId];
-      const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
-        formIds: updatedFormIds,
-      });
+      const updatedCompetition = await competitionModel.addFormToCompetition(competitionId, formId);
 
       res.json(updatedCompetition);
     } catch (error) {
@@ -203,14 +175,7 @@ export const competitionController = {
         return res.status(404).json({ message: 'Competition not found' });
       }
 
-      const updatedFormIds = competition.formIds.filter(id => id !== formId);
-      
-      let updateData = { formIds: updatedFormIds };
-      if (competition.activeFormId === formId) {
-        updateData.activeFormId = null;
-      }
-
-      const updatedCompetition = await competitionModel.updateCompetition(competitionId, updateData);
+      const updatedCompetition = await competitionModel.removeFormFromCompetition(competitionId, formId);
       res.json(updatedCompetition);
     } catch (error) {
       console.error('Error in removeFormId:', error);
@@ -233,24 +198,7 @@ export const competitionController = {
         return res.status(400).json({ message: 'Form ID does not exist in this competition' });
       }
 
-      let activeIds = competition.activeFormIds || [];
-      if (!Array.isArray(activeIds) && competition.activeFormId) {
-        activeIds = [competition.activeFormId];
-      }
-
-      if (formId) {
-        if (activeIds.includes(formId)) {
-          activeIds = activeIds.filter(id => id !== formId);
-        } else {
-          activeIds.push(formId);
-        }
-      } else {
-        activeIds = [];
-      }
-
-      const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
-        activeFormIds: activeIds,
-      });
+      const updatedCompetition = await competitionModel.toggleActiveFormForCompetition(competitionId, formId);
 
       res.json(updatedCompetition);
     } catch (error) {
@@ -306,14 +254,24 @@ export const competitionController = {
         parsedRating = typeof notes.rating === 'number' ? notes.rating : null;
       }
 
-      // Merge into existing superscouter notes map
-      const updatedNotes = { ...(competition.superscouterNotes || {}) };
-      updatedNotes[normalizedTeamNumber] = { notes: parsedNotes, rating: parsedRating };
+      const competitionRef = db.collection('competitions').doc(competitionId);
+      await db.runTransaction(async (transaction) => {
+        const competitionDoc = await transaction.get(competitionRef);
+        if (!competitionDoc.exists) {
+          const error = new Error('Competition not found');
+          error.status = 404;
+          throw error;
+        }
 
-      const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
-        superscouterNotes: updatedNotes,
+        transaction.update(competitionRef, {
+          [`superscouterNotes.${normalizedTeamNumber}`]: {
+            notes: parsedNotes,
+            rating: parsedRating,
+          },
+        });
       });
 
+      const updatedCompetition = await competitionModel.getCompetitionById(competitionId);
       res.json(updatedCompetition);
     } catch (error) {
       console.error('Error in saveSuperscouterNotes:', error);
@@ -397,25 +355,42 @@ export const competitionController = {
       }
 
       const strategyText = typeof strategy === 'string' ? strategy : '';
-      const currentByTeam = competition.driveTeamStrategyByTeam || {};
-      const currentForTeamRaw = currentByTeam[normalizedTeamNumber];
-      const currentForTeam = (
-        currentForTeamRaw && typeof currentForTeamRaw === 'object'
-          ? currentForTeamRaw
-          : {}
-      );
-      const updatedByTeam = {
-        ...currentByTeam,
-        [normalizedTeamNumber]: {
-          ...currentForTeam,
-          [normalizedMatchKey]: strategyText,
-        },
-      };
+      const competitionRef = db.collection('competitions').doc(competitionId);
+      await db.runTransaction(async (transaction) => {
+        const competitionDoc = await transaction.get(competitionRef);
+        if (!competitionDoc.exists) {
+          const error = new Error('Competition not found');
+          error.status = 404;
+          throw error;
+        }
 
-      const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
-        driveTeamStrategyByTeam: updatedByTeam,
+        const competitionData = competitionDoc.data() || {};
+        const currentByTeam = competitionData.driveTeamStrategyByTeam || {};
+        const currentForTeamRaw = currentByTeam[normalizedTeamNumber];
+
+        if (currentForTeamRaw && typeof currentForTeamRaw === 'object' && !Array.isArray(currentForTeamRaw)) {
+          transaction.update(competitionRef, {
+            [`driveTeamStrategyByTeam.${normalizedTeamNumber}.${normalizedMatchKey}`]: strategyText,
+          });
+          return;
+        }
+
+        if (typeof currentForTeamRaw === 'string' && currentForTeamRaw.length > 0) {
+          transaction.update(competitionRef, {
+            [`driveTeamStrategyByTeam.${normalizedTeamNumber}`]: {
+              default: currentForTeamRaw,
+              [normalizedMatchKey]: strategyText,
+            },
+          });
+          return;
+        }
+
+        transaction.update(competitionRef, {
+          [`driveTeamStrategyByTeam.${normalizedTeamNumber}.${normalizedMatchKey}`]: strategyText,
+        });
       });
 
+      const updatedCompetition = await competitionModel.getCompetitionById(competitionId);
       res.json(updatedCompetition);
     } catch (error) {
       console.error('Error in saveDriveTeamStrategy:', error);
@@ -457,7 +432,8 @@ export const competitionController = {
         const byMatch = rawTeamBucket;
         const directMatch = byMatch[matchKey];
         const normalizedMatch = byMatch[normalizedMatchKey];
-        const selected = directMatch ?? normalizedMatch;
+        const fallbackDefault = byMatch.default;
+        const selected = directMatch ?? normalizedMatch ?? fallbackDefault;
         strategy = typeof selected === 'string' ? selected : '';
       }
 

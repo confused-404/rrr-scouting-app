@@ -2,7 +2,7 @@ import axios, { AxiosHeaders } from 'axios';
 import { auth } from '../config/firebase';
 import type { Form, FormField, Submission } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
-import { createLogger, formatErrorForLogging, sanitizeForLogging } from '../utils/logger';
+import { createLogger, formatErrorForLogging } from '../utils/logger';
 
 type RequestMetadata = {
   requestId: string;
@@ -51,7 +51,6 @@ const getApiUrl = (): string => {
 };
 
 const API_BASE_URL = getApiUrl();
-const API_KEY = import.meta.env.VITE_API_KEY || 'dev-key-for-local-testing';
 const CACHE_STORAGE_KEY = 'api-cache:v1';
 const FORCE_REFRESH_WINDOW_MS = 15_000;
 
@@ -71,13 +70,11 @@ const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
-    'X-API-Key': API_KEY,
   },
 });
 
 apiLogger.info('Configured API client', {
   baseUrl: API_BASE_URL,
-  hasApiKey: Boolean(API_KEY),
 });
 
 const responseCache = new Map<string, CacheEntry<unknown>>();
@@ -329,8 +326,6 @@ api.interceptors.request.use(async (config) => {
     requestId,
     method: nextConfig.method,
     url: nextConfig.url,
-    params: sanitizeForLogging(nextConfig.params),
-    data: sanitizeForLogging(nextConfig.data),
   });
   return nextConfig;
 });
@@ -359,7 +354,6 @@ api.interceptors.response.use(
       durationMs,
       code: error.code,
       error: formatErrorForLogging(error),
-      responseData: sanitizeForLogging(error.response?.data),
     });
     return Promise.reject(error);
   },
@@ -372,10 +366,11 @@ export const authApi = {
       return response.data;
     }, ['auth:me', 'auth:users']);
   },
-  getCurrentUser: async () => {
+  getCurrentUser: async (options: { bypassCache?: boolean } = {}) => {
     return cachedGet('/auth/me', {
       ttlMs: CACHE_TTLS.authProfile,
       tags: ['auth:me'],
+      bypassCache: options.bypassCache,
     });
   },
   forgotPassword: async (email: string) => {
@@ -576,6 +571,17 @@ export const formApi = {
       scope: 'session',
     });
   },
+  getCrossFormValuesByTeam: async (
+    competitionId: string,
+    currentFormId: string,
+    teamNumber: string,
+  ): Promise<Record<string, unknown>> => {
+    return cachedGet(`/forms/competition/${competitionId}/cross-form-values`, {
+      params: { currentFormId, teamNumber },
+      ttlMs: CACHE_TTLS.submissions,
+      tags: ['submissions', `submissions:cross-form:${competitionId}:${currentFormId}:${teamNumber}`],
+    });
+  },
   createSubmission: async (formId: string, competitionId: string, data: Record<string, unknown>): Promise<Submission> => {
     return runMutation(async () => {
       const response = await api.post('/forms/submissions', { formId, competitionId, data });
@@ -634,7 +640,7 @@ export const tbaApi = {
   },
   getEventTeams: async (eventKey: string): Promise<unknown[]> => {
     try {
-      return cachedGet(`/tba/event/${eventKey}/teams`, {
+      return await cachedGet(`/tba/event/${eventKey}/teams`, {
         ttlMs: CACHE_TTLS.externalEventData,
         tags: [`tba:event:${eventKey}:teams`],
         scope: 'session',
@@ -642,7 +648,7 @@ export const tbaApi = {
     } catch (error) {
       try {
         // Fallback to Statbotics roster if TBA team list is unavailable.
-        return cachedGet('/statbotics/team_events', {
+        return await cachedGet('/statbotics/team_events', {
           params: { event: eventKey, limit: 999 },
           ttlMs: CACHE_TTLS.externalEventData,
           tags: [`statbotics:event:${eventKey}:team-events`],

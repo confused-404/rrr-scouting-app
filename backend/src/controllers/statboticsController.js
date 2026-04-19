@@ -1,4 +1,5 @@
 import { applyUpstreamCacheHeaders, getCachedUpstreamJson } from '../utils/upstreamCache.js';
+import { fetchJsonWithTimeout } from '../utils/upstreamFetch.js';
 
 const STATBOTICS_BASE_URL = 'https://api.statbotics.io/v3';
 const STATBOTICS_TTLS = {
@@ -26,21 +27,12 @@ const fetchStatbotics = async (path, params = {}) => {
     }
   });
 
-  const response = await fetch(url.toString(), {
+  return fetchJsonWithTimeout({
+    url: url.toString(),
     headers: {
-      'Accept': 'application/json',
+      Accept: 'application/json',
     },
   });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    const error = new Error(`Statbotics API error: ${response.status}`);
-    error.status = response.status;
-    error.body = errorBody;
-    throw error;
-  }
-
-  return response.json();
 };
 
 const shouldBypassUpstreamCache = (req) => String(req.get('X-Bypass-Upstream-Cache') || '').toLowerCase() === 'true';
@@ -131,7 +123,7 @@ export const statboticsController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'Team event not found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -173,7 +165,7 @@ export const statboticsController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'Team event not found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -227,7 +219,7 @@ export const statboticsController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'No team events found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -256,7 +248,7 @@ export const statboticsController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'No team matches found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -288,7 +280,7 @@ export const statboticsController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'Team not found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -320,7 +312,7 @@ export const statboticsController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'Event not found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -387,7 +379,7 @@ export const statboticsController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'Team year not found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 };

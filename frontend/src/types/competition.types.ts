@@ -55,6 +55,7 @@ export type Competition = {
   scoutingAssignments?: GeneratedAssignment[];
   eventKey?: string;
   pitMapImageUrl?: string;
+  pitMapImagePath?: string;
   pitLocations?: Record<string, string>;
   manualPickLists?: ManualPickList[];
 

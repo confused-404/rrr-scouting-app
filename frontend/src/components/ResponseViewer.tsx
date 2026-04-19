@@ -1,13 +1,14 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import type { Competition } from '../types/competition.types';
-import type { Submission, Form, FormField as FormFieldType } from '../types/form.types';
+import type { Submission, Form, FormField as FormFieldType, SubmissionValue } from '../types/form.types';
 import { formApi } from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import { FormField } from './FormField';
 import { Filter, X, Download, Edit2, Save, AlertTriangle, ChevronLeft } from 'lucide-react';
 import { isPictureFieldValue, submissionValueToText } from '../utils/formValues';
 import { ImageLightbox } from './ImageLightbox';
 import { evaluateCondition } from '../utils/formConditions';
+import { cleanupPictureUploads, getPictureCleanupPaths } from '../utils/pictureCleanup';
 
 type ExpandedImageState = {
   url: string;
@@ -100,12 +101,13 @@ const EditModal: React.FC<EditModalProps> = ({
   selectedCompetition,
 }) => {
   // Seed draft from the existing submission data, casting to the right shape
-  const [draft, setDraft] = useState<Record<string, unknown>>(
-    () => ({ ...(submission.data as Record<string, unknown>) })
+  const [draft, setDraft] = useState<Record<string, SubmissionValue>>(
+    () => ({ ...submission.data })
   );
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const pendingPictureDeletePathsRef = useRef<Set<string>>(new Set());
 
   // Keep hidden fields cleared when their conditions become false
   useEffect(() => {
@@ -115,6 +117,10 @@ const EditModal: React.FC<EditModalProps> = ({
       if (!shouldShowField(field, draft, form.id)) {
         const key = String(field.id);
         if (next[key] !== undefined) {
+          const removedValue = next[key];
+          if (isPictureFieldValue(removedValue) && removedValue.path) {
+            pendingPictureDeletePathsRef.current.add(removedValue.path);
+          }
           delete next[key];
           changed = true;
         }
@@ -124,8 +130,25 @@ const EditModal: React.FC<EditModalProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, form.fields]);
 
-  const handleChange = useCallback((fieldId: number, value: unknown) => {
-    setDraft(prev => ({ ...prev, [String(fieldId)]: value }));
+  const handleChange = useCallback((fieldId: number, value: SubmissionValue) => {
+    setDraft(prev => {
+      const key = String(fieldId);
+      const previousValue = prev[key];
+
+      if (
+        isPictureFieldValue(previousValue)
+        && previousValue.path
+        && (!isPictureFieldValue(value) || value.path !== previousValue.path)
+      ) {
+        pendingPictureDeletePathsRef.current.add(previousValue.path);
+      }
+
+      if (isPictureFieldValue(value) && value.path) {
+        pendingPictureDeletePathsRef.current.delete(value.path);
+      }
+
+      return { ...prev, [key]: value };
+    });
     // Clear error for this field on change
     setErrors(prev => {
       if (!prev[fieldId]) return prev;
@@ -166,6 +189,13 @@ const EditModal: React.FC<EditModalProps> = ({
       }
 
       const updated = await formApi.updateSubmission(submission.id, normalised);
+      const cleanupPaths = getPictureCleanupPaths({
+        baselineData: submission.data,
+        currentData: normalised,
+        stagedDeletionPaths: Array.from(pendingPictureDeletePathsRef.current),
+      });
+      pendingPictureDeletePathsRef.current.clear();
+      await cleanupPictureUploads(cleanupPaths);
       onSaved(updated);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message :
@@ -298,6 +328,7 @@ const EditModal: React.FC<EditModalProps> = ({
 export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null }> = ({
   selectedCompetition,
 }) => {
+  const selectedCompetitionId = selectedCompetition?.id;
   const { isAdmin } = useAuth();
 
   const [forms, setForms] = useState<Form[]>([]);
@@ -319,21 +350,20 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
     if (selectedCompetition) {
       formApi.getFormsByCompetition(selectedCompetition.id).then(data => {
         setForms(data);
+        setFilterFieldId(data[0]?.fields[0]?.id ?? null);
+        setLoading(data.length > 0);
         setSelectedForm(data.length > 0 ? data[0] : null);
       });
     }
-  }, [selectedCompetition?.id]);
+  }, [selectedCompetition, selectedCompetitionId]);
 
   useEffect(() => {
     if (selectedForm) {
-      setLoading(true);
       formApi.getSubmissions(selectedForm.id)
         .then(subs => { setSubmissions(subs); setLoading(false); })
         .catch(() => setLoading(false));
-
-      if (selectedForm.fields.length > 0) setFilterFieldId(selectedForm.fields[0].id);
     }
-  }, [selectedForm?.id]);
+  }, [selectedForm]);
 
   const handleExportCSV = async () => {
     if (!selectedCompetition || !selectedForm) return;
@@ -470,7 +500,12 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
           </label>
           <select
             value={selectedForm?.id || ''}
-            onChange={e => setSelectedForm(forms.find(f => f.id === e.target.value) || null)}
+            onChange={(e) => {
+              const nextForm = forms.find((f) => f.id === e.target.value) || null;
+              setFilterFieldId(nextForm?.fields[0]?.id ?? null);
+              setLoading(Boolean(nextForm));
+              setSelectedForm(nextForm);
+            }}
             className="w-full bg-gray-50 border-none rounded-lg px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-blue-500"
           >
             {forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}

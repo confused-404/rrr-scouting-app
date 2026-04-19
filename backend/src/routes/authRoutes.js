@@ -1,4 +1,5 @@
 import express from 'express';
+import { db } from '../config/firebase.js';
 import {
   signup, 
   getMe, 
@@ -18,17 +19,52 @@ import {
   setUserRole,
   deleteUser,
 } from '../controllers/authController.js';
-import { verifyToken, isAdmin } from '../middleware/userAuth.js';
+import { verifyToken, isAdmin, requireSetupSecret } from '../middleware/userAuth.js';
+import { createFirestoreRateLimitStore, createRateLimiter } from '../middleware/rateLimit.js';
 
 const router = express.Router();
+const publicAuthKey = (prefix) => (req) => `${prefix}:${req.ip}`;
+const publicAuthAndEmailKey = (prefix) => (req) => {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : 'anonymous';
+  return `${prefix}:${req.ip}:${email || 'anonymous'}`;
+};
+const sharedRateLimitStore = createFirestoreRateLimitStore({ db });
+
+const initializeAdminLimiter = createRateLimiter({
+  windowMs: 15 * 60_000,
+  maxRequests: 10,
+  keyResolver: publicAuthKey('initialize-admin'),
+  store: sharedRateLimitStore,
+});
+
+const signupLimiter = createRateLimiter({
+  windowMs: 15 * 60_000,
+  maxRequests: 5,
+  keyResolver: publicAuthAndEmailKey('signup'),
+  store: sharedRateLimitStore,
+});
+
+const forgotPasswordLimiter = createRateLimiter({
+  windowMs: 15 * 60_000,
+  maxRequests: 5,
+  keyResolver: publicAuthAndEmailKey('forgot-password'),
+  store: sharedRateLimitStore,
+});
+
+const resetPasswordLimiter = createRateLimiter({
+  windowMs: 15 * 60_000,
+  maxRequests: 10,
+  keyResolver: publicAuthAndEmailKey('reset-password'),
+  store: sharedRateLimitStore,
+});
 
 // BOOTSTRAP: Call this once to create your first admin and the 'users' collection
-router.post('/initialize-admin', initializeFirstAdmin);
+router.post('/initialize-admin', initializeAdminLimiter, requireSetupSecret, initializeFirstAdmin);
 
 // PUBLIC
-router.post('/signup', signup);
-router.post('/forgot-password', forgotPassword);
-router.post('/reset-password', resetPassword);
+router.post('/signup', signupLimiter, signup);
+router.post('/forgot-password', forgotPasswordLimiter, forgotPassword);
+router.post('/reset-password', resetPasswordLimiter, resetPassword);
 
 // AUTHENTICATED
 router.get('/me', verifyToken, getMe);

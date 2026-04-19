@@ -85,14 +85,24 @@ const emptyManualList = (): ManualPickList => ({
   thirdPickRankings: [],
 });
 
-const parseStatboticsEPA = (row: any): number | null => {
+type StatboticsTeamEventRow = Record<string, unknown> & {
+  team?: unknown;
+  epa_end?: unknown;
+  epa_start?: unknown;
+  epa_pre?: unknown;
+  epa?: unknown;
+  norm_epa?: unknown;
+};
+
+const parseStatboticsEPA = (row: StatboticsTeamEventRow): number | null => {
   const candidates = [row?.epa_end, row?.epa_start, row?.epa_pre, row?.epa, row?.norm_epa];
   for (const value of candidates) {
     const n = toFiniteNumber(value);
     if (n !== null) return n;
   }
   if (row?.epa && typeof row.epa === 'object') {
-    const nested = [row.epa?.end, row.epa?.start, row.epa?.pre, row.epa?.norm];
+    const nestedEpa = row.epa as Record<string, unknown>;
+    const nested = [nestedEpa.end, nestedEpa.start, nestedEpa.pre, nestedEpa.norm];
     for (const value of nested) {
       const n = toFiniteNumber(value);
       if (n !== null) return n;
@@ -128,6 +138,9 @@ export const PickListManager: React.FC<{
   onCompetitionUpdate?: () => void;
   onTeamSelect?: (team: string) => void;
 }> = ({ selectedCompetition, onCompetitionUpdate, onTeamSelect }) => {
+  const selectedCompetitionId = selectedCompetition?.id;
+  const selectedCompetitionEventKey = selectedCompetition?.eventKey;
+  const selectedCompetitionManualPickLists = selectedCompetition?.manualPickLists;
   const [forms, setForms] = useState<Form[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [, setLoadingData] = useState(false);
@@ -153,9 +166,9 @@ export const PickListManager: React.FC<{
 
   useEffect(() => {
     if (!selectedCompetition) return;
-    setManualLists(selectedCompetition.manualPickLists || []);
-    setSelectedManualId((selectedCompetition.manualPickLists || [])[0]?.id || '');
-  }, [selectedCompetition?.id, selectedCompetition?.manualPickLists]);
+    setManualLists(selectedCompetitionManualPickLists || []);
+    setSelectedManualId((selectedCompetitionManualPickLists || [])[0]?.id || '');
+  }, [selectedCompetition, selectedCompetitionId, selectedCompetitionManualPickLists]);
 
   useEffect(() => {
     const loadSubmissionData = async () => {
@@ -178,17 +191,17 @@ export const PickListManager: React.FC<{
     };
 
     loadSubmissionData();
-  }, [selectedCompetition?.id]);
+  }, [selectedCompetition, selectedCompetitionId]);
 
   useEffect(() => {
     const loadTeleopPerMatchMetric = async () => {
-      if (!selectedCompetition?.eventKey) {
+      if (!selectedCompetitionEventKey) {
         setTeleopCalculatedByTeam({});
         return;
       }
 
       try {
-        const rows = await statboticsApi.getTeamEvents({ event: selectedCompetition.eventKey, limit: 999 }) as Array<Record<string, unknown>>;
+        const rows = await statboticsApi.getTeamEvents({ event: selectedCompetitionEventKey, limit: 999 }) as Array<Record<string, unknown>>;
         const byTeam: Record<string, number> = {};
 
         rows.forEach((row) => {
@@ -209,7 +222,7 @@ export const PickListManager: React.FC<{
     };
 
     loadTeleopPerMatchMetric();
-  }, [selectedCompetition?.eventKey]);
+  }, [selectedCompetitionEventKey]);
 
   const teamAggregates = useMemo(() => {
     const byTeam = new Map<string, TeamAggregate>();
@@ -557,12 +570,12 @@ export const PickListManager: React.FC<{
     setAutoError('');
     try {
       if (autoSource === 'statbotics') {
-        const rows = await statboticsApi.getTeamEvents({ event: selectedCompetition.eventKey, limit: 999 });
+        const rows = await statboticsApi.getTeamEvents({ event: selectedCompetition.eventKey, limit: 999 }) as Array<Record<string, unknown>>;
 
         const rankings = (rows || [])
-          .map((row: any) => {
+          .map((row: Record<string, unknown>) => {
             const epa = parseStatboticsEPA(row);
-            const team = normalizeTeamNumber(row?.team);
+            const team = normalizeTeamNumber(row.team);
             if (epa === null || !team) return null;
             return { team, value: epa, sourceLabel: 'EPA' };
           })

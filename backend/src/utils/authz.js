@@ -1,0 +1,46 @@
+const APP_ROLES = Object.freeze({
+  admin: 'admin',
+  drive: 'drive',
+  user: 'user',
+});
+
+export const resolveEffectiveRole = (tokenClaims, persistedRole) => {
+  if (tokenClaims?.admin === true) return APP_ROLES.admin;
+  if (tokenClaims?.driveTeam === true) return APP_ROLES.drive;
+  return APP_ROLES.user;
+};
+
+export const extractBearerToken = (authorizationHeader) => {
+  if (typeof authorizationHeader !== 'string') {
+    return null;
+  }
+
+  const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : null;
+};
+
+export const getUserRole = (user) => {
+  if (user?.appRole === APP_ROLES.admin) return APP_ROLES.admin;
+  if (user?.appRole === APP_ROLES.drive) return APP_ROLES.drive;
+  if (user?.appRole === APP_ROLES.user) return APP_ROLES.user;
+  if (user?.admin === true) return APP_ROLES.admin;
+  if (user?.driveTeam === true) return APP_ROLES.drive;
+  return APP_ROLES.user;
+};
+
+export const hasRequiredRole = (user, allowedRoles) => {
+  if (!Array.isArray(allowedRoles) || allowedRoles.length === 0) {
+    return false;
+  }
+
+  return allowedRoles.includes(getUserRole(user));
+};
+
+export const isSetupSecretValid = (providedSecret, expectedSecret) => (
+  typeof expectedSecret === 'string'
+  && expectedSecret.length > 0
+  && typeof providedSecret === 'string'
+  && providedSecret === expectedSecret
+);
+
+export { APP_ROLES };
