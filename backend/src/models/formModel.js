@@ -3,6 +3,7 @@ import admin from 'firebase-admin';
 
 const FORMS_COLLECTION = 'forms';
 const SUBMISSIONS_COLLECTION = 'submissions';
+const MAX_BATCH_SIZE = 450;
 
 // Helper function to convert Firestore timestamp
 const convertTimestamp = (timestamp) => {
@@ -90,7 +91,29 @@ export const formModel = {
   },
 
   deleteForm: async (id) => {
-    await db.collection(FORMS_COLLECTION).doc(id).delete();
+    const deleteSnapshotDocuments = async (snapshot) => {
+      const docs = snapshot.docs;
+
+      for (let index = 0; index < docs.length; index += MAX_BATCH_SIZE) {
+        const batch = db.batch();
+        docs.slice(index, index + MAX_BATCH_SIZE).forEach((snapshotDoc) => {
+          batch.delete(snapshotDoc.ref);
+        });
+        await batch.commit();
+      }
+    };
+
+    const [formDoc, submissionsSnapshot] = await Promise.all([
+      db.collection(FORMS_COLLECTION).doc(id).get(),
+      db.collection(SUBMISSIONS_COLLECTION).where('formId', '==', id).get(),
+    ]);
+
+    if (!formDoc.exists) {
+      return false;
+    }
+
+    await deleteSnapshotDocuments(submissionsSnapshot);
+    await formDoc.ref.delete();
     return true;
   },
 
