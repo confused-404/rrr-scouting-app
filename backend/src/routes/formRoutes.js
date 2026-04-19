@@ -5,9 +5,9 @@ import { verifyToken, isAdmin } from '../middleware/userAuth.js';
 const router = express.Router();
 
 // Form routes
-router.get('/', formController.getForms);
-router.get('/competition/:competitionId', formController.getFormsByCompetition);
-router.get('/:id', formController.getForm);
+router.get('/', verifyToken, formController.getForms);
+router.get('/competition/:competitionId', verifyToken, formController.getFormsByCompetition);
+router.get('/:id', verifyToken, formController.getForm);
 router.post('/', verifyToken, isAdmin, formController.createForm);
 router.post('/:id/copy', verifyToken, isAdmin, formController.copyForm);
 router.put('/:id', verifyToken, isAdmin, formController.updateForm);

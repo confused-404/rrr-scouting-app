@@ -4,10 +4,10 @@ import { verifyToken, isAdmin, isAdminOrDriveTeam } from '../middleware/userAuth
 
 const router = express.Router();
 
-// Competition routes - all protected except reading
-router.get('/', competitionController.getAllCompetitions);
-router.get('/active', competitionController.getActiveCompetitions);
-router.get('/:id', competitionController.getCompetition);
+// Competition routes - authenticated reads, admin writes
+router.get('/', verifyToken, competitionController.getAllCompetitions);
+router.get('/active', verifyToken, competitionController.getActiveCompetitions);
+router.get('/:id', verifyToken, competitionController.getCompetition);
 router.post('/', verifyToken, isAdmin, competitionController.createCompetition);
 router.put('/:id', verifyToken, isAdmin, competitionController.updateCompetition);
 router.delete('/:id', verifyToken, isAdmin, competitionController.deleteCompetition);
