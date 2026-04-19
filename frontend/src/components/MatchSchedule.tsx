@@ -1,9 +1,30 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, Pin, X } from 'lucide-react';
 import type { Competition } from '../types/competition.types';
 import type { Form, Submission } from '../types/form.types';
 import { formApi, tbaApi, statboticsApi } from '../services/api';
 import { matchesTeamQuery } from '../utils/teamNameSearch';
+
+type MatchAllianceData = {
+  team_keys?: Array<string | number>;
+};
+
+type MatchRecord = {
+  key?: string;
+  comp_level?: string;
+  set_number?: number;
+  match_number?: number;
+  time?: number;
+  status?: string;
+  red?: Array<string | number>;
+  blue?: Array<string | number>;
+  alliance_red?: Array<string | number>;
+  alliance_blue?: Array<string | number>;
+  alliances?: {
+    red?: MatchAllianceData | Array<string | number>;
+    blue?: MatchAllianceData | Array<string | number>;
+  };
+};
 
 const normalizeTeamKey = (teamValue: string | number) => {
   const trimmedValue = teamValue.toString().trim().toLowerCase();
@@ -17,7 +38,7 @@ const getTeamNumbers = (teamKeys: Array<string | number>) => teamKeys.map((teamK
   return formatTeamNumber(teamKey);
 });
 
-const getSortedMatches = (matches: any[]) => [...matches].sort((a, b) => {
+const getSortedMatches = (matches: MatchRecord[]) => [...matches].sort((a, b) => {
   const compLevelOrder: Record<string, number> = {
     qm: 1,
     ef: 2,
@@ -45,36 +66,30 @@ const getSortedMatches = (matches: any[]) => [...matches].sort((a, b) => {
   return aNum - bNum;
 });
 
-const matchIncludesTeam = (match: any, teamKey: string) => {
+const matchIncludesTeam = (match: MatchRecord, teamKey: string) => {
   const redTeams = getAllianceTeams(match, 'red');
   const blueTeams = getAllianceTeams(match, 'blue');
   return [...redTeams, ...blueTeams].some((value: string) => normalizeTeamKey(value) === teamKey);
 };
 
-const getAllianceTeams = (match: any, alliance: 'red' | 'blue'): string[] => {
-  const matchAny = match as Record<string, unknown>;
-  const alliances = matchAny.alliances as Record<string, unknown> | undefined;
+const getAllianceTeams = (match: MatchRecord, alliance: 'red' | 'blue'): string[] => {
+  const allianceData = match.alliances?.[alliance];
 
-  // Try TBA format first
-  if (alliances?.[alliance] && typeof alliances[alliance] === 'object') {
-    const allianceData = alliances[alliance] as Record<string, unknown>;
-    if (Array.isArray(allianceData.team_keys)) {
-      return getTeamNumbers(allianceData.team_keys);
-    }
+  if (allianceData && !Array.isArray(allianceData) && Array.isArray(allianceData.team_keys)) {
+    return getTeamNumbers(allianceData.team_keys);
   }
 
-  // Try Statbotics format
-  const direct = (matchAny[alliance] ?? alliances?.[alliance] ?? matchAny[`alliance_${alliance}`] ?? []) as unknown[];
+  const direct = match[alliance] ?? match[`alliance_${alliance}` as 'alliance_red' | 'alliance_blue'] ?? (Array.isArray(allianceData) ? allianceData : []);
   if (Array.isArray(direct)) {
-    return getTeamNumbers(direct.filter((item): item is string | number => 
+    return getTeamNumbers(direct.filter((item): item is string | number => (
       typeof item === 'string' || typeof item === 'number'
-    ));
+    )));
   }
 
   return [];
 };
 
-const getMatchLabel = (match: any) => `${match.comp_level || ''}${match.match_number || (match.key ? match.key.split('m')[1] : '')}`;
+const getMatchLabel = (match: MatchRecord) => `${match.comp_level || ''}${match.match_number || (match.key ? match.key.split('m')[1] : '')}`;
 
 const matchFieldRegex = /match( number| #|#|num| no\.?|)/i;
 
@@ -132,11 +147,11 @@ const getOfficialLiveQualMatch = (rows: Array<Record<string, unknown>>): number 
   return firstOpen?.matchNumber ?? null;
 };
 
-const getMatchNumberFromScheduleRow = (match: any): number => {
+const getMatchNumberFromScheduleRow = (match: MatchRecord): number => {
   return match.match_number || (match.key ? parseInt(match.key.split('m')[1]) : 0);
 };
 
-const getMatchKey = (match: any): string => {
+const getMatchKey = (match: MatchRecord): string => {
   if (typeof match.key === 'string' && match.key.trim()) {
     return match.key;
   }
@@ -174,7 +189,7 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
   onPinMatch,
   onUnpinMatch,
 }) => {
-  const [matches, setMatches] = useState<any[]>([]);
+  const [matches, setMatches] = useState<MatchRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'tba' | 'statbotics'>('tba');
   const [teamFilterInput, setTeamFilterInput] = useState<string>('');
@@ -239,14 +254,6 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
   }, [selectedCompetition?.eventKey, matches]);
 
   useEffect(() => {
-    if (!selectedCompetition?.eventKey) {
-      setMatches([]);
-      return;
-    }
-    fetchMatches();
-  }, [selectedCompetition, dataSource]);
-
-  useEffect(() => {
     // Reset filter state on competition change to avoid stale team selections.
     setTeamFilterInput('');
     setSelectedTeams([]);
@@ -305,17 +312,17 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
     fetchLiveCounter();
   }, [selectedCompetition?.id, selectedCompetition?.eventKey]);
 
-  const fetchMatches = async () => {
+  const fetchMatches = useCallback(async () => {
     if (!selectedCompetition?.eventKey) return;
 
     setLoading(true);
     setFetchError('');
     try {
-      let data: any[] = [];
+      let data: MatchRecord[] = [];
       if (dataSource === 'tba') {
-        data = await tbaApi.getEventMatches(selectedCompetition.eventKey);
+        data = await tbaApi.getEventMatches(selectedCompetition.eventKey) as MatchRecord[];
       } else {
-        data = await statboticsApi.getEventMatches(selectedCompetition.eventKey);
+        data = await statboticsApi.getEventMatches(selectedCompetition.eventKey) as MatchRecord[];
       }
       setMatches(data || []);
     } catch (error) {
@@ -323,8 +330,8 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
       try {
         const fallbackSource = dataSource === 'tba' ? 'statbotics' : 'tba';
         const fallbackData = fallbackSource === 'tba'
-          ? await tbaApi.getEventMatches(selectedCompetition.eventKey)
-          : await statboticsApi.getEventMatches(selectedCompetition.eventKey);
+          ? await tbaApi.getEventMatches(selectedCompetition.eventKey) as MatchRecord[]
+          : await statboticsApi.getEventMatches(selectedCompetition.eventKey) as MatchRecord[];
 
         setMatches(fallbackData || []);
         setDataSource(fallbackSource); // Update data source to reflect fallback
@@ -337,7 +344,15 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [dataSource, selectedCompetition?.eventKey]);
+
+  useEffect(() => {
+    if (!selectedCompetition?.eventKey) {
+      setMatches([]);
+      return;
+    }
+    fetchMatches();
+  }, [fetchMatches, selectedCompetition, dataSource]);
 
   const sortedAllMatches = getSortedMatches(matches);
 
@@ -359,7 +374,7 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
     ? sortedMatches
     : sortedMatches.filter((match) => getMatchNumberFromScheduleRow(match) >= liveMatchCounter);
 
-  const getMatchTime = (match: any) => {
+  const getMatchTime = (match: MatchRecord) => {
     if (dataSource === 'statbotics') {
       return match.time ? new Date(match.time * 1000).toLocaleString() : 'TBD';
     } else {
@@ -393,19 +408,19 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
     return 1;
   };
 
-  const getLatestMatchesSnapshot = async (): Promise<any[]> => {
+  const getLatestMatchesSnapshot = async (): Promise<MatchRecord[]> => {
     if (!selectedCompetition?.eventKey) return [];
     try {
       const primaryData = dataSource === 'tba'
-        ? await tbaApi.getEventMatches(selectedCompetition.eventKey)
-        : await statboticsApi.getEventMatches(selectedCompetition.eventKey);
+        ? await tbaApi.getEventMatches(selectedCompetition.eventKey) as MatchRecord[]
+        : await statboticsApi.getEventMatches(selectedCompetition.eventKey) as MatchRecord[];
       return Array.isArray(primaryData) ? primaryData : [];
     } catch {
       const fallbackSource = dataSource === 'tba' ? 'statbotics' : 'tba';
       try {
         const fallbackData = fallbackSource === 'tba'
-          ? await tbaApi.getEventMatches(selectedCompetition.eventKey)
-          : await statboticsApi.getEventMatches(selectedCompetition.eventKey);
+          ? await tbaApi.getEventMatches(selectedCompetition.eventKey) as MatchRecord[]
+          : await statboticsApi.getEventMatches(selectedCompetition.eventKey) as MatchRecord[];
         return Array.isArray(fallbackData) ? fallbackData : [];
       } catch {
         return [];
@@ -486,7 +501,7 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const openTeamHistory = (teamValue: string | number, currentMatch: any) => {
+  const openTeamHistory = (teamValue: string | number, currentMatch: MatchRecord) => {
     const normalizedTeam = normalizeTeamKey(teamValue);
     const currentMatchIndex = sortedAllMatches.findIndex((match) => match.key === currentMatch.key);
 
@@ -736,7 +751,7 @@ export const MatchSchedule: React.FC<MatchScheduleProps> = ({
             </div>
           ) : (
             visibleMatches
-              .map((m: any) => (
+              .map((m) => (
                 <div key={getMatchKey(m)} className="bg-white p-3 sm:p-4 rounded-lg shadow">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-1">
                     <div className="flex items-center gap-2">

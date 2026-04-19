@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Edit2, Eye, LogOut, Calendar, RefreshCw } from 'lucide-react';
 import { AdminMode } from './components/AdminMode';
 import { AdminTeamMatches } from './components/AdminTeamMatches';
@@ -35,7 +35,7 @@ function App() {
   // Roles are pulled from AuthContext custom claims
   const { currentUser, logout, isAdmin, isDriveTeam } = useAuth();
 
-  const loadCompetitions = async () => {
+  const loadCompetitions = useCallback(async () => {
     appLogger.debug('Loading active competition', {
       currentUserId: currentUser?.uid,
     });
@@ -59,7 +59,7 @@ function App() {
       });
       setSelectedCompetition(null);
     }
-  };
+  }, [currentUser?.uid]);
 
   useEffect(() => {
     if (currentUser) {
@@ -103,9 +103,9 @@ function App() {
       setModeInitializedForUid(null);
       pendingRestoredModeRef.current = null;
     }
-  }, [currentUser, isAdmin, isDriveTeam, modeInitializedForUid]);
+  }, [currentUser, isAdmin, isDriveTeam, modeInitializedForUid, mode, loadCompetitions]);
 
-  const persistModeSelection = (nextMode: AppMode) => {
+  const persistModeSelection = useCallback((nextMode: AppMode) => {
     if (!currentUser) return;
     const sessionKey = `${APP_MODE_SESSION_KEY_PREFIX}${currentUser.uid}`;
     const landingKey = `${APP_MODE_LANDING_KEY_PREFIX}${currentUser.uid}`;
@@ -119,7 +119,7 @@ function App() {
     } catch {
       // Ignore storage failures; app mode still works in-memory.
     }
-  };
+  }, [currentUser, isAdmin, isDriveTeam]);
 
   const handleModeChange = (nextMode: AppMode) => {
     setMode(nextMode);
@@ -148,14 +148,14 @@ function App() {
       setMode('user');
       persistModeSelection('user');
     }
-  }, [mode, isAdmin, isDriveTeam, currentUser?.uid]);
+  }, [mode, isAdmin, isDriveTeam, currentUser?.uid, persistModeSelection]);
 
   // Reload competitions when switching to user mode
   useEffect(() => {
     if (currentUser && mode === 'user') {
       loadCompetitions();
     }
-  }, [mode, currentUser]);
+  }, [mode, currentUser, loadCompetitions]);
 
   useEffect(() => {
     appLogger.info('App mode changed', {

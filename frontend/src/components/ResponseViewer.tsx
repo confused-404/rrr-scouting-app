@@ -298,6 +298,7 @@ const EditModal: React.FC<EditModalProps> = ({
 export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null }> = ({
   selectedCompetition,
 }) => {
+  const selectedCompetitionId = selectedCompetition?.id;
   const { isAdmin } = useAuth();
 
   const [forms, setForms] = useState<Form[]>([]);
@@ -324,7 +325,7 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
         setSelectedForm(data.length > 0 ? data[0] : null);
       });
     }
-  }, [selectedCompetition?.id]);
+  }, [selectedCompetition, selectedCompetitionId]);
 
   useEffect(() => {
     if (selectedForm) {
@@ -332,7 +333,7 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
         .then(subs => { setSubmissions(subs); setLoading(false); })
         .catch(() => setLoading(false));
     }
-  }, [selectedForm?.id]);
+  }, [selectedForm]);
 
   const handleExportCSV = async () => {
     if (!selectedCompetition || !selectedForm) return;

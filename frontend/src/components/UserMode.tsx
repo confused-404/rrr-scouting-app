@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Layout, Clock, Image as ImageIcon } from 'lucide-react';
 import type { FormField as FormFieldType, Form, Submission, SubmissionValue } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
@@ -46,6 +46,7 @@ const resolveTeamFieldId = (form: Form): number | null => {
 type FieldErrors = Record<number, string>;
 
 export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
+  const selectedCompetitionId = selectedCompetition?.id;
   const { scouterName } = useAuth();
   const [formFields, setFormFields] = useState<FormFieldType[]>([]);
   const [forms, setForms] = useState<{ id: string; name: string }[]>([]);
@@ -78,17 +79,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     }
   }, [activeTab]);
 
-  useEffect(() => {
-    if (selectedCompetition) {
-      loadForm();
-    }
-    // clear state when competition changes
-    setResponses({});
-    setErrors({});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCompetition]);
-
-  const loadForm = async () => {
+  const loadForm = useCallback(async () => {
     if (!selectedCompetition) return;
 
     setFetchingForm(true);
@@ -114,7 +105,15 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     } finally {
       setFetchingForm(false);
     }
-  };
+  }, [selectedCompetition]);
+
+  useEffect(() => {
+    if (selectedCompetition) {
+      loadForm();
+    }
+    setResponses({});
+    setErrors({});
+  }, [selectedCompetition, loadForm]);
 
   // when the selected form id changes we need to fetch its fields
   useEffect(() => {
@@ -199,36 +198,69 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     return () => {
       cancelled = true;
     };
-  }, [selectedCompetition?.id, competitionForms, currentTeamKey]);
+  }, [selectedCompetition, selectedCompetitionId, competitionForms, currentTeamKey, currentFormId]);
 
   // Clear responses for fields that become hidden due to condition changes
+  const scrollToField = (fieldId: number) => {
+    const el = document.getElementById(`field-${fieldId}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const shouldShowField = useCallback((field: FormFieldType, localResponses: Record<string, SubmissionValue> = responses): boolean => {
+    return evaluateCondition(
+      field.condition,
+      ({ formId, fieldId }) => {
+        const resolvedFormId = (!formId || formId === '__current__') ? (currentFormId || '') : formId;
+
+        if (currentFormId && resolvedFormId === currentFormId) {
+          const localKey = String(fieldId);
+          if (Object.prototype.hasOwnProperty.call(localResponses, localKey)) {
+            return localResponses[localKey];
+          }
+          return undefined;
+        }
+
+        const key = `${resolvedFormId}:${fieldId}`;
+        return crossFormValues[key];
+      },
+      currentFormId || '',
+    );
+  }, [crossFormValues, currentFormId, responses]);
+
   useEffect(() => {
     if (formFields.length === 0 && activeTab === 'scout') return;
 
-    const newResponses = { ...responses };
-    let hasChanges = false;
+    const nextResponses = { ...responses };
+    let hasResponseChanges = false;
 
     for (const field of formFields) {
-      if (!shouldShowField(field)) {
+      if (!shouldShowField(field, responses)) {
         const key = String(field.id);
-        if (newResponses[key] !== undefined) {
-          delete newResponses[key];
-          hasChanges = true;
+        if (nextResponses[key] !== undefined) {
+          delete nextResponses[key];
+          hasResponseChanges = true;
         }
       }
     }
 
-    if (hasChanges) {
-      setResponses(newResponses);
-      const newErrors = { ...errors };
-      for (const field of formFields) {
-        if (!shouldShowField(field) && newErrors[field.id]) {
-          delete newErrors[field.id];
-        }
-      }
-      setErrors(newErrors);
+    if (hasResponseChanges) {
+      setResponses(nextResponses);
     }
-  }, [responses, formFields]);
+
+    const visibilitySource = hasResponseChanges ? nextResponses : responses;
+    const nextErrors = { ...errors };
+    let hasErrorChanges = false;
+    for (const field of formFields) {
+      if (!shouldShowField(field, visibilitySource) && nextErrors[field.id]) {
+        delete nextErrors[field.id];
+        hasErrorChanges = true;
+      }
+    }
+
+    if (hasErrorChanges) {
+      setErrors(nextErrors);
+    }
+  }, [activeTab, errors, formFields, responses, shouldShowField]);
 
   const handleInputChange = (fieldId: number, value: SubmissionValue) => {
     const key = String(fieldId);
@@ -239,7 +271,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     const nextErrors: FieldErrors = {};
 
     for (const field of fields) {
-      if (!shouldShowField(field)) continue;
+      if (!shouldShowField(field, data)) continue;
       if (!field.required) continue;
 
       const key = String(field.id);
@@ -314,32 +346,6 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     }
 
     return nextErrors;
-  };
-
-  const scrollToField = (fieldId: number) => {
-    const el = document.getElementById(`field-${fieldId}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
-
-  const shouldShowField = (field: FormFieldType): boolean => {
-    return evaluateCondition(
-      field.condition,
-      ({ formId, fieldId }) => {
-        const resolvedFormId = (!formId || formId === '__current__') ? (currentFormId || '') : formId;
-
-        if (currentFormId && resolvedFormId === currentFormId) {
-          const localKey = String(fieldId);
-          if (Object.prototype.hasOwnProperty.call(responses, localKey)) {
-            return responses[localKey];
-          }
-          return undefined;
-        }
-
-        const key = `${resolvedFormId}:${fieldId}`;
-        return crossFormValues[key];
-      },
-      currentFormId || '',
-    );
   };
 
   const handleSubmit = async () => {
@@ -517,7 +523,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
               </div>
             )}
 
-            {formFields.filter(shouldShowField).map((field) => (
+            {formFields.filter((field) => shouldShowField(field)).map((field) => (
               <div key={field.id} id={`field-${field.id}`}>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   {field.label}
