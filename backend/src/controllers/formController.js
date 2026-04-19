@@ -311,6 +311,28 @@ const evaluateConditionForSubmission = (condition, values, currentFormId) => {
   }
 };
 
+const loadCrossFormLookupContext = async ({ competitionId, currentFormId, teamNumber }) => {
+  const normalizedTeam = normalizeTeamNumber(teamNumber);
+  if (!normalizedTeam) {
+    return {
+      forms: await formModel.getFormsByCompetition(competitionId),
+      submissions: [],
+      normalizedTeam,
+    };
+  }
+
+  const [forms, submissions] = await Promise.all([
+    formModel.getFormsByCompetition(competitionId),
+    formModel.getSubmissionsByCompetitionAndTeam(competitionId, normalizedTeam),
+  ]);
+
+  return {
+    forms,
+    submissions,
+    normalizedTeam,
+  };
+};
+
 export const formController = {
   // Get all forms
   getForms: async (req, res) => {
@@ -517,10 +539,11 @@ export const formController = {
       }
 
       validateSubmissionCompetition(currentForm, competitionId);
-      const [forms, submissions] = await Promise.all([
-        formModel.getFormsByCompetition(competitionId),
-        formModel.getSubmissionsByCompetition(competitionId),
-      ]);
+      const { forms, submissions } = await loadCrossFormLookupContext({
+        competitionId,
+        currentFormId,
+        teamNumber,
+      });
       const values = buildCrossFormValuesForTeam({
         competitionId,
         currentFormId,
@@ -555,21 +578,32 @@ export const formController = {
 
       validateSubmissionCompetition(form, competitionId);
       const teamNumberFieldId = resolveTeamNumberFieldId(form);
+      const normalizedTeam = teamNumberFieldId === null
+        ? null
+        : normalizeTeamNumber(data[String(teamNumberFieldId)]);
       const crossFormValues = teamNumberFieldId === null
         ? {}
         : buildCrossFormValuesForTeam({
           competitionId,
           currentFormId: form.id,
-          teamNumber: data[String(teamNumberFieldId)],
-          forms: await formModel.getFormsByCompetition(competitionId),
-          submissions: await formModel.getSubmissionsByCompetition(competitionId),
+          teamNumber: normalizedTeam,
+          ...(await loadCrossFormLookupContext({
+            competitionId,
+            currentFormId: form.id,
+            teamNumber: normalizedTeam,
+          })),
         });
 
       const sanitizedData = sanitizeSubmissionData(form, data, {
         crossFormValues,
         allowedOwnerUids: [req.user.uid],
       });
-      const newSubmission = await formModel.createSubmission({ formId, competitionId, data: sanitizedData });
+      const newSubmission = await formModel.createSubmission({
+        formId,
+        competitionId,
+        data: sanitizedData,
+        normalizedTeamNumber: normalizedTeam,
+      });
       res.status(201).json(newSubmission);
     } catch (error) {
       console.error('Error in createSubmission:', error);
@@ -580,7 +614,7 @@ export const formController = {
   /**
    * Update an existing submission in-place (admin only).
    * Validates the incoming data against the original form's field definitions,
-   * then writes only the `data` field back to Firestore without touching
+   * then writes the sanitized payload back to Firestore without touching
    * formId, competitionId, or the original timestamp.
    */
   updateSubmission: async (req, res) => {
@@ -610,6 +644,9 @@ export const formController = {
       const currentTeamNumber = teamNumberFieldId === null
         ? null
         : data[String(teamNumberFieldId)] ?? existingSubmission.data?.[String(teamNumberFieldId)];
+      const normalizedTeam = teamNumberFieldId === null
+        ? null
+        : normalizeTeamNumber(currentTeamNumber);
       const existingOwnerUids = Object.values(existingSubmission.data || {})
         .filter((value) => value && typeof value === 'object' && !Array.isArray(value) && typeof value.path === 'string')
         .map((value) => {
@@ -618,18 +655,19 @@ export const formController = {
         })
         .filter(Boolean);
       const allowedOwnerUids = Array.from(new Set([req.user.uid, ...existingOwnerUids]));
-      const crossFormData = teamNumberFieldId === null || !currentTeamNumber
-        ? {}
-        : {
-          forms: await formModel.getFormsByCompetition(existingSubmission.competitionId),
-          submissions: await formModel.getSubmissionsByCompetition(existingSubmission.competitionId),
-        };
-      const crossFormValues = teamNumberFieldId === null || !currentTeamNumber
+      const crossFormData = teamNumberFieldId === null || !normalizedTeam
+        ? { forms: [], submissions: [] }
+        : await loadCrossFormLookupContext({
+          competitionId: existingSubmission.competitionId,
+          currentFormId: form.id,
+          teamNumber: normalizedTeam,
+        });
+      const crossFormValues = teamNumberFieldId === null || !normalizedTeam
         ? {}
         : buildCrossFormValuesForTeam({
           competitionId: existingSubmission.competitionId,
           currentFormId: form.id,
-          teamNumber: currentTeamNumber,
+          teamNumber: normalizedTeam,
           forms: crossFormData.forms,
           submissions: crossFormData.submissions,
         });
@@ -639,7 +677,10 @@ export const formController = {
         allowedOwnerUids,
       });
 
-      const updatedSubmission = await formModel.updateSubmission(id, sanitizedData);
+      const updatedSubmission = await formModel.updateSubmission(id, {
+        data: sanitizedData,
+        normalizedTeamNumber: normalizedTeam,
+      });
       res.json(updatedSubmission);
     } catch (error) {
       console.error('Error in updateSubmission:', error);

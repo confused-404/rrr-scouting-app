@@ -210,6 +210,20 @@ export const formModel = {
     return snapshot.docs.map((doc) => mapSubmissionDocument(doc));
   },
 
+  getSubmissionsByCompetitionAndTeam: async (competitionId, normalizedTeamNumber) => {
+    const normalizedTeam = String(normalizedTeamNumber ?? '').trim();
+    if (!competitionId || !normalizedTeam) {
+      return [];
+    }
+
+    const snapshot = await db.collection(SUBMISSIONS_COLLECTION)
+      .where('competitionId', '==', competitionId)
+      .where('normalizedTeamNumber', '==', normalizedTeam)
+      .get();
+
+    return snapshot.docs.map((doc) => mapSubmissionDocument(doc));
+  },
+
   getSubmissionById: async (id) => {
     const doc = await db.collection(SUBMISSIONS_COLLECTION).doc(id).get();
     if (!doc.exists) return null;
@@ -229,17 +243,17 @@ export const formModel = {
 
   /**
    * Update an existing submission's data in-place.
-   * Only updates the `data` field — preserves formId, competitionId, timestamp, etc.
+   * Preserves formId, competitionId, timestamp, etc.
    * Adds an `editedAt` field to record when the admin last modified it.
    */
-  updateSubmission: async (id, newData) => {
+  updateSubmission: async (id, updateData) => {
     const docRef = db.collection(SUBMISSIONS_COLLECTION).doc(id);
     const doc = await docRef.get();
 
     if (!doc.exists) return null;
 
     await docRef.update({
-      data: newData,
+      ...updateData,
       editedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
