@@ -6,7 +6,7 @@ import { UserMode } from './components/UserMode';
 import { Login } from './components/Login';
 import { useAuth } from './contexts/AuthContext';
 import type { Competition } from './types/competition.types';
-import { clearApiCache, competitionApi } from './services/api';
+import { competitionApi, forceApiRefresh } from './services/api';
 import { createLogger, formatErrorForLogging } from './utils/logger';
 import './App.css';
 
@@ -196,7 +196,7 @@ function App() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    clearApiCache();
+    forceApiRefresh();
 
     try {
       await loadCompetitions();

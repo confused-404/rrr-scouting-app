@@ -53,6 +53,7 @@ const getApiUrl = (): string => {
 const API_BASE_URL = getApiUrl();
 const API_KEY = import.meta.env.VITE_API_KEY || 'dev-key-for-local-testing';
 const CACHE_STORAGE_KEY = 'api-cache:v1';
+const FORCE_REFRESH_WINDOW_MS = 15_000;
 
 const CACHE_TTLS = {
   authProfile: 60_000,
@@ -81,6 +82,7 @@ apiLogger.info('Configured API client', {
 
 const responseCache = new Map<string, CacheEntry<unknown>>();
 const inFlightRequests = new Map<string, Promise<unknown>>();
+let forceRefreshUntil = 0;
 
 const getSessionStorage = (): Storage | null => {
   if (typeof window === 'undefined') return null;
@@ -229,8 +231,9 @@ const invalidateCache = (tags: string[]): void => {
 
 const cachedGet = async <T>(url: string, options: CacheOptions & { params?: unknown }): Promise<T> => {
   const cacheKey = buildCacheKey(url, options.params);
+  const shouldBypassCache = options.bypassCache || forceRefreshUntil > Date.now();
 
-  if (!options.bypassCache) {
+  if (!shouldBypassCache) {
     const cachedEntry = getCachedEntry<T>(cacheKey);
     if (cachedEntry) {
       apiLogger.debug('API cache hit', {
@@ -286,6 +289,11 @@ export const clearApiCache = (): void => {
   }
 };
 
+export const forceApiRefresh = (): void => {
+  clearApiCache();
+  forceRefreshUntil = Date.now() + FORCE_REFRESH_WINDOW_MS;
+};
+
 hydratePersistedCache();
 
 api.interceptors.request.use(async (config) => {
@@ -297,6 +305,9 @@ api.interceptors.request.use(async (config) => {
   const headers = AxiosHeaders.from(nextConfig.headers);
   nextConfig.metadata = { requestId, startedAt: Date.now() };
   headers.set('X-Request-ID', requestId);
+  if (forceRefreshUntil > Date.now() && String(nextConfig.method || 'get').toLowerCase() === 'get') {
+    headers.set('X-Bypass-Upstream-Cache', 'true');
+  }
 
   const user = auth.currentUser;
   if (user) {
