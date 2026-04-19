@@ -2,13 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   RESET_CODE_TTL_MS,
+  RESET_DELIVERY_PENDING_MS,
   RESET_MAX_ATTEMPTS,
   RESET_LOCKOUT_MS,
   RESET_REQUEST_COOLDOWN_MS,
   buildClearResetState,
   buildFailedResetAttemptState,
   buildIssuedResetState,
+  buildPendingResetDeliveryState,
   isResetCodeExpired,
+  isResetDeliveryPending,
   isResetLockoutActive,
   isResetRequestCoolingDown,
 } from '../src/utils/passwordReset.js';
@@ -28,6 +31,21 @@ test('buildIssuedResetState initializes a fresh code window', () => {
   assert.equal(state.resetAttemptCount, 0);
   assert.equal(state.resetLastAttemptAt, null);
   assert.equal(state.resetLockedUntil, null);
+  assert.equal(state.resetDeliveryPendingId, null);
+  assert.equal(state.resetDeliveryPendingUntil, null);
+});
+
+test('pending delivery helpers only block while a reservation is active', () => {
+  const now = 20_000;
+  const state = buildPendingResetDeliveryState({
+    deliveryId: 'delivery-1',
+    now,
+  });
+
+  assert.equal(state.resetDeliveryPendingId, 'delivery-1');
+  assert.equal(state.resetDeliveryPendingUntil, now + RESET_DELIVERY_PENDING_MS);
+  assert.equal(isResetDeliveryPending(state, now), true);
+  assert.equal(isResetDeliveryPending(state, now + RESET_DELIVERY_PENDING_MS), false);
 });
 
 test('cooldown and expiry helpers reject invalid timestamps', () => {
@@ -73,5 +91,7 @@ test('buildClearResetState maps all reset fields to the provided delete sentinel
     resetAttemptCount: deleted,
     resetLastAttemptAt: deleted,
     resetLockedUntil: deleted,
+    resetDeliveryPendingId: deleted,
+    resetDeliveryPendingUntil: deleted,
   });
 });

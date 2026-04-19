@@ -8,8 +8,9 @@ import {
   RESET_LOCKED_MESSAGE,
   buildClearResetState,
   buildFailedResetAttemptState,
-  buildIssuedResetState,
+  buildPendingResetDeliveryState,
   isResetCodeExpired,
+  isResetDeliveryPending,
   isResetLockoutActive,
   isResetRequestCoolingDown,
 } from '../utils/passwordReset.js';
@@ -18,6 +19,7 @@ import {
   createUserWithProfile,
   deleteUserAndProfile,
 } from '../utils/authLifecycle.js';
+import { requestPasswordResetDelivery } from '../utils/passwordResetDelivery.js';
 
 const VALID_ROLES = new Set(['admin', 'drive', 'user']);
 const INITIAL_ADMIN_SETUP_DOC = '_system/initialAdminSetup';
@@ -540,47 +542,67 @@ export const forgotPassword = async (req, res) => {
       return res.status(200).json({ message: GENERIC_RESET_RESPONSE_MESSAGE });
     }
 
-    const now = Date.now();
-    const code = crypto.randomInt(100000, 1000000).toString();
-    const resetCodeSalt = crypto.randomBytes(16).toString('hex');
-    const resetCodeHash = hashResetCode(code, resetCodeSalt);
     const userRef = db.collection('users').doc(userRecord.uid);
-    const issuanceState = buildIssuedResetState({
-      resetCodeHash,
-      resetCodeSalt,
+    const now = Date.now();
+    const deliveryResult = await requestPasswordResetDelivery({
+      email,
       now,
+      reserveDelivery: async ({ deliveryId, now: reservationNow }) => {
+        return db.runTransaction(async (transaction) => {
+          const snapshot = await transaction.get(userRef);
+          const currentState = snapshot.exists ? (snapshot.data() || {}) : {};
+
+          if (
+            isResetLockoutActive(currentState, reservationNow)
+            || isResetRequestCoolingDown(currentState, reservationNow)
+            || isResetDeliveryPending(currentState, reservationNow)
+          ) {
+            return false;
+          }
+
+          transaction.set(userRef, buildPendingResetDeliveryState({
+            deliveryId,
+            now: reservationNow,
+          }), { merge: true });
+          return true;
+        });
+      },
+      finalizeDelivery: async ({ deliveryId, issuanceState }) => {
+        return db.runTransaction(async (transaction) => {
+          const snapshot = await transaction.get(userRef);
+          const currentState = snapshot.exists ? (snapshot.data() || {}) : {};
+
+          if (currentState.resetDeliveryPendingId !== deliveryId) {
+            return false;
+          }
+
+          transaction.set(userRef, issuanceState, { merge: true });
+          return true;
+        });
+      },
+      clearDeliveryReservation: async ({ deliveryId }) => {
+        await db.runTransaction(async (transaction) => {
+          const snapshot = await transaction.get(userRef);
+          const currentState = snapshot.exists ? (snapshot.data() || {}) : {};
+
+          if (currentState.resetDeliveryPendingId !== deliveryId) {
+            return;
+          }
+
+          transaction.set(userRef, {
+            resetDeliveryPendingId: admin.firestore.FieldValue.delete(),
+            resetDeliveryPendingUntil: admin.firestore.FieldValue.delete(),
+          }, { merge: true });
+        });
+      },
+      sendMail,
     });
-    const shouldSendCode = await db.runTransaction(async (transaction) => {
-      const snapshot = await transaction.get(userRef);
-      const currentState = snapshot.exists ? (snapshot.data() || {}) : {};
 
-      if (isResetLockoutActive(currentState, now) || isResetRequestCoolingDown(currentState, now)) {
-        return false;
-      }
-
-      transaction.set(userRef, issuanceState, { merge: true });
-      return true;
-    });
-
-    if (!shouldSendCode) {
-      return res.status(200).json({ message: GENERIC_RESET_RESPONSE_MESSAGE });
+    if (deliveryResult.status === 'delivery_failed') {
+      console.error('mailError while sending reset code:', deliveryResult.error);
     }
 
-    // send email
-    const text = `Your password reset code is: ${code}\n\nThis code will expire in one hour.`;
-    try {
-      await sendMail({
-        to: email,
-        subject: 'Password Reset Code',
-        text
-      });
-    } catch (mailError) {
-      console.error('mailError while sending reset code:', mailError);
-      // do not fail the request; we still respond success so callers
-      // cannot probe for existing accounts
-    }
-
-    res.status(200).json({ message: GENERIC_RESET_RESPONSE_MESSAGE });
+    res.status(200).json({ message: deliveryResult.message });
   } catch (error) {
     console.error('forgotPassword error:', error);
     res.status(500).json({ message: 'Error generating reset code' });

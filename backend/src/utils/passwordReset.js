@@ -2,6 +2,7 @@ export const RESET_CODE_TTL_MS = 60 * 60 * 1000;
 export const RESET_REQUEST_COOLDOWN_MS = 60 * 1000;
 export const RESET_MAX_ATTEMPTS = 5;
 export const RESET_LOCKOUT_MS = 15 * 60 * 1000;
+export const RESET_DELIVERY_PENDING_MS = 2 * 60 * 1000;
 
 export const GENERIC_RESET_RESPONSE_MESSAGE = 'If an account exists for that email you will receive a code shortly.';
 export const INVALID_RESET_CODE_MESSAGE = 'Invalid or expired code';
@@ -30,6 +31,16 @@ export const isResetCodeExpired = (state, now = Date.now()) => {
   return expiresAt === null || expiresAt <= now;
 };
 
+export const isResetDeliveryPending = (state, now = Date.now()) => {
+  const pendingUntil = normalizeTimestamp(state?.resetDeliveryPendingUntil);
+  return pendingUntil !== null && pendingUntil > now;
+};
+
+export const buildPendingResetDeliveryState = ({ deliveryId, now = Date.now() }) => ({
+  resetDeliveryPendingId: deliveryId,
+  resetDeliveryPendingUntil: now + RESET_DELIVERY_PENDING_MS,
+});
+
 export const buildIssuedResetState = ({ resetCodeHash, resetCodeSalt, now = Date.now() }) => ({
   resetCodeHash,
   resetCodeSalt,
@@ -38,6 +49,8 @@ export const buildIssuedResetState = ({ resetCodeHash, resetCodeSalt, now = Date
   resetAttemptCount: 0,
   resetLastAttemptAt: null,
   resetLockedUntil: null,
+  resetDeliveryPendingId: null,
+  resetDeliveryPendingUntil: null,
 });
 
 export const buildFailedResetAttemptState = (state, now = Date.now()) => {
@@ -65,4 +78,6 @@ export const buildClearResetState = (deleteField) => ({
   resetAttemptCount: deleteField,
   resetLastAttemptAt: deleteField,
   resetLockedUntil: deleteField,
+  resetDeliveryPendingId: deleteField,
+  resetDeliveryPendingUntil: deleteField,
 });
