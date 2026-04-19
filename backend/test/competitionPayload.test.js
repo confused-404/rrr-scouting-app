@@ -28,6 +28,26 @@ test('buildCreateCompetitionInput applies defaults for optional fields', () => {
   assert.deepEqual(input.robotBreakTimelineOverrides, {});
 });
 
+test('buildCreateCompetitionInput rejects invalid statuses', () => {
+  assert.throws(
+    () => buildCreateCompetitionInput({
+      name: 'Test Event',
+      season: '2026',
+      status: 'broken',
+    }),
+    /Competition status must be one of/,
+  );
+});
+
+test('buildUpdateCompetitionInput rejects malformed dates', () => {
+  assert.throws(
+    () => buildUpdateCompetitionInput({
+      startDate: 'not-a-date',
+    }),
+    /startDate must be a valid date string/,
+  );
+});
+
 test('buildUpdateCompetitionInput keeps explicit empty arrays and null active form', () => {
   const input = buildUpdateCompetitionInput({
     formIds: [],

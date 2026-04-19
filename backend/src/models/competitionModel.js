@@ -98,15 +98,20 @@ export const competitionModel = {
 
     if (typeof sentinelCompetitionId === 'string' && sentinelCompetitionId) {
       const activeDoc = await db.collection(COMPETITIONS_COLLECTION).doc(sentinelCompetitionId).get();
-      if (activeDoc.exists) {
+      if (activeDoc.exists && activeDoc.data()?.status === 'active') {
         return [mapActiveCompetitionDocument(activeDoc)];
       }
     }
 
     const snapshot = await db.collection(COMPETITIONS_COLLECTION)
       .where('status', '==', 'active')
-      .limit(1)
       .get();
+
+    if (snapshot.docs.length > 1) {
+      const error = new Error('Multiple active competitions exist. Manual reconciliation is required.');
+      error.status = 409;
+      throw error;
+    }
 
     return snapshot.docs.map((doc) => mapActiveCompetitionDocument(doc));
   },

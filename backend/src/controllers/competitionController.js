@@ -33,7 +33,7 @@ export const competitionController = {
       res.json(serializeCompetitionList(competitions, req.user));
     } catch (error) {
       console.error('Error in getAllCompetitions:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -47,7 +47,7 @@ export const competitionController = {
       res.json(serializeCompetition(competitions[0], req.user)); // Return the single active competition
     } catch (error) {
       console.error('Error in getActiveCompetitions:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -61,7 +61,7 @@ export const competitionController = {
       res.json(serializeCompetition(competitions[0], req.user));
     } catch (error) {
       console.error('Error in getActiveCompetition:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -75,7 +75,7 @@ export const competitionController = {
       res.json(serializeCompetition(competition, req.user));
     } catch (error) {
       console.error('Error in getCompetition:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 

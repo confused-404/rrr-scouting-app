@@ -1,4 +1,5 @@
 import { applyUpstreamCacheHeaders, getCachedUpstreamJson } from '../utils/upstreamCache.js';
+import { fetchJsonWithTimeout } from '../utils/upstreamFetch.js';
 
 const TBA_BASE_URL = 'https://www.thebluealliance.com/api/v3';
 const TBA_API_KEY = process.env.TBA_API_KEY;
@@ -35,22 +36,13 @@ const fetchTBA = async (path, params = {}) => {
     }
   });
 
-  const response = await fetch(url.toString(), {
+  return fetchJsonWithTimeout({
+    url: url.toString(),
     headers: {
-      'Accept': 'application/json',
+      Accept: 'application/json',
       'X-TBA-Auth-Key': TBA_API_KEY || '',
     },
   });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    const error = new Error(`TBA API error: ${response.status}`);
-    error.status = response.status;
-    error.body = errorBody;
-    throw error;
-  }
-
-  return response.json();
 };
 
 const shouldBypassUpstreamCache = (req) => String(req.get('X-Bypass-Upstream-Cache') || '').toLowerCase() === 'true';
@@ -106,7 +98,7 @@ export const tbaController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'Team not found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -138,7 +130,7 @@ export const tbaController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'No events found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -170,7 +162,7 @@ export const tbaController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'No matches found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -227,7 +219,7 @@ export const tbaController = {
       res.json(data);
     } catch (error) {
       console.error('Error in getEvents:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -259,7 +251,7 @@ export const tbaController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'Event not found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -291,7 +283,7 @@ export const tbaController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'No teams found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -358,7 +350,7 @@ export const tbaController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'Rankings not found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -390,7 +382,7 @@ export const tbaController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'OPR data not found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -422,7 +414,7 @@ export const tbaController = {
       if (error.status === 404) {
         return res.status(404).json({ message: 'Match not found' });
       }
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 };

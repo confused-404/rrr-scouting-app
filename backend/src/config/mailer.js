@@ -36,38 +36,42 @@ PASS = resolveRef(PASS);
 FROM = resolveRef(FROM);
 
 if (!HOST) {
-  console.warn('WARNING: EMAIL_HOST/SMTP_HOST is not defined; transporter will attempt localhost.');
+  console.warn('WARNING: EMAIL_HOST/SMTP_HOST is not defined; SMTP sends will fail unless BREVO_API_KEY is configured.');
 }
 
 // If a Brevo API key is provided we will use the REST endpoint instead of
 // SMTP.  This allows users to simply drop in the single `BREVO_API_KEY`
 // environment variable, which is what the OP mentioned having.
 
-let transporter;
 if (process.env.BREVO_API_KEY) {
   console.log('Brevo API key detected; using Brevo REST transport');
-} else {
+}
+
+let transporter;
+
+const getSmtpTransporter = () => {
+  if (transporter) {
+    return transporter;
+  }
+
+  if (!HOST) {
+    const error = new Error('SMTP is not configured. Set EMAIL_HOST/SMTP_HOST or use BREVO_API_KEY.');
+    error.status = 500;
+    throw error;
+  }
+
   transporter = nodemailer.createTransport({
     host: HOST,
     port: parseInt(PORT || '587', 10),
-    secure: SECURE === 'true' || SECURE === 'true', // true for 465, false for other ports
+    secure: SECURE === 'true',
     auth: {
       user: USER,
       pass: PASS,
     },
   });
 
-  // verify configuration at startup so any problems are logged immediately
-  transporter.verify().then(() => {
-    console.log('SMTP transporter verified successfully');
-  }).catch(err => {
-    console.error('SMTP transporter verification failed:', err);
-    if (err && err.code === 'EAUTH') {
-      console.error('SMTP authentication failed – check SMTP_USER/SMTP_PASS or EMAIL_USER/EMAIL_PASS');
-      console.error('Alternatively, set BREVO_API_KEY and use the Brevo REST transport instead.');
-    }
-  });
-}
+  return transporter;
+};
 
 // helper that sends via Brevo API
 const sendViaBrevo = async (options) => {
@@ -108,7 +112,7 @@ export const sendMail = async (options) => {
     ...options,
   };
   try {
-    const info = await transporter.sendMail(mailOptions);
+    const info = await getSmtpTransporter().sendMail(mailOptions);
     console.log('Email sent:', info.response);
     return info;
   } catch (err) {
