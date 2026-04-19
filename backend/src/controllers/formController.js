@@ -7,6 +7,7 @@ import {
   sanitizeTeamNumberFieldId,
   validateSubmissionCompetition,
 } from '../utils/submissionValidation.js';
+import { buildCrossFormValuesForTeam } from '../utils/crossFormValues.js';
 import { stripFormFromCompetitionState } from '../utils/competitionState.js';
 
 const VALID_FIELD_TYPES = new Set([
@@ -311,40 +312,6 @@ const evaluateConditionForSubmission = (condition, values, currentFormId) => {
   }
 };
 
-const buildCrossFormValuesForTeam = async ({ competitionId, currentFormId, teamNumber }) => {
-  const normalizedTeam = normalizeTeamNumber(teamNumber);
-  if (!competitionId || !normalizedTeam) {
-    return {};
-  }
-
-  const forms = await formModel.getFormsByCompetition(competitionId);
-  const values = {};
-
-  for (const form of forms) {
-    if (form.id === currentFormId) continue;
-
-    const teamNumberFieldId = resolveTeamNumberFieldId(form);
-    if (teamNumberFieldId === null) continue;
-
-    const submissions = await formModel.getSubmissions(form.id);
-    const latestMatch = submissions
-      .filter((submission) => normalizeTeamNumber(submission.data?.[String(teamNumberFieldId)]) === normalizedTeam)
-      .sort((left, right) => {
-        const leftTime = left.timestamp ? new Date(left.timestamp).getTime() : 0;
-        const rightTime = right.timestamp ? new Date(right.timestamp).getTime() : 0;
-        return rightTime - leftTime;
-      })[0];
-
-    if (!latestMatch) continue;
-
-    Object.entries(latestMatch.data || {}).forEach(([fieldId, fieldValue]) => {
-      values[`${form.id}:${fieldId}`] = fieldValue;
-    });
-  }
-
-  return values;
-};
-
 export const formController = {
   // Get all forms
   getForms: async (req, res) => {
@@ -571,10 +538,16 @@ export const formController = {
       }
 
       validateSubmissionCompetition(currentForm, competitionId);
-      const values = await buildCrossFormValuesForTeam({
+      const [forms, submissions] = await Promise.all([
+        formModel.getFormsByCompetition(competitionId),
+        formModel.getSubmissionsByCompetition(competitionId),
+      ]);
+      const values = buildCrossFormValuesForTeam({
         competitionId,
         currentFormId,
         teamNumber,
+        forms,
+        submissions,
       });
       return res.json(values);
     } catch (error) {
@@ -605,10 +578,12 @@ export const formController = {
       const teamNumberFieldId = resolveTeamNumberFieldId(form);
       const crossFormValues = teamNumberFieldId === null
         ? {}
-        : await buildCrossFormValuesForTeam({
+        : buildCrossFormValuesForTeam({
           competitionId,
           currentFormId: form.id,
           teamNumber: data[String(teamNumberFieldId)],
+          forms: await formModel.getFormsByCompetition(competitionId),
+          submissions: await formModel.getSubmissionsByCompetition(competitionId),
         });
 
       const sanitizedData = sanitizeSubmissionData(form, data, {
@@ -664,12 +639,20 @@ export const formController = {
         })
         .filter(Boolean);
       const allowedOwnerUids = Array.from(new Set([req.user.uid, ...existingOwnerUids]));
+      const crossFormData = teamNumberFieldId === null || !currentTeamNumber
+        ? {}
+        : {
+          forms: await formModel.getFormsByCompetition(existingSubmission.competitionId),
+          submissions: await formModel.getSubmissionsByCompetition(existingSubmission.competitionId),
+        };
       const crossFormValues = teamNumberFieldId === null || !currentTeamNumber
         ? {}
-        : await buildCrossFormValuesForTeam({
+        : buildCrossFormValuesForTeam({
           competitionId: existingSubmission.competitionId,
           currentFormId: form.id,
           teamNumber: currentTeamNumber,
+          forms: crossFormData.forms,
+          submissions: crossFormData.submissions,
         });
 
       const sanitizedData = sanitizeSubmissionData(form, data, {
