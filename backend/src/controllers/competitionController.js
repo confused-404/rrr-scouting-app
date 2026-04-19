@@ -1,3 +1,4 @@
+import { db } from '../config/firebase.js';
 import { competitionModel } from '../models/competitionModel.js';
 import { buildCreateCompetitionInput, buildUpdateCompetitionInput } from '../utils/competitionPayload.js';
 import { normalizeActiveFormIds } from '../utils/competitionState.js';
@@ -253,14 +254,24 @@ export const competitionController = {
         parsedRating = typeof notes.rating === 'number' ? notes.rating : null;
       }
 
-      // Merge into existing superscouter notes map
-      const updatedNotes = { ...(competition.superscouterNotes || {}) };
-      updatedNotes[normalizedTeamNumber] = { notes: parsedNotes, rating: parsedRating };
+      const competitionRef = db.collection('competitions').doc(competitionId);
+      await db.runTransaction(async (transaction) => {
+        const competitionDoc = await transaction.get(competitionRef);
+        if (!competitionDoc.exists) {
+          const error = new Error('Competition not found');
+          error.status = 404;
+          throw error;
+        }
 
-      const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
-        superscouterNotes: updatedNotes,
+        transaction.update(competitionRef, {
+          [`superscouterNotes.${normalizedTeamNumber}`]: {
+            notes: parsedNotes,
+            rating: parsedRating,
+          },
+        });
       });
 
+      const updatedCompetition = await competitionModel.getCompetitionById(competitionId);
       res.json(updatedCompetition);
     } catch (error) {
       console.error('Error in saveSuperscouterNotes:', error);
@@ -344,25 +355,42 @@ export const competitionController = {
       }
 
       const strategyText = typeof strategy === 'string' ? strategy : '';
-      const currentByTeam = competition.driveTeamStrategyByTeam || {};
-      const currentForTeamRaw = currentByTeam[normalizedTeamNumber];
-      const currentForTeam = (
-        currentForTeamRaw && typeof currentForTeamRaw === 'object'
-          ? currentForTeamRaw
-          : {}
-      );
-      const updatedByTeam = {
-        ...currentByTeam,
-        [normalizedTeamNumber]: {
-          ...currentForTeam,
-          [normalizedMatchKey]: strategyText,
-        },
-      };
+      const competitionRef = db.collection('competitions').doc(competitionId);
+      await db.runTransaction(async (transaction) => {
+        const competitionDoc = await transaction.get(competitionRef);
+        if (!competitionDoc.exists) {
+          const error = new Error('Competition not found');
+          error.status = 404;
+          throw error;
+        }
 
-      const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
-        driveTeamStrategyByTeam: updatedByTeam,
+        const competitionData = competitionDoc.data() || {};
+        const currentByTeam = competitionData.driveTeamStrategyByTeam || {};
+        const currentForTeamRaw = currentByTeam[normalizedTeamNumber];
+
+        if (currentForTeamRaw && typeof currentForTeamRaw === 'object' && !Array.isArray(currentForTeamRaw)) {
+          transaction.update(competitionRef, {
+            [`driveTeamStrategyByTeam.${normalizedTeamNumber}.${normalizedMatchKey}`]: strategyText,
+          });
+          return;
+        }
+
+        if (typeof currentForTeamRaw === 'string' && currentForTeamRaw.length > 0) {
+          transaction.update(competitionRef, {
+            [`driveTeamStrategyByTeam.${normalizedTeamNumber}`]: {
+              default: currentForTeamRaw,
+              [normalizedMatchKey]: strategyText,
+            },
+          });
+          return;
+        }
+
+        transaction.update(competitionRef, {
+          [`driveTeamStrategyByTeam.${normalizedTeamNumber}.${normalizedMatchKey}`]: strategyText,
+        });
       });
 
+      const updatedCompetition = await competitionModel.getCompetitionById(competitionId);
       res.json(updatedCompetition);
     } catch (error) {
       console.error('Error in saveDriveTeamStrategy:', error);
@@ -404,7 +432,8 @@ export const competitionController = {
         const byMatch = rawTeamBucket;
         const directMatch = byMatch[matchKey];
         const normalizedMatch = byMatch[normalizedMatchKey];
-        const selected = directMatch ?? normalizedMatch;
+        const fallbackDefault = byMatch.default;
+        const selected = directMatch ?? normalizedMatch ?? fallbackDefault;
         strategy = typeof selected === 'string' ? selected : '';
       }
 
