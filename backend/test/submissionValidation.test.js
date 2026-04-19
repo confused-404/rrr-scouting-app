@@ -62,17 +62,68 @@ test('sanitizeSubmissionData preserves picture submissions with explicit ownerUi
   };
 
   const pictureValue = {
-    url: 'https://storage.example/file.jpg',
+    url: 'https://firebasestorage.googleapis.com/v0/b/test-bucket/o/form-submissions%2Fcomp-1%2Fform-a%2Fuser-123%2F1%2F1700000000000-abc-photo.jpg?alt=media&token=abc',
     path: 'form-submissions/comp-1/form-a/user-123/1/1700000000000-abc-photo.jpg',
     name: 'photo.jpg',
     contentType: 'image/jpeg',
     size: 12345,
     ownerUid: 'user-123',
+    bucket: 'test-bucket',
   };
 
   assert.deepEqual(
     sanitizeSubmissionData(form, { 1: pictureValue }, { allowedOwnerUids: ['user-123'] }),
     { '1': pictureValue },
+  );
+});
+
+test('sanitizeSubmissionData rejects picture submissions with non-storage urls', () => {
+  const form = {
+    id: 'form-a',
+    competitionId: 'comp-1',
+    fields: [
+      { id: 1, type: 'picture', label: 'Robot Photo', required: true },
+    ],
+  };
+
+  assert.throws(
+    () => sanitizeSubmissionData(form, {
+      1: {
+        url: 'https://evil.example.com/tracker.jpg',
+        path: 'form-submissions/comp-1/form-a/user-123/1/1700000000000-abc-photo.jpg',
+        name: 'photo.jpg',
+        contentType: 'image/jpeg',
+        size: 12345,
+        ownerUid: 'user-123',
+        bucket: 'test-bucket',
+      },
+    }, { allowedOwnerUids: ['user-123'] }),
+    /valid Firebase Storage download URL/,
+  );
+});
+
+test('sanitizeSubmissionData rejects picture submissions when url path does not match storage path', () => {
+  const form = {
+    id: 'form-a',
+    competitionId: 'comp-1',
+    fields: [
+      { id: 1, type: 'picture', label: 'Robot Photo', required: true },
+    ],
+  };
+
+  assert.throws(
+    () => sanitizeSubmissionData(form, {
+      1: {
+        url: 'https://firebasestorage.googleapis.com/v0/b/test-bucket/o/form-submissions%2Fcomp-1%2Fform-a%2Fuser-123%2F1%2Fanother-photo.jpg?alt=media&token=abc',
+        path: 'form-submissions/comp-1/form-a/user-123/1/1700000000000-abc-photo.jpg',
+        name: 'photo.jpg',
+        contentType: 'image/jpeg',
+        size: 12345,
+        ownerUid: 'user-123',
+        bucket: 'test-bucket',
+      },
+    }, { allowedOwnerUids: ['user-123'] }),
+    /does not match the submitted storage path/,
   );
 });
 

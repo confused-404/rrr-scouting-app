@@ -39,6 +39,46 @@ const resolvePicturePathPrefix = ({ competitionId, formId, fieldId, ownerUid }) 
   `form-submissions/${competitionId}/${formId}/${ownerUid}/${fieldId}/`
 );
 
+const parseStorageUrl = (url) => {
+  if (typeof url !== 'string' || !url) {
+    return null;
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    return null;
+  }
+
+  const host = parsedUrl.hostname.toLowerCase();
+  if (host === 'firebasestorage.googleapis.com') {
+    const match = parsedUrl.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/);
+    if (!match) {
+      return null;
+    }
+
+    return {
+      bucket: decodeURIComponent(match[1]),
+      path: decodeURIComponent(match[2]),
+    };
+  }
+
+  if (host === 'storage.googleapis.com') {
+    const match = parsedUrl.pathname.match(/^\/([^/]+)\/(.+)$/);
+    if (!match) {
+      return null;
+    }
+
+    return {
+      bucket: decodeURIComponent(match[1]),
+      path: decodeURIComponent(match[2]),
+    };
+  }
+
+  return null;
+};
+
 const extractOwnerUidFromPicturePath = (path) => {
   if (typeof path !== 'string') {
     return null;
@@ -91,8 +131,26 @@ const sanitizePictureValue = (value, options) => {
     throw createValidationError('Picture fields must include a valid file size.');
   }
 
-  if (process.env.FIREBASE_STORAGE_BUCKET && bucket && bucket !== process.env.FIREBASE_STORAGE_BUCKET) {
+  const parsedStorageUrl = parseStorageUrl(url);
+  if (!parsedStorageUrl) {
+    throw createValidationError('Picture fields must use a valid Firebase Storage download URL.');
+  }
+
+  const expectedBucket = process.env.FIREBASE_STORAGE_BUCKET || bucket || parsedStorageUrl.bucket;
+  if (!expectedBucket) {
+    throw createValidationError('Picture fields must include a valid Firebase Storage bucket.');
+  }
+
+  if (bucket && bucket !== expectedBucket) {
     throw createValidationError('Picture upload bucket does not match server configuration.');
+  }
+
+  if (parsedStorageUrl.bucket !== expectedBucket) {
+    throw createValidationError('Picture URL bucket does not match server configuration.');
+  }
+
+  if (parsedStorageUrl.path !== path) {
+    throw createValidationError('Picture URL path does not match the submitted storage path.');
   }
 
   const allowedOwnerUids = Array.isArray(options?.allowedOwnerUids) ? options.allowedOwnerUids : [];
@@ -131,7 +189,7 @@ const sanitizePictureValue = (value, options) => {
     contentType,
     size,
     ownerUid,
-    ...(bucket ? { bucket } : {}),
+    bucket: expectedBucket,
     ...(uploadedAt ? { uploadedAt } : {}),
   };
 };
