@@ -74,7 +74,17 @@ const getAllianceTeams = (match: any, alliance: 'red' | 'blue'): string[] => {
   return [];
 };
 
-const getMatchLabel = (match: any) => `${match.comp_level || ''}${match.match_number || (match.key ? match.key.split('m')[1] : '')}`;
+const getMatchLabel = (match: any) => {
+  const compLevel = String(match.comp_level || '').toUpperCase();
+  const setNumber = Number(match.set_number || 0);
+  const matchNumber = match.match_number || (match.key ? match.key.split('m')[1] : '');
+
+  if (compLevel === 'QM') return `QM${matchNumber}`;
+  if (compLevel === 'SF') return `SF${setNumber}`;
+  if (compLevel === 'F') return `F${matchNumber}`;
+  if (setNumber > 0) return `${compLevel}${setNumber}-${matchNumber}`;
+  return `${compLevel}${matchNumber}`;
+};
 
 const matchFieldRegex = /match( number| #|#|num| no\.?|)/i;
 
