@@ -11,6 +11,7 @@ import {
 import { buildCrossFormValuesForTeam } from '../utils/crossFormValues.js';
 import { assertFormAllowsSubmission, collectCrossFormFieldReferences } from '../utils/submissionAccess.js';
 import { competitionModel } from '../models/competitionModel.js';
+import { getUserRole } from '../utils/authz.js';
 
 const VALID_FIELD_TYPES = new Set([
   'text',
@@ -25,6 +26,61 @@ const VALID_FIELD_TYPES = new Set([
 const normalizeString = (value) => String(value ?? '').trim();
 
 const toLookupKey = (value) => normalizeString(value).toLowerCase();
+const canReadPrivilegedForms = (user) => ['admin', 'drive'].includes(getUserRole(user));
+
+const createForbiddenError = (message) => {
+  const error = new Error(message);
+  error.status = 403;
+  return error;
+};
+
+const buildScoutVisibleFormIds = (competition) => {
+  if (!competition || competition.status !== 'active') {
+    return new Set();
+  }
+
+  const activeFormIds = Array.isArray(competition.activeFormIds)
+    ? competition.activeFormIds.filter((formId) => typeof formId === 'string' && formId.trim() !== '')
+    : [];
+
+  return new Set(activeFormIds);
+};
+
+const filterFormsForUser = (forms, competition, user) => {
+  if (canReadPrivilegedForms(user)) {
+    return forms;
+  }
+
+  const visibleFormIds = buildScoutVisibleFormIds(competition);
+  return forms.filter((form) => visibleFormIds.has(form.id));
+};
+
+const assertUserCanReadForm = (form, competition, user) => {
+  if (canReadPrivilegedForms(user)) {
+    return;
+  }
+
+  const visibleFormIds = buildScoutVisibleFormIds(competition);
+  if (!visibleFormIds.has(form.id)) {
+    throw createForbiddenError('The selected form is not currently available to this user.');
+  }
+};
+
+const filterCrossFormReferencesForUser = (referencedFieldsByFormId, visibleFormIds) => {
+  if (!(referencedFieldsByFormId instanceof Map)) {
+    return new Map();
+  }
+
+  const filtered = new Map();
+  for (const [formId, fieldIds] of referencedFieldsByFormId.entries()) {
+    if (!visibleFormIds.has(formId)) {
+      continue;
+    }
+    filtered.set(formId, fieldIds);
+  }
+
+  return filtered;
+};
 
 const sanitizeOptions = (field) => {
   const options = Array.isArray(field.options)
@@ -341,7 +397,17 @@ export const formController = {
   getForms: async (req, res) => {
     try {
       const forms = await formModel.getAllForms();
-      res.json(forms);
+      if (canReadPrivilegedForms(req.user)) {
+        return res.json(forms);
+      }
+
+      const competitions = await competitionModel.getAllCompetitions();
+      const competitionsById = new Map(competitions.map((competition) => [competition.id, competition]));
+      const visibleForms = forms.filter((form) => {
+        const competition = competitionsById.get(form.competitionId);
+        return buildScoutVisibleFormIds(competition).has(form.id);
+      });
+      res.json(visibleForms);
     } catch (error) {
       console.error('Error in getForms:', error);
       res.status(500).json({ message: error.message });
@@ -351,8 +417,13 @@ export const formController = {
   // Get forms by competition
   getFormsByCompetition: async (req, res) => {
     try {
-      const forms = await formModel.getFormsByCompetition(req.params.competitionId);
-      res.json(forms);
+      const competitionId = normalizeString(req.params.competitionId);
+      const [competition, forms] = await Promise.all([
+        competitionModel.getCompetitionById(competitionId),
+        formModel.getFormsByCompetition(competitionId),
+      ]);
+
+      res.json(filterFormsForUser(forms, competition, req.user));
     } catch (error) {
       console.error('Error in getFormsByCompetition:', error);
       res.status(500).json({ message: error.message });
@@ -366,10 +437,12 @@ export const formController = {
       if (!form) {
         return res.status(404).json({ message: 'Form not found' });
       }
+      const competition = await competitionModel.getCompetitionById(form.competitionId);
+      assertUserCanReadForm(form, competition, req.user);
       res.json(form);
     } catch (error) {
       console.error('Error in getForm:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -542,19 +615,29 @@ export const formController = {
       }
 
       validateSubmissionCompetition(currentForm, competitionId);
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      assertUserCanReadForm(currentForm, competition, req.user);
+      const visibleFormIds = canReadPrivilegedForms(req.user)
+        ? null
+        : buildScoutVisibleFormIds(competition);
       const referencedFieldsByFormId = collectCrossFormFieldReferences(currentForm);
       const { forms, submissions } = await loadCrossFormLookupContext({
         competitionId,
         currentFormId,
         teamNumber,
       });
+      const allowedForms = canReadPrivilegedForms(req.user)
+        ? forms
+        : forms.filter((form) => visibleFormIds.has(form.id));
       const values = buildCrossFormValuesForTeam({
         competitionId,
         currentFormId,
         teamNumber,
-        forms,
+        forms: allowedForms,
         submissions,
-        referencedFieldsByFormId,
+        referencedFieldsByFormId: canReadPrivilegedForms(req.user)
+          ? referencedFieldsByFormId
+          : filterCrossFormReferencesForUser(referencedFieldsByFormId, visibleFormIds),
       });
       return res.json(values);
     } catch (error) {
