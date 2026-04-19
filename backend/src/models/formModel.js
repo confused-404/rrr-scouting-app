@@ -6,29 +6,44 @@ const SUBMISSIONS_COLLECTION = 'submissions';
 
 // Helper function to convert Firestore timestamp
 const convertTimestamp = (timestamp) => {
-  if (!timestamp) return new Date().toISOString();
+  if (!timestamp) return null;
   if (timestamp._seconds) {
     return new Date(timestamp._seconds * 1000).toISOString();
   }
   if (timestamp.toDate) {
     return timestamp.toDate().toISOString();
   }
-  return new Date().toISOString();
+  if (typeof timestamp === 'string') {
+    return timestamp;
+  }
+  return null;
+};
+
+const mapFormDocument = (doc) => {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    ...data,
+    createdAt: convertTimestamp(data.createdAt) || doc.createTime?.toDate().toISOString() || null,
+    updatedAt: convertTimestamp(data.updatedAt) || doc.updateTime?.toDate().toISOString() || null,
+  };
+};
+
+const mapSubmissionDocument = (doc) => {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    ...data,
+    timestamp: convertTimestamp(data.timestamp) || doc.createTime?.toDate().toISOString() || null,
+    editedAt: data.editedAt ? (convertTimestamp(data.editedAt) || doc.updateTime?.toDate().toISOString() || null) : undefined,
+  };
 };
 
 export const formModel = {
   // Form CRUD operations
   getAllForms: async () => {
     const snapshot = await db.collection(FORMS_COLLECTION).get();
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        createdAt: convertTimestamp(data.createdAt),
-        updatedAt: convertTimestamp(data.updatedAt),
-      };
-    });
+    return snapshot.docs.map((doc) => mapFormDocument(doc));
   },
 
   getFormsByCompetition: async (competitionId) => {
@@ -36,28 +51,14 @@ export const formModel = {
       .where('competitionId', '==', competitionId)
       .get();
 
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        createdAt: convertTimestamp(data.createdAt),
-        updatedAt: convertTimestamp(data.updatedAt),
-      };
-    });
+    return snapshot.docs.map((doc) => mapFormDocument(doc));
   },
 
   getFormById: async (id) => {
     const doc = await db.collection(FORMS_COLLECTION).doc(id).get();
     if (!doc.exists) return null;
 
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      createdAt: convertTimestamp(data.createdAt),
-      updatedAt: convertTimestamp(data.updatedAt),
-    };
+    return mapFormDocument(doc);
   },
 
   createForm: async (formData) => {
@@ -70,13 +71,7 @@ export const formModel = {
     });
 
     const doc = await docRef.get();
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      createdAt: convertTimestamp(data.createdAt),
-      updatedAt: convertTimestamp(data.updatedAt),
-    };
+    return mapFormDocument(doc);
   },
 
   updateForm: async (id, formData) => {
@@ -91,13 +86,7 @@ export const formModel = {
     });
 
     const updated = await docRef.get();
-    const data = updated.data();
-    return {
-      id: updated.id,
-      ...data,
-      createdAt: convertTimestamp(data.createdAt),
-      updatedAt: convertTimestamp(data.updatedAt),
-    };
+    return mapFormDocument(updated);
   },
 
   deleteForm: async (id) => {
@@ -111,14 +100,7 @@ export const formModel = {
       .where('formId', '==', formId)
       .get();
 
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        timestamp: convertTimestamp(data.timestamp),
-      };
-    });
+    return snapshot.docs.map((doc) => mapSubmissionDocument(doc));
   },
 
   getSubmissionsByCompetition: async (competitionId) => {
@@ -126,26 +108,14 @@ export const formModel = {
       .where('competitionId', '==', competitionId)
       .get();
 
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        timestamp: convertTimestamp(data.timestamp),
-      };
-    });
+    return snapshot.docs.map((doc) => mapSubmissionDocument(doc));
   },
 
   getSubmissionById: async (id) => {
     const doc = await db.collection(SUBMISSIONS_COLLECTION).doc(id).get();
     if (!doc.exists) return null;
 
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      timestamp: convertTimestamp(data.timestamp),
-    };
+    return mapSubmissionDocument(doc);
   },
 
   createSubmission: async (submissionData) => {
@@ -155,12 +125,7 @@ export const formModel = {
     });
 
     const doc = await docRef.get();
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      timestamp: convertTimestamp(data.timestamp),
-    };
+    return mapSubmissionDocument(doc);
   },
 
   /**
@@ -180,24 +145,11 @@ export const formModel = {
     });
 
     const updated = await docRef.get();
-    const data = updated.data();
-    return {
-      id: updated.id,
-      ...data,
-      timestamp: convertTimestamp(data.timestamp),
-      editedAt: data.editedAt ? convertTimestamp(data.editedAt) : undefined,
-    };
+    return mapSubmissionDocument(updated);
   },
 
   getAllSubmissions: async () => {
     const snapshot = await db.collection(SUBMISSIONS_COLLECTION).get();
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        timestamp: convertTimestamp(data.timestamp),
-      };
-    });
+    return snapshot.docs.map((doc) => mapSubmissionDocument(doc));
   },
 };

@@ -1,5 +1,10 @@
 import { auth, db } from '../config/firebase.js';
-import { extractBearerToken, hasRequiredRole, isSetupSecretValid } from '../utils/authz.js';
+import {
+  extractBearerToken,
+  hasRequiredRole,
+  isSetupSecretValid,
+  resolveEffectiveRole,
+} from '../utils/authz.js';
 
 export const verifyToken = async (req, res, next) => {
   try {
@@ -12,9 +17,7 @@ export const verifyToken = async (req, res, next) => {
     const decodedToken = await auth.verifyIdToken(token);
     const userDoc = await db.collection('users').doc(decodedToken.uid).get();
     const docRole = userDoc.exists ? userDoc.data()?.role : null;
-    const effectiveRole = docRole === 'admin' || docRole === 'drive' || docRole === 'user'
-      ? docRole
-      : (decodedToken.admin ? 'admin' : (decodedToken.driveTeam ? 'drive' : 'user'));
+    const effectiveRole = resolveEffectiveRole(decodedToken, docRole);
 
     req.user = {
       ...decodedToken,

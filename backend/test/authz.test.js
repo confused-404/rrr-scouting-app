@@ -6,6 +6,7 @@ import {
   getUserRole,
   hasRequiredRole,
   isSetupSecretValid,
+  resolveEffectiveRole,
 } from '../src/utils/authz.js';
 
 test('extractBearerToken returns null for invalid headers', () => {
@@ -28,6 +29,13 @@ test('getUserRole prefers persisted app roles over stale token claims', () => {
   assert.equal(getUserRole({ appRole: 'user', admin: true }), APP_ROLES.user);
   assert.equal(getUserRole({ appRole: 'drive', admin: true }), APP_ROLES.drive);
   assert.equal(getUserRole({ appRole: 'admin', driveTeam: true }), APP_ROLES.admin);
+});
+
+test('resolveEffectiveRole only elevates from verified token claims', () => {
+  assert.equal(resolveEffectiveRole({ admin: true }, 'user'), APP_ROLES.admin);
+  assert.equal(resolveEffectiveRole({ driveTeam: true }, 'admin'), APP_ROLES.drive);
+  assert.equal(resolveEffectiveRole({}, 'admin'), APP_ROLES.user);
+  assert.equal(resolveEffectiveRole({}, 'drive'), APP_ROLES.user);
 });
 
 test('hasRequiredRole only permits explicitly allowed roles', () => {

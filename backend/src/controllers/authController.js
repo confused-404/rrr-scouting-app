@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { sendMail } from '../config/mailer.js';
 
 const VALID_ROLES = new Set(['admin', 'drive', 'user']);
+const INITIAL_ADMIN_SETUP_DOC = '_system/initialAdminSetup';
 
 const claimsForRole = (role) => ({
   admin: role === 'admin',
@@ -97,6 +98,7 @@ export const signup = async (req, res) => {
  * updates the database so you can query admin emails.
  */
 export const initializeFirstAdmin = async (req, res) => {
+  let setupLockAcquired = false;
   try {
     const { email } = req.body;
     const normalizedEmail = typeof email === 'string' ? email.trim() : '';
@@ -107,6 +109,21 @@ export const initializeFirstAdmin = async (req, res) => {
 
     if (await hasAnyAdminUser()) {
       return res.status(409).json({ message: 'Initial admin has already been configured.' });
+    }
+
+    const setupRef = db.doc(INITIAL_ADMIN_SETUP_DOC);
+    try {
+      await setupRef.create({
+        email: normalizedEmail,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      });
+      setupLockAcquired = true;
+    } catch (error) {
+      if (error?.code === 6 || error?.code === 'already-exists') {
+        return res.status(409).json({ message: 'Initial admin has already been configured.' });
+      }
+      throw error;
     }
 
     // 1. Get user record from the Admin SDK
@@ -121,8 +138,18 @@ export const initializeFirstAdmin = async (req, res) => {
       email: user.email,
     }, { merge: true });
 
+    await setupRef.set({
+      email: normalizedEmail,
+      status: 'completed',
+      completedAt: new Date().toISOString(),
+      uid: user.uid,
+    }, { merge: true });
+
     res.json({ message: `Success: ${normalizedEmail} is now an admin and saved to DB.` });
   } catch (error) {
+    if (setupLockAcquired) {
+      await db.doc(INITIAL_ADMIN_SETUP_DOC).delete().catch(() => {});
+    }
     console.error('Initialization error:', error);
     res.status(500).json({ message: error.message });
   }
@@ -148,10 +175,7 @@ export const makeAdmin = async (req, res) => {
 export const getMe = async (req, res) => {
   try {
     const doc = await db.collection('users').doc(req.user.uid).get();
-    const docRole = doc.exists ? doc.data().role : null;
-    const role = req.user.admin
-      ? 'admin'
-      : (req.user.driveTeam ? 'drive' : (docRole === 'admin' || docRole === 'drive' ? docRole : 'user'));
+    const role = req.user.appRole || (req.user.admin ? 'admin' : (req.user.driveTeam ? 'drive' : 'user'));
     const scouterName = doc.exists ? (doc.data().scouterName || null) : null;
     res.json({
       uid: req.user.uid,
@@ -528,7 +552,12 @@ export const resetPassword = async (req, res) => {
       return res.status(400).json({ message: 'Email, code and new password are required' });
     }
 
-    const userRecord = await auth.getUserByEmail(email);
+    let userRecord;
+    try {
+      userRecord = await auth.getUserByEmail(email);
+    } catch {
+      return res.status(400).json({ message: 'Invalid or expired code' });
+    }
     const userDoc = await db.collection('users').doc(userRecord.uid).get();
     const data = userDoc.data() || {};
 
@@ -567,6 +596,6 @@ export const resetPassword = async (req, res) => {
     res.json({ message: 'Password has been reset successfully' });
   } catch (error) {
     console.error('resetPassword error:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: 'Failed to reset password' });
   }
 };

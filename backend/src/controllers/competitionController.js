@@ -1,5 +1,6 @@
 import { competitionModel } from '../models/competitionModel.js';
 import { buildCreateCompetitionInput, buildUpdateCompetitionInput } from '../utils/competitionPayload.js';
+import { normalizeActiveFormIds } from '../utils/competitionState.js';
 
 export const competitionController = {
   normalizeSuperscoutTeamKey: (rawTeam) => {
@@ -149,10 +150,7 @@ export const competitionController = {
         return res.status(400).json({ message: 'Form ID already exists in this competition' });
       }
 
-      const updatedFormIds = [...competition.formIds, formId];
-      const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
-        formIds: updatedFormIds,
-      });
+      const updatedCompetition = await competitionModel.addFormToCompetition(competitionId, formId);
 
       res.json(updatedCompetition);
     } catch (error) {
@@ -176,14 +174,7 @@ export const competitionController = {
         return res.status(404).json({ message: 'Competition not found' });
       }
 
-      const updatedFormIds = competition.formIds.filter(id => id !== formId);
-      
-      let updateData = { formIds: updatedFormIds };
-      if (competition.activeFormId === formId) {
-        updateData.activeFormId = null;
-      }
-
-      const updatedCompetition = await competitionModel.updateCompetition(competitionId, updateData);
+      const updatedCompetition = await competitionModel.removeFormFromCompetition(competitionId, formId);
       res.json(updatedCompetition);
     } catch (error) {
       console.error('Error in removeFormId:', error);
@@ -206,24 +197,7 @@ export const competitionController = {
         return res.status(400).json({ message: 'Form ID does not exist in this competition' });
       }
 
-      let activeIds = competition.activeFormIds || [];
-      if (!Array.isArray(activeIds) && competition.activeFormId) {
-        activeIds = [competition.activeFormId];
-      }
-
-      if (formId) {
-        if (activeIds.includes(formId)) {
-          activeIds = activeIds.filter(id => id !== formId);
-        } else {
-          activeIds.push(formId);
-        }
-      } else {
-        activeIds = [];
-      }
-
-      const updatedCompetition = await competitionModel.updateCompetition(competitionId, {
-        activeFormIds: activeIds,
-      });
+      const updatedCompetition = await competitionModel.toggleActiveFormForCompetition(competitionId, formId);
 
       res.json(updatedCompetition);
     } catch (error) {

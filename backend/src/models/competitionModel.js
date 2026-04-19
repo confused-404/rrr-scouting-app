@@ -1,5 +1,6 @@
 import { db } from '../config/firebase.js';
 import admin from 'firebase-admin';
+import { normalizeActiveFormIds, stripFormFromCompetitionState } from '../utils/competitionState.js';
 
 const COMPETITIONS_COLLECTION = 'competitions';
 const FORMS_COLLECTION = 'forms';
@@ -20,36 +21,37 @@ const convertTimestamp = (timestamp) => {
   return null;
 };
 
+const mapCompetitionDocument = (doc) => {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    name: data.name,
+    season: data.season,
+    status: data.status,
+    startDate: convertTimestamp(data.startDate),
+    endDate: convertTimestamp(data.endDate),
+    createdAt: convertTimestamp(data.createdAt),
+    formIds: data.formIds || [],
+    activeFormIds: normalizeActiveFormIds(data),
+    scoutingTeams: data.scoutingTeams || [],
+    scoutingAssignments: data.scoutingAssignments || [],
+    eventKey: data.eventKey,
+    superscouterNotes: data.superscouterNotes || {},
+    driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
+    robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
+    pitMapImageUrl: data.pitMapImageUrl || '',
+    pitLocations: data.pitLocations || {},
+    manualPickLists: data.manualPickLists || [],
+  };
+};
+
 export const competitionModel = {
   getAllCompetitions: async () => {
     const snapshot = await db.collection(COMPETITIONS_COLLECTION)
       .orderBy('createdAt', 'desc')
       .get();
-    
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      // console.log('Raw competition data:', data); // Debug log
-      return {
-        id: doc.id,
-        name: data.name,
-        season: data.season,
-        status: data.status,
-        startDate: convertTimestamp(data.startDate),
-        endDate: convertTimestamp(data.endDate),
-        createdAt: convertTimestamp(data.createdAt),
-        formIds: data.formIds || [],
-        activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
-        scoutingTeams: data.scoutingTeams || [],
-        scoutingAssignments: data.scoutingAssignments || [],
-        eventKey: data.eventKey,
-        superscouterNotes: data.superscouterNotes || {},
-        driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
-        robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
-        pitMapImageUrl: data.pitMapImageUrl || '',
-        pitLocations: data.pitLocations || {},
-        manualPickLists: data.manualPickLists || [],
-      };
-    });
+
+    return snapshot.docs.map((doc) => mapCompetitionDocument(doc));
   },
 
   getActiveCompetitions: async () => {
@@ -64,24 +66,10 @@ export const competitionModel = {
         || '1970-01-01T00:00:00.000Z';
 
       return {
-        id: doc.id,
-        name: data.name,
-        season: data.season,
-        status: data.status,
+        ...mapCompetitionDocument(doc),
         startDate: convertTimestamp(data.startDate) || new Date().toISOString(),
         endDate: convertTimestamp(data.endDate) || new Date().toISOString(),
         createdAt,
-        formIds: data.formIds || [],
-        activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
-        scoutingTeams: data.scoutingTeams || [],
-        scoutingAssignments: data.scoutingAssignments || [],
-        eventKey: data.eventKey,
-        superscouterNotes: data.superscouterNotes || {},
-        driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
-        robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
-        pitMapImageUrl: data.pitMapImageUrl || '',
-        pitLocations: data.pitLocations || {},
-        manualPickLists: data.manualPickLists || [],
       };
     });
 
@@ -91,28 +79,8 @@ export const competitionModel = {
   getCompetitionById: async (id) => {
     const doc = await db.collection(COMPETITIONS_COLLECTION).doc(id).get();
     if (!doc.exists) return null;
-    
-    const data = doc.data();
-    return {
-      id: doc.id,
-      name: data.name,
-      season: data.season,
-      status: data.status,
-      startDate: convertTimestamp(data.startDate),
-      endDate: convertTimestamp(data.endDate),
-      createdAt: convertTimestamp(data.createdAt),
-      formIds: data.formIds || [],
-      activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
-      scoutingTeams: data.scoutingTeams || [],
-      scoutingAssignments: data.scoutingAssignments || [],
-      eventKey: data.eventKey,
-      superscouterNotes: data.superscouterNotes || {},
-      driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
-      robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
-      pitMapImageUrl: data.pitMapImageUrl || '',
-      pitLocations: data.pitLocations || {},
-      manualPickLists: data.manualPickLists || [],
-    };
+
+    return mapCompetitionDocument(doc);
   },
 
   createCompetition: async (competitionData) => {
@@ -124,7 +92,7 @@ export const competitionModel = {
       startDate: competitionData.startDate,
       endDate: competitionData.endDate,
       formIds: competitionData.formIds || [],
-      activeFormIds: competitionData.activeFormIds || (competitionData.activeFormId ? [competitionData.activeFormId] : []),
+      activeFormIds: normalizeActiveFormIds(competitionData),
       scoutingTeams: competitionData.scoutingTeams || [],
       scoutingAssignments: competitionData.scoutingAssignments || [],
       eventKey: competitionData.eventKey,
@@ -154,27 +122,7 @@ export const competitionModel = {
     }
     
     const doc = await docRef.get();
-    const data = doc.data();
-    return {
-      id: doc.id,
-      name: data.name,
-      season: data.season,
-      status: data.status,
-      startDate: convertTimestamp(data.startDate),
-      endDate: convertTimestamp(data.endDate),
-      createdAt: convertTimestamp(data.createdAt),
-      formIds: data.formIds || [],
-      activeFormIds: data.activeFormIds || (data.activeFormId ? [data.activeFormId] : []),
-      scoutingTeams: data.scoutingTeams || [],
-      scoutingAssignments: data.scoutingAssignments || [],
-      eventKey: data.eventKey,
-      superscouterNotes: data.superscouterNotes || {},
-      driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
-      robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
-      pitMapImageUrl: data.pitMapImageUrl || '',
-      pitLocations: data.pitLocations || {},
-      manualPickLists: data.manualPickLists || [],
-    };
+    return mapCompetitionDocument(doc);
   },
 
   updateCompetition: async (id, competitionData) => {
@@ -193,10 +141,10 @@ export const competitionModel = {
     if (competitionData.endDate !== undefined) updateData.endDate = competitionData.endDate;
     if (competitionData.formIds !== undefined) updateData.formIds = competitionData.formIds;
     if (competitionData.activeFormIds !== undefined) {
-      updateData.activeFormIds = competitionData.activeFormIds;
+      updateData.activeFormIds = normalizeActiveFormIds(competitionData);
     } else if (competitionData.activeFormId !== undefined) {
       // backwards compatibility
-      updateData.activeFormIds = competitionData.activeFormId ? [competitionData.activeFormId] : [];
+      updateData.activeFormIds = normalizeActiveFormIds(competitionData);
     }
     if (competitionData.scoutingTeams !== undefined) updateData.scoutingTeams = competitionData.scoutingTeams;
     if (competitionData.scoutingAssignments !== undefined) updateData.scoutingAssignments = competitionData.scoutingAssignments;
@@ -227,6 +175,77 @@ export const competitionModel = {
     }
     
     return competitionModel.getCompetitionById(id);
+  },
+
+  addFormToCompetition: async (competitionId, formId) => {
+    const docRef = db.collection(COMPETITIONS_COLLECTION).doc(competitionId);
+
+    await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(docRef);
+      if (!doc.exists) {
+        const error = new Error('Competition not found');
+        error.status = 404;
+        throw error;
+      }
+
+      transaction.update(docRef, {
+        formIds: admin.firestore.FieldValue.arrayUnion(formId),
+      });
+    });
+
+    return competitionModel.getCompetitionById(competitionId);
+  },
+
+  removeFormFromCompetition: async (competitionId, formId) => {
+    const docRef = db.collection(COMPETITIONS_COLLECTION).doc(competitionId);
+
+    await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(docRef);
+      if (!doc.exists) {
+        const error = new Error('Competition not found');
+        error.status = 404;
+        throw error;
+      }
+
+      const nextState = stripFormFromCompetitionState(doc.data(), formId);
+      transaction.update(docRef, nextState);
+    });
+
+    return competitionModel.getCompetitionById(competitionId);
+  },
+
+  toggleActiveFormForCompetition: async (competitionId, formId) => {
+    const docRef = db.collection(COMPETITIONS_COLLECTION).doc(competitionId);
+
+    await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(docRef);
+      if (!doc.exists) {
+        const error = new Error('Competition not found');
+        error.status = 404;
+        throw error;
+      }
+
+      const data = doc.data();
+      const formIds = Array.isArray(data.formIds) ? data.formIds : [];
+      if (formId && !formIds.includes(formId)) {
+        const error = new Error('Form ID does not exist in this competition');
+        error.status = 400;
+        throw error;
+      }
+
+      let activeFormIds = normalizeActiveFormIds(data);
+      if (formId) {
+        activeFormIds = activeFormIds.includes(formId)
+          ? activeFormIds.filter((currentFormId) => currentFormId !== formId)
+          : [...activeFormIds, formId];
+      } else {
+        activeFormIds = [];
+      }
+
+      transaction.update(docRef, { activeFormIds });
+    });
+
+    return competitionModel.getCompetitionById(competitionId);
   },
 
   deleteCompetition: async (id) => {

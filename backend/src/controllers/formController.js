@@ -1,4 +1,13 @@
 import { formModel } from '../models/formModel.js';
+import {
+  createValidationError,
+  normalizeTeamNumber,
+  resolveTeamNumberFieldId,
+  sanitizeSubmissionData,
+  sanitizeTeamNumberFieldId,
+  validateSubmissionCompetition,
+} from '../utils/submissionValidation.js';
+import { stripFormFromCompetitionState } from '../utils/competitionState.js';
 
 const VALID_FIELD_TYPES = new Set([
   'text',
@@ -10,44 +19,9 @@ const VALID_FIELD_TYPES = new Set([
   'picture',
 ]);
 
-const VALID_CONDITION_OPERATORS = new Set([
-  'equals',
-  'not_equals',
-  'contains',
-  'not_contains',
-]);
-
-const createValidationError = (message) => {
-  const error = new Error(message);
-  error.status = 400;
-  return error;
-};
-
 const normalizeString = (value) => String(value ?? '').trim();
 
 const toLookupKey = (value) => normalizeString(value).toLowerCase();
-const teamFieldRegex = /team|team number|team #/i;
-
-const normalizeTeamNumber = (value) => {
-  if (value === null || value === undefined) return null;
-  const text = normalizeString(value);
-  if (!text) return null;
-  if (/^frc\d+$/i.test(text)) return text.replace(/^frc/i, '') || null;
-  const digits = text.match(/\d+/)?.[0];
-  return digits || null;
-};
-
-const resolveTeamNumberFieldId = (form) => {
-  if (Number.isInteger(form?.teamNumberFieldId)) {
-    return Number(form.teamNumberFieldId);
-  }
-
-  return form?.fields?.find((field) => teamFieldRegex.test(normalizeString(field.label)))?.id ?? null;
-};
-
-const resolvePicturePathPrefix = ({ competitionId, formId, fieldId, ownerUid }) => (
-  `form-submissions/${competitionId}/${formId}/${ownerUid}/${fieldId}/`
-);
 
 const sanitizeOptions = (field) => {
   const options = Array.isArray(field.options)
@@ -115,7 +89,7 @@ const sanitizeCondition = (condition, context) => {
     }
   }
 
-  if (!VALID_CONDITION_OPERATORS.has(condition.operator)) {
+  if (!['equals', 'not_equals', 'contains', 'not_contains'].includes(condition.operator)) {
     throw createValidationError('Conditional logic operator is invalid.');
   }
 
@@ -337,147 +311,6 @@ const evaluateConditionForSubmission = (condition, values, currentFormId) => {
   }
 };
 
-const shouldIncludeField = (field, values, currentFormId, crossFormValues = {}) => {
-  if (!field.condition) return true;
-
-  const resolveValue = (referencedFormId, fieldId) => {
-    if (referencedFormId === currentFormId) {
-      return values[String(fieldId)];
-    }
-
-    return crossFormValues[`${referencedFormId}:${fieldId}`];
-  };
-
-  const evaluateWithCrossFormSupport = (conditionNode) => {
-    if (!conditionNode) return true;
-
-    if (conditionNode.type === 'group') {
-      const children = Array.isArray(conditionNode.conditions) ? conditionNode.conditions : [];
-      if (children.length === 0) return true;
-
-      if (conditionNode.combinator === 'or') {
-        return children.some((child) => evaluateWithCrossFormSupport(child));
-      }
-
-      return children.every((child) => evaluateWithCrossFormSupport(child));
-    }
-
-    const rawFormId = normalizeString(conditionNode.formId);
-    const referencedFormId = (!rawFormId || rawFormId === '__current__') ? currentFormId : rawFormId;
-    const dependentValue = resolveValue(referencedFormId, conditionNode.fieldId);
-
-    if (dependentValue === undefined || dependentValue === null || dependentValue === '') {
-      return false;
-    }
-
-    switch (conditionNode.operator) {
-      case 'equals':
-        return dependentValue === conditionNode.value;
-      case 'not_equals':
-        return dependentValue !== conditionNode.value;
-      case 'contains':
-        if (Array.isArray(dependentValue)) {
-          return dependentValue.includes(conditionNode.value);
-        }
-        return String(dependentValue).includes(String(conditionNode.value));
-      case 'not_contains':
-        if (Array.isArray(dependentValue)) {
-          return !dependentValue.includes(conditionNode.value);
-        }
-        return !String(dependentValue).includes(String(conditionNode.value));
-      default:
-        return true;
-    }
-  };
-
-  return evaluateWithCrossFormSupport(field.condition);
-};
-
-const sanitizePictureValue = (value, options) => {
-  if (value === undefined || value === null || value === '') {
-    return undefined;
-  }
-
-  if (typeof value !== 'object' || Array.isArray(value)) {
-    throw createValidationError('Picture fields must be submitted as an object.');
-  }
-
-  const url = normalizeString(value.url);
-  const path = normalizeString(value.path);
-  const name = normalizeString(value.name);
-  const contentType = normalizeString(value.contentType);
-  const bucket = normalizeString(value.bucket);
-  const uploadedAt = normalizeString(value.uploadedAt);
-  const size = Number(value.size);
-
-  if (!url || !path) {
-    throw createValidationError('Picture fields must include both url and path.');
-  }
-
-  if (!Number.isFinite(size) || size <= 0) {
-    throw createValidationError('Picture fields must include a valid file size.');
-  }
-
-  if (process.env.FIREBASE_STORAGE_BUCKET && bucket && bucket !== process.env.FIREBASE_STORAGE_BUCKET) {
-    throw createValidationError('Picture upload bucket does not match server configuration.');
-  }
-
-  const allowedOwnerUids = Array.isArray(options?.allowedOwnerUids) ? options.allowedOwnerUids : [];
-  const normalizedOwnerUids = allowedOwnerUids.map((uid) => normalizeString(uid)).filter(Boolean);
-  const allowedPrefixes = normalizedOwnerUids.map((ownerUid) => resolvePicturePathPrefix({
-    competitionId: options.competitionId,
-    formId: options.formId,
-    fieldId: options.fieldId,
-    ownerUid,
-  }));
-
-  if (!allowedPrefixes.some((prefix) => path.startsWith(prefix))) {
-    throw createValidationError('Picture upload path is outside the allowed submission scope.');
-  }
-
-  return {
-    url,
-    path,
-    name,
-    contentType,
-    size,
-    ...(bucket ? { bucket } : {}),
-    ...(uploadedAt ? { uploadedAt } : {}),
-  };
-};
-
-export const sanitizeTeamNumberFieldId = (teamNumberFieldId, fields) => {
-  if (teamNumberFieldId === null || teamNumberFieldId === undefined || teamNumberFieldId === '') {
-    return null;
-  }
-
-  const numericFieldId = Number(teamNumberFieldId);
-  if (!Number.isInteger(numericFieldId)) {
-    throw createValidationError('Team number field must reference a valid numeric field ID.');
-  }
-
-  const fieldExists = fields.some((field) => Number(field.id) === numericFieldId);
-  if (!fieldExists) {
-    throw createValidationError('Team number field must reference an existing field in the form.');
-  }
-
-  return numericFieldId;
-};
-
-export const validateSubmissionCompetition = (form, competitionId) => {
-  if (!form || typeof form !== 'object') {
-    throw createValidationError('Form is required.');
-  }
-
-  if (!competitionId) {
-    throw createValidationError('Competition ID is required.');
-  }
-
-  if (form.competitionId !== competitionId) {
-    throw createValidationError('Competition ID does not match the selected form.');
-  }
-};
-
 const buildCrossFormValuesForTeam = async ({ competitionId, currentFormId, teamNumber }) => {
   const normalizedTeam = normalizeTeamNumber(teamNumber);
   if (!competitionId || !normalizedTeam) {
@@ -496,7 +329,11 @@ const buildCrossFormValuesForTeam = async ({ competitionId, currentFormId, teamN
     const submissions = await formModel.getSubmissions(form.id);
     const latestMatch = submissions
       .filter((submission) => normalizeTeamNumber(submission.data?.[String(teamNumberFieldId)]) === normalizedTeam)
-      .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime())[0];
+      .sort((left, right) => {
+        const leftTime = left.timestamp ? new Date(left.timestamp).getTime() : 0;
+        const rightTime = right.timestamp ? new Date(right.timestamp).getTime() : 0;
+        return rightTime - leftTime;
+      })[0];
 
     if (!latestMatch) continue;
 
@@ -506,138 +343,6 @@ const buildCrossFormValuesForTeam = async ({ competitionId, currentFormId, teamN
   }
 
   return values;
-};
-
-const sanitizeSubmissionData = (form, payload, options = {}) => {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw createValidationError('Submission data must be an object.');
-  }
-
-  const sanitized = {};
-  const crossFormValues = options.crossFormValues || {};
-  const allowedOwnerUids = options.allowedOwnerUids || [];
-
-  for (const field of form.fields || []) {
-    const key = String(field.id);
-    const rawValue = payload[key];
-
-    if (!shouldIncludeField(field, payload, form.id, crossFormValues)) {
-      const hasValue = !(rawValue === '' || rawValue === null || rawValue === undefined || (Array.isArray(rawValue) && rawValue.length === 0));
-      if (!hasValue) continue;
-    }
-
-    switch (field.type) {
-      case 'text': {
-        const text = normalizeString(rawValue);
-        if (!text) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-        sanitized[key] = text;
-        break;
-      }
-
-      case 'number': {
-        if (rawValue === '' || rawValue === null || rawValue === undefined) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-        const numberValue = Number(rawValue);
-        if (!Number.isFinite(numberValue)) {
-          throw createValidationError(`Field "${field.label}" must be a valid number.`);
-        }
-        sanitized[key] = numberValue;
-        break;
-      }
-
-      case 'ranking': {
-        if (rawValue === '' || rawValue === null || rawValue === undefined) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-        const rankingValue = Number(rawValue);
-        if (
-          !Number.isInteger(rankingValue)
-          || rankingValue < field.min
-          || rankingValue > field.max
-        ) {
-          throw createValidationError(
-            `Field "${field.label}" must be an integer from ${field.min} to ${field.max}.`
-          );
-        }
-        sanitized[key] = rankingValue;
-        break;
-      }
-
-      case 'multiple_choice': {
-        const choice = normalizeString(rawValue);
-        if (!choice) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-        if (!field.options.includes(choice)) {
-          throw createValidationError(`Field "${field.label}" contains an invalid option.`);
-        }
-        sanitized[key] = choice;
-        break;
-      }
-
-      case 'multiple_select': {
-        const values = Array.isArray(rawValue)
-          ? rawValue.map((value) => normalizeString(value)).filter(Boolean)
-          : [];
-
-        if (values.length === 0) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-
-        const invalid = values.find((value) => !field.options.includes(value));
-        if (invalid) {
-          throw createValidationError(`Field "${field.label}" contains an invalid option.`);
-        }
-
-        sanitized[key] = Array.from(new Set(values));
-        break;
-      }
-
-      case 'rank_order': {
-        const values = Array.isArray(rawValue)
-          ? rawValue.map((value) => normalizeString(value)).filter(Boolean)
-          : [];
-
-        if (values.length === 0) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-
-        const invalid = values.find((value) => !field.options.includes(value));
-        if (invalid) {
-          throw createValidationError(`Field "${field.label}" contains an invalid ranked option.`);
-        }
-
-        sanitized[key] = values;
-        break;
-      }
-
-      case 'picture': {
-        const pictureValue = sanitizePictureValue(rawValue, {
-          competitionId: form.competitionId,
-          formId: form.id,
-          fieldId: field.id,
-          allowedOwnerUids,
-        });
-        if (!pictureValue) {
-          if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
-          break;
-        }
-        sanitized[key] = pictureValue;
-        break;
-      }
-    }
-  }
-
-  return sanitized;
 };
 
 export const formController = {
@@ -686,6 +391,12 @@ export const formController = {
         return res.status(400).json({ message: 'Competition ID is required' });
       }
 
+      const { competitionModel } = await import('../models/competitionModel.js');
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      if (!competition) {
+        return res.status(404).json({ message: 'Competition not found' });
+      }
+
       const competitionForms = await formModel.getFormsByCompetition(competitionId);
       const formsById = new Map(competitionForms.map((form) => [form.id, form]));
       const sanitizedFields = sanitizeFields(fields, {
@@ -701,14 +412,7 @@ export const formController = {
         teamNumberFieldId: sanitizedTeamNumberFieldId,
       });
 
-      // Add the form ID to the competition's formIds array
-      const { competitionModel } = await import('../models/competitionModel.js');
-      const competition = await competitionModel.getCompetitionById(competitionId);
-
-      if (competition) {
-        const updatedFormIds = [...(competition.formIds || []), newForm.id];
-        await competitionModel.updateCompetition(competitionId, { formIds: updatedFormIds });
-      }
+      await competitionModel.addFormToCompetition(competitionId, newForm.id);
 
       res.status(201).json(newForm);
     } catch (error) {
@@ -762,8 +466,7 @@ export const formController = {
         teamNumberFieldId: sourceForm.teamNumberFieldId ?? null,
       });
 
-      const updatedFormIds = [...(destinationCompetition.formIds || []), copiedForm.id];
-      await competitionModel.updateCompetition(destinationCompetitionId, { formIds: updatedFormIds });
+      await competitionModel.addFormToCompetition(destinationCompetitionId, copiedForm.id);
 
       res.status(201).json(copiedForm);
     } catch (error) {
@@ -819,29 +522,9 @@ export const formController = {
         return res.status(404).json({ message: 'Form not found' });
       }
 
-      const deleted = await formModel.deleteForm(req.params.id);
-
-      if (!deleted) {
-        return res.status(404).json({ message: 'Form not found' });
-      }
-
-      // Remove the form ID from the competition's formIds array
       const { competitionModel } = await import('../models/competitionModel.js');
-      const competition = await competitionModel.getCompetitionById(form.competitionId);
-
-      if (competition) {
-        const updatedFormIds = (competition.formIds || []).filter(id => id !== req.params.id);
-        const updateData = { formIds: updatedFormIds };
-
-        let activeIds = competition.activeFormIds || [];
-        if (!Array.isArray(activeIds) && competition.activeFormId) {
-          activeIds = [competition.activeFormId];
-        }
-        activeIds = activeIds.filter(id => id !== req.params.id);
-        updateData.activeFormIds = activeIds;
-
-        await competitionModel.updateCompetition(form.competitionId, updateData);
-      }
+      await formModel.deleteForm(req.params.id);
+      await competitionModel.removeFormFromCompetition(form.competitionId, req.params.id);
 
       res.json({ message: 'Form deleted successfully' });
     } catch (error) {

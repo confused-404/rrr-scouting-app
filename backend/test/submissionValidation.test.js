@@ -1,0 +1,79 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  normalizeTeamNumber,
+  resolveTeamNumberFieldId,
+  sanitizeSubmissionData,
+  sanitizeTeamNumberFieldId,
+  validateSubmissionCompetition,
+} from '../src/utils/submissionValidation.js';
+
+test('sanitizeSubmissionData rejects values for hidden conditional fields', () => {
+  const form = {
+    id: 'form-a',
+    competitionId: 'comp-1',
+    fields: [
+      { id: 1, type: 'multiple_choice', label: 'Mode', required: true, options: ['Auto', 'Teleop'] },
+      {
+        id: 2,
+        type: 'text',
+        label: 'Auto Notes',
+        required: false,
+        condition: { type: 'rule', fieldId: 1, operator: 'equals', value: 'Auto' },
+      },
+    ],
+  };
+
+  assert.throws(
+    () => sanitizeSubmissionData(form, { 1: 'Teleop', 2: 'Injected' }),
+    /not currently available/,
+  );
+});
+
+test('sanitizeSubmissionData accepts visible conditional fields', () => {
+  const form = {
+    id: 'form-a',
+    competitionId: 'comp-1',
+    fields: [
+      { id: 1, type: 'multiple_choice', label: 'Mode', required: true, options: ['Auto', 'Teleop'] },
+      {
+        id: 2,
+        type: 'text',
+        label: 'Auto Notes',
+        required: true,
+        condition: { type: 'rule', fieldId: 1, operator: 'equals', value: 'Auto' },
+      },
+    ],
+  };
+
+  assert.deepEqual(
+    sanitizeSubmissionData(form, { 1: 'Auto', 2: ' Scored 3 ' }),
+    { '1': 'Auto', '2': 'Scored 3' },
+  );
+});
+
+test('resolveTeamNumberFieldId uses explicit teamNumberFieldId before label matching', () => {
+  assert.equal(resolveTeamNumberFieldId({
+    teamNumberFieldId: 7,
+    fields: [{ id: 1, label: 'Team Number' }],
+  }), 7);
+});
+
+test('normalizeTeamNumber strips frc prefix and other text', () => {
+  assert.equal(normalizeTeamNumber('frc254'), '254');
+  assert.equal(normalizeTeamNumber('Team 1678 Citrus'), '1678');
+});
+
+test('validateSubmissionCompetition rejects mismatched competitions', () => {
+  assert.throws(
+    () => validateSubmissionCompetition({ competitionId: 'comp-a' }, 'comp-b'),
+    /does not match/,
+  );
+});
+
+test('sanitizeTeamNumberFieldId requires the referenced field to exist', () => {
+  assert.throws(
+    () => sanitizeTeamNumberFieldId(99, [{ id: 1 }]),
+    /must reference an existing field/,
+  );
+});
