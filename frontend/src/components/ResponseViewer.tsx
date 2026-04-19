@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import type { Competition } from '../types/competition.types';
 import type { Submission, Form, FormField as FormFieldType, SubmissionValue } from '../types/form.types';
 import { formApi } from '../services/api';
@@ -8,6 +8,7 @@ import { Filter, X, Download, Edit2, Save, AlertTriangle, ChevronLeft } from 'lu
 import { isPictureFieldValue, submissionValueToText } from '../utils/formValues';
 import { ImageLightbox } from './ImageLightbox';
 import { evaluateCondition } from '../utils/formConditions';
+import { cleanupPictureUploads, getPictureCleanupPaths } from '../utils/pictureCleanup';
 
 type ExpandedImageState = {
   url: string;
@@ -106,6 +107,7 @@ const EditModal: React.FC<EditModalProps> = ({
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const pendingPictureDeletePathsRef = useRef<Set<string>>(new Set());
 
   // Keep hidden fields cleared when their conditions become false
   useEffect(() => {
@@ -115,6 +117,10 @@ const EditModal: React.FC<EditModalProps> = ({
       if (!shouldShowField(field, draft, form.id)) {
         const key = String(field.id);
         if (next[key] !== undefined) {
+          const removedValue = next[key];
+          if (isPictureFieldValue(removedValue) && removedValue.path) {
+            pendingPictureDeletePathsRef.current.add(removedValue.path);
+          }
           delete next[key];
           changed = true;
         }
@@ -125,7 +131,24 @@ const EditModal: React.FC<EditModalProps> = ({
   }, [draft, form.fields]);
 
   const handleChange = useCallback((fieldId: number, value: SubmissionValue) => {
-    setDraft(prev => ({ ...prev, [String(fieldId)]: value }));
+    setDraft(prev => {
+      const key = String(fieldId);
+      const previousValue = prev[key];
+
+      if (
+        isPictureFieldValue(previousValue)
+        && previousValue.path
+        && (!isPictureFieldValue(value) || value.path !== previousValue.path)
+      ) {
+        pendingPictureDeletePathsRef.current.add(previousValue.path);
+      }
+
+      if (isPictureFieldValue(value) && value.path) {
+        pendingPictureDeletePathsRef.current.delete(value.path);
+      }
+
+      return { ...prev, [key]: value };
+    });
     // Clear error for this field on change
     setErrors(prev => {
       if (!prev[fieldId]) return prev;
@@ -166,6 +189,13 @@ const EditModal: React.FC<EditModalProps> = ({
       }
 
       const updated = await formApi.updateSubmission(submission.id, normalised);
+      const cleanupPaths = getPictureCleanupPaths({
+        baselineData: submission.data,
+        currentData: normalised,
+        stagedDeletionPaths: Array.from(pendingPictureDeletePathsRef.current),
+      });
+      pendingPictureDeletePathsRef.current.clear();
+      await cleanupPictureUploads(cleanupPaths);
       onSaved(updated);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message :

@@ -1,6 +1,6 @@
 import React, { useId, useRef, useState } from 'react';
 import { Camera, ImagePlus, Trash2 } from 'lucide-react';
-import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
+import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { auth, storage } from '../config/firebase';
 import type { FormField as FormFieldType, SubmissionValue } from '../types/form.types';
 import { compressImageFile } from '../utils/imageUpload';
@@ -281,12 +281,6 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, up
 
       const url = await getDownloadURL(uploadTask.snapshot.ref);
 
-      if (pictureValue?.path && pictureValue.path !== storagePath) {
-        deleteObject(ref(storage, pictureValue.path)).catch((error) => {
-          console.warn('Failed to delete replaced picture upload:', error);
-        });
-      }
-
       onChange({
         url,
         path: storagePath,
@@ -333,11 +327,6 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, up
 
   const handleRemovePicture = () => {
     setUploadError('');
-    if (pictureValue?.path) {
-      deleteObject(ref(storage, pictureValue.path)).catch((error) => {
-        console.warn('Failed to delete picture upload:', error);
-      });
-    }
     setUploadProgress(0);
     onChange(undefined);
   };

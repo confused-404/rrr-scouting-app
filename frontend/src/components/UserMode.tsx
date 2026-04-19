@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Layout, Clock, Image as ImageIcon } from 'lucide-react';
 import type { FormField as FormFieldType, Form, SubmissionValue } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
@@ -10,6 +10,7 @@ import { MatchSchedule } from './MatchSchedule';
 import { ScoutingScheduleViewer } from './ScoutingScheduleViewer';
 import { evaluateCondition } from '../utils/formConditions';
 import { isPictureFieldValue } from '../utils/formValues';
+import { cleanupPictureUploads, getPictureCleanupPaths } from '../utils/pictureCleanup';
 
 interface UserModeProps {
   selectedCompetition: Competition | null;
@@ -68,6 +69,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     }
   });
   const [targetTeam, setTargetTeam] = useState('');
+  const pendingPictureDeletePathsRef = useRef<Set<string>>(new Set());
 
   const [errors, setErrors] = useState<FieldErrors>({});
 
@@ -113,6 +115,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     }
     setResponses({});
     setErrors({});
+    pendingPictureDeletePathsRef.current.clear();
   }, [selectedCompetition, loadForm]);
 
   // when the selected form id changes we need to fetch its fields
@@ -135,6 +138,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
         // clear out any previous responses/errors when switching forms
         setResponses({});
         setErrors({});
+        pendingPictureDeletePathsRef.current.clear();
       } catch (err) {
         console.error('Error loading form fields:', err);
         setCurrentForm(null);
@@ -224,6 +228,10 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
       if (!shouldShowField(field, responses)) {
         const key = String(field.id);
         if (nextResponses[key] !== undefined) {
+          const removedValue = nextResponses[key];
+          if (isPictureFieldValue(removedValue) && removedValue.path) {
+            pendingPictureDeletePathsRef.current.add(removedValue.path);
+          }
           delete nextResponses[key];
           hasResponseChanges = true;
         }
@@ -251,7 +259,22 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
 
   const handleInputChange = (fieldId: number, value: SubmissionValue) => {
     const key = String(fieldId);
-    setResponses((prev) => ({ ...prev, [key]: value }));
+    setResponses((prev) => {
+      const previousValue = prev[key];
+      if (
+        isPictureFieldValue(previousValue)
+        && previousValue.path
+        && (!isPictureFieldValue(value) || value.path !== previousValue.path)
+      ) {
+        pendingPictureDeletePathsRef.current.add(previousValue.path);
+      }
+
+      if (isPictureFieldValue(value) && value.path) {
+        pendingPictureDeletePathsRef.current.delete(value.path);
+      }
+
+      return { ...prev, [key]: value };
+    });
   };
 
   const validate = (fields: FormFieldType[], data: Record<string, SubmissionValue>) => {
@@ -366,6 +389,13 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
       });
 
       await formApi.createSubmission(currentFormId, selectedCompetition.id, normalizedResponses);
+      const cleanupPaths = getPictureCleanupPaths({
+        baselineData: {},
+        currentData: normalizedResponses,
+        stagedDeletionPaths: Array.from(pendingPictureDeletePathsRef.current),
+      });
+      pendingPictureDeletePathsRef.current.clear();
+      await cleanupPictureUploads(cleanupPaths);
       setResponses({});
       setErrors({});
       alert('Form submitted successfully!');
