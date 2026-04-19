@@ -19,16 +19,42 @@ import {
   deleteUser,
 } from '../controllers/authController.js';
 import { verifyToken, isAdmin, requireSetupSecret } from '../middleware/userAuth.js';
+import { createRateLimiter } from '../middleware/rateLimit.js';
 
 const router = express.Router();
+const publicAuthKey = (prefix) => (req) => `${prefix}:${req.ip}`;
+
+const initializeAdminLimiter = createRateLimiter({
+  windowMs: 15 * 60_000,
+  maxRequests: 10,
+  keyResolver: publicAuthKey('initialize-admin'),
+});
+
+const signupLimiter = createRateLimiter({
+  windowMs: 15 * 60_000,
+  maxRequests: 5,
+  keyResolver: publicAuthKey('signup'),
+});
+
+const forgotPasswordLimiter = createRateLimiter({
+  windowMs: 15 * 60_000,
+  maxRequests: 5,
+  keyResolver: publicAuthKey('forgot-password'),
+});
+
+const resetPasswordLimiter = createRateLimiter({
+  windowMs: 15 * 60_000,
+  maxRequests: 10,
+  keyResolver: publicAuthKey('reset-password'),
+});
 
 // BOOTSTRAP: Call this once to create your first admin and the 'users' collection
-router.post('/initialize-admin', requireSetupSecret, initializeFirstAdmin);
+router.post('/initialize-admin', initializeAdminLimiter, requireSetupSecret, initializeFirstAdmin);
 
 // PUBLIC
-router.post('/signup', signup);
-router.post('/forgot-password', forgotPassword);
-router.post('/reset-password', resetPassword);
+router.post('/signup', signupLimiter, signup);
+router.post('/forgot-password', forgotPasswordLimiter, forgotPassword);
+router.post('/reset-password', resetPasswordLimiter, resetPassword);
 
 // AUTHENTICATED
 router.get('/me', verifyToken, getMe);
