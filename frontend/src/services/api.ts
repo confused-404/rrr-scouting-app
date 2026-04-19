@@ -643,7 +643,7 @@ export const tbaApi = {
   },
   getEventTeams: async (eventKey: string): Promise<unknown[]> => {
     try {
-      return cachedGet(`/tba/event/${eventKey}/teams`, {
+      return await cachedGet(`/tba/event/${eventKey}/teams`, {
         ttlMs: CACHE_TTLS.externalEventData,
         tags: [`tba:event:${eventKey}:teams`],
         scope: 'session',
@@ -651,7 +651,7 @@ export const tbaApi = {
     } catch (error) {
       try {
         // Fallback to Statbotics roster if TBA team list is unavailable.
-        return cachedGet('/statbotics/team_events', {
+        return await cachedGet('/statbotics/team_events', {
           params: { event: eventKey, limit: 999 },
           ttlMs: CACHE_TTLS.externalEventData,
           tags: [`statbotics:event:${eventKey}:team-events`],
