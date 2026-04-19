@@ -50,3 +50,32 @@ test('deleteWithRollback raises a manual-reconciliation error when rollback also
     },
   );
 });
+
+test('deleteWithRollback restores children when child deletion fails part-way through', async () => {
+  const operations = [];
+
+  await assert.rejects(
+    deleteWithRollback({
+      deleteChildren: async () => {
+        operations.push('delete-children');
+        throw new Error('child batch failed');
+      },
+      deleteParent: async () => {
+        operations.push('delete-parent');
+      },
+      restoreChildren: async () => {
+        operations.push('restore-children');
+      },
+    }),
+    (error) => {
+      assert.equal(error.message, 'Delete could not be completed. All records were restored.');
+      assert.equal(error.rollbackFailed, false);
+      return true;
+    },
+  );
+
+  assert.deepEqual(operations, [
+    'delete-children',
+    'restore-children',
+  ]);
+});

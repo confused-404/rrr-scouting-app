@@ -10,6 +10,21 @@ const normalizeString = (value) => (
   typeof value === 'string' ? value.trim() : ''
 );
 
+const normalizeStoredImageUrl = (value) => {
+  const normalized = normalizeString(value);
+  if (!normalized) {
+    return '';
+  }
+
+  if (/^data:/i.test(normalized)) {
+    const error = new Error('Inline pit-map images are not allowed. Upload the image to storage first.');
+    error.status = 400;
+    throw error;
+  }
+
+  return normalized;
+};
+
 const ensureStringArray = (value) => (
   Array.isArray(value)
     ? value
@@ -32,7 +47,8 @@ export const buildCreateCompetitionInput = (payload) => {
     formIds,
     activeFormIds,
     eventKey: normalizeString(payload.eventKey) || undefined,
-    pitMapImageUrl: normalizeString(payload.pitMapImageUrl),
+    pitMapImageUrl: normalizeStoredImageUrl(payload.pitMapImageUrl),
+    pitMapImagePath: normalizeString(payload.pitMapImagePath),
     pitLocations: payload.pitLocations && typeof payload.pitLocations === 'object' ? payload.pitLocations : {},
     manualPickLists: Array.isArray(payload.manualPickLists) ? payload.manualPickLists : [],
     robotBreakTimelineOverrides: payload.robotBreakTimelineOverrides && typeof payload.robotBreakTimelineOverrides === 'object'
@@ -66,7 +82,8 @@ export const buildUpdateCompetitionInput = (payload) => {
       ? payload.robotBreakTimelineOverrides
       : {};
   }
-  if (payload.pitMapImageUrl !== undefined) nextPayload.pitMapImageUrl = normalizeString(payload.pitMapImageUrl);
+  if (payload.pitMapImageUrl !== undefined) nextPayload.pitMapImageUrl = normalizeStoredImageUrl(payload.pitMapImageUrl);
+  if (payload.pitMapImagePath !== undefined) nextPayload.pitMapImagePath = normalizeString(payload.pitMapImagePath);
   if (payload.pitLocations !== undefined) nextPayload.pitLocations = payload.pitLocations && typeof payload.pitLocations === 'object' ? payload.pitLocations : {};
   if (payload.manualPickLists !== undefined) nextPayload.manualPickLists = Array.isArray(payload.manualPickLists) ? payload.manualPickLists : [];
 

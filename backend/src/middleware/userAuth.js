@@ -1,4 +1,4 @@
-import { auth, db } from '../config/firebase.js';
+import { auth } from '../config/firebase.js';
 import {
   extractBearerToken,
   hasRequiredRole,
@@ -15,9 +15,7 @@ export const verifyToken = async (req, res, next) => {
     }
 
     const decodedToken = await auth.verifyIdToken(token);
-    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
-    const docRole = userDoc.exists ? userDoc.data()?.role : null;
-    const effectiveRole = resolveEffectiveRole(decodedToken, docRole);
+    const effectiveRole = resolveEffectiveRole(decodedToken);
 
     req.user = {
       ...decodedToken,

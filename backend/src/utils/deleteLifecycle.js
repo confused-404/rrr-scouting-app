@@ -11,9 +11,8 @@ export const deleteWithRollback = async ({
   deleteParent,
   restoreChildren,
 }) => {
-  await deleteChildren();
-
   try {
+    await deleteChildren();
     await deleteParent();
   } catch (error) {
     try {

@@ -12,8 +12,8 @@ export const requestPasswordResetDelivery = async ({
   email,
   now = Date.now(),
   reserveDelivery,
-  finalizeDelivery,
-  clearDeliveryReservation,
+  activateDelivery,
+  clearDeliveryState,
   sendMail,
 }) => {
   const currentTimestamp = now;
@@ -37,6 +37,15 @@ export const requestPasswordResetDelivery = async ({
     return { status: 'blocked', message: GENERIC_RESET_RESPONSE_MESSAGE };
   }
 
+  const activated = await activateDelivery({
+    deliveryId,
+    issuanceState,
+  });
+
+  if (!activated) {
+    return { status: 'blocked', message: GENERIC_RESET_RESPONSE_MESSAGE };
+  }
+
   const text = `Your password reset code is: ${code}\n\nThis code will expire in one hour.`;
 
   try {
@@ -46,21 +55,12 @@ export const requestPasswordResetDelivery = async ({
       text,
     });
   } catch (error) {
-    await clearDeliveryReservation({ deliveryId }).catch(() => {});
+    await clearDeliveryState({ deliveryId, issuanceState }).catch(() => {});
     return {
       status: 'delivery_failed',
       message: GENERIC_RESET_RESPONSE_MESSAGE,
       error,
     };
-  }
-
-  const finalized = await finalizeDelivery({
-    deliveryId,
-    issuanceState,
-  });
-
-  if (!finalized) {
-    return { status: 'blocked', message: GENERIC_RESET_RESPONSE_MESSAGE };
   }
 
   return { status: 'sent', message: GENERIC_RESET_RESPONSE_MESSAGE };

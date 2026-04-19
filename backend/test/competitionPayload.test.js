@@ -41,3 +41,12 @@ test('buildUpdateCompetitionInput keeps explicit empty arrays and null active fo
   assert.equal(input.activeFormId, null);
   assert.equal(input.pitMapImageUrl, '');
 });
+
+test('buildUpdateCompetitionInput rejects inline pit-map data URLs', () => {
+  assert.throws(
+    () => buildUpdateCompetitionInput({
+      pitMapImageUrl: 'data:image/jpeg;base64,abc123',
+    }),
+    /Inline pit-map images are not allowed/,
+  );
+});

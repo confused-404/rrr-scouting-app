@@ -2,11 +2,13 @@ import { db } from '../config/firebase.js';
 import admin from 'firebase-admin';
 import { normalizeActiveFormIds, stripFormFromCompetitionState } from '../utils/competitionState.js';
 import { deleteWithRollback } from '../utils/deleteLifecycle.js';
+import { ACTIVE_COMPETITION_SENTINEL_PATH, buildActiveCompetitionSentinel } from '../utils/activeCompetitionState.js';
 
 const COMPETITIONS_COLLECTION = 'competitions';
 const FORMS_COLLECTION = 'forms';
 const SUBMISSIONS_COLLECTION = 'submissions';
 const MAX_BATCH_SIZE = 450;
+const activeCompetitionRef = db.doc(ACTIVE_COMPETITION_SENTINEL_PATH);
 
 const convertTimestamp = (timestamp) => {
   if (!timestamp) return null;
@@ -41,8 +43,23 @@ const mapCompetitionDocument = (doc) => {
     driveTeamStrategyByTeam: data.driveTeamStrategyByTeam || {},
     robotBreakTimelineOverrides: data.robotBreakTimelineOverrides || {},
     pitMapImageUrl: data.pitMapImageUrl || '',
+    pitMapImagePath: data.pitMapImagePath || '',
     pitLocations: data.pitLocations || {},
     manualPickLists: data.manualPickLists || [],
+  };
+};
+
+const mapActiveCompetitionDocument = (doc) => {
+  const data = doc.data();
+  const createdAt = convertTimestamp(data.createdAt)
+    || doc.createTime?.toDate().toISOString()
+    || '1970-01-01T00:00:00.000Z';
+
+  return {
+    ...mapCompetitionDocument(doc),
+    startDate: convertTimestamp(data.startDate) || new Date().toISOString(),
+    endDate: convertTimestamp(data.endDate) || new Date().toISOString(),
+    createdAt,
   };
 };
 
@@ -76,25 +93,22 @@ export const competitionModel = {
   },
 
   getActiveCompetitions: async () => {
+    const sentinelDoc = await activeCompetitionRef.get();
+    const sentinelCompetitionId = sentinelDoc.exists ? sentinelDoc.data()?.competitionId : null;
+
+    if (typeof sentinelCompetitionId === 'string' && sentinelCompetitionId) {
+      const activeDoc = await db.collection(COMPETITIONS_COLLECTION).doc(sentinelCompetitionId).get();
+      if (activeDoc.exists) {
+        return [mapActiveCompetitionDocument(activeDoc)];
+      }
+    }
+
     const snapshot = await db.collection(COMPETITIONS_COLLECTION)
       .where('status', '==', 'active')
+      .limit(1)
       .get();
-    
-    const competitions = snapshot.docs.map(doc => {
-      const data = doc.data();
-      const createdAt = convertTimestamp(data.createdAt)
-        || doc.createTime?.toDate().toISOString()
-        || '1970-01-01T00:00:00.000Z';
 
-      return {
-        ...mapCompetitionDocument(doc),
-        startDate: convertTimestamp(data.startDate) || new Date().toISOString(),
-        endDate: convertTimestamp(data.endDate) || new Date().toISOString(),
-        createdAt,
-      };
-    });
-
-    return competitions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return snapshot.docs.map((doc) => mapActiveCompetitionDocument(doc));
   },
 
   getCompetitionById: async (id) => {
@@ -121,6 +135,7 @@ export const competitionModel = {
       driveTeamStrategyByTeam: competitionData.driveTeamStrategyByTeam || {},
       robotBreakTimelineOverrides: competitionData.robotBreakTimelineOverrides || {},
       pitMapImageUrl: competitionData.pitMapImageUrl || '',
+      pitMapImagePath: competitionData.pitMapImagePath || '',
       pitLocations: competitionData.pitLocations || {},
       manualPickLists: competitionData.manualPickLists || [],
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -128,15 +143,19 @@ export const competitionModel = {
 
     if (competitionData.status === 'active') {
       await db.runTransaction(async (transaction) => {
-        const snapshot = await transaction.get(
-          db.collection(COMPETITIONS_COLLECTION).where('status', '==', 'active'),
-        );
+        const sentinelDoc = await transaction.get(activeCompetitionRef);
+        const currentActiveId = sentinelDoc.exists ? sentinelDoc.data()?.competitionId : null;
 
-        snapshot.docs.forEach((activeCompetitionDoc) => {
-          transaction.update(activeCompetitionDoc.ref, { status: 'draft' });
-        });
+        if (typeof currentActiveId === 'string' && currentActiveId) {
+          const currentActiveRef = db.collection(COMPETITIONS_COLLECTION).doc(currentActiveId);
+          const currentActiveDoc = await transaction.get(currentActiveRef);
+          if (currentActiveDoc.exists) {
+            transaction.update(currentActiveRef, { status: 'draft' });
+          }
+        }
 
         transaction.set(docRef, competitionDocument);
+        transaction.set(activeCompetitionRef, buildActiveCompetitionSentinel(docRef.id));
       });
     } else {
       await docRef.set(competitionDocument);
@@ -174,25 +193,41 @@ export const competitionModel = {
     if (competitionData.driveTeamStrategyByTeam !== undefined) updateData.driveTeamStrategyByTeam = competitionData.driveTeamStrategyByTeam;
     if (competitionData.robotBreakTimelineOverrides !== undefined) updateData.robotBreakTimelineOverrides = competitionData.robotBreakTimelineOverrides;
     if (competitionData.pitMapImageUrl !== undefined) updateData.pitMapImageUrl = competitionData.pitMapImageUrl;
+    if (competitionData.pitMapImagePath !== undefined) updateData.pitMapImagePath = competitionData.pitMapImagePath;
     if (competitionData.pitLocations !== undefined) updateData.pitLocations = competitionData.pitLocations;
     if (competitionData.manualPickLists !== undefined) updateData.manualPickLists = competitionData.manualPickLists;
     
     if (competitionData.status === 'active') {
       await db.runTransaction(async (transaction) => {
-        const snapshot = await transaction.get(
-          db.collection(COMPETITIONS_COLLECTION).where('status', '==', 'active'),
-        );
+        const sentinelDoc = await transaction.get(activeCompetitionRef);
+        const currentActiveId = sentinelDoc.exists ? sentinelDoc.data()?.competitionId : null;
 
-        snapshot.docs.forEach((activeCompetitionDoc) => {
-          if (activeCompetitionDoc.id !== id) {
-            transaction.update(activeCompetitionDoc.ref, { status: 'draft' });
+        if (typeof currentActiveId === 'string' && currentActiveId && currentActiveId !== id) {
+          const currentActiveRef = db.collection(COMPETITIONS_COLLECTION).doc(currentActiveId);
+          const currentActiveDoc = await transaction.get(currentActiveRef);
+          if (currentActiveDoc.exists) {
+            transaction.update(currentActiveRef, { status: 'draft' });
           }
-        });
+        }
 
         transaction.update(docRef, updateData);
+        transaction.set(activeCompetitionRef, buildActiveCompetitionSentinel(id));
       });
     } else {
-      await docRef.update(updateData);
+      await db.runTransaction(async (transaction) => {
+        const sentinelDoc = await transaction.get(activeCompetitionRef);
+        const currentActiveId = sentinelDoc.exists ? sentinelDoc.data()?.competitionId : null;
+
+        transaction.update(docRef, updateData);
+
+        if (
+          competitionData.status !== undefined
+          && competitionData.status !== 'active'
+          && currentActiveId === id
+        ) {
+          transaction.delete(activeCompetitionRef);
+        }
+      });
     }
     
     return competitionModel.getCompetitionById(id);
@@ -295,7 +330,16 @@ export const competitionModel = {
         await deleteDocuments(formsSnapshot.docs);
       },
       deleteParent: async () => {
-        await docRef.delete();
+        await db.runTransaction(async (transaction) => {
+          const sentinelDoc = await transaction.get(activeCompetitionRef);
+          const currentActiveId = sentinelDoc.exists ? sentinelDoc.data()?.competitionId : null;
+
+          if (currentActiveId === id) {
+            transaction.delete(activeCompetitionRef);
+          }
+
+          transaction.delete(docRef);
+        });
       },
       restoreChildren: async () => {
         await restoreDocuments(formRecords);

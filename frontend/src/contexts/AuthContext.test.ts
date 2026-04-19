@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveRoleFromTokenClaims } from './AuthContext';
+import { resolveRoleFromTokenClaims } from './auth-role';
 
 describe('resolveRoleFromTokenClaims', () => {
   it('prefers admin claims', () => {

@@ -25,7 +25,7 @@ const createResponseRecorder = () => {
   };
 };
 
-test('createRateLimiter blocks requests after the configured limit per key', () => {
+test('createRateLimiter blocks requests after the configured limit per key', async () => {
   let currentTime = 1_000;
   let nextCount = 0;
   const limiter = createRateLimiter({
@@ -38,15 +38,14 @@ test('createRateLimiter blocks requests after the configured limit per key', () 
   const invoke = (ip) => {
     const res = createResponseRecorder();
     const req = { ip };
-    limiter(req, res, () => {
+    return limiter(req, res, () => {
       nextCount += 1;
-    });
-    return res;
+    }).then(() => res);
   };
 
-  const firstResponse = invoke('127.0.0.1');
-  const secondResponse = invoke('127.0.0.1');
-  const thirdResponse = invoke('127.0.0.1');
+  const firstResponse = await invoke('127.0.0.1');
+  const secondResponse = await invoke('127.0.0.1');
+  const thirdResponse = await invoke('127.0.0.1');
 
   assert.equal(nextCount, 2);
   assert.equal(firstResponse.getHeader('X-RateLimit-Remaining'), '1');
@@ -58,7 +57,7 @@ test('createRateLimiter blocks requests after the configured limit per key', () 
   assert.equal(thirdResponse.getHeader('Retry-After'), '10');
 });
 
-test('createRateLimiter isolates counters by resolved key and resets after the window', () => {
+test('createRateLimiter isolates counters by resolved key and resets after the window', async () => {
   let currentTime = 5_000;
   let nextCount = 0;
   const limiter = createRateLimiter({
@@ -70,18 +69,17 @@ test('createRateLimiter isolates counters by resolved key and resets after the w
 
   const invoke = (req) => {
     const res = createResponseRecorder();
-    limiter(req, res, () => {
+    return limiter(req, res, () => {
       nextCount += 1;
-    });
-    return res;
+    }).then(() => res);
   };
 
-  const firstUserResponse = invoke({ ip: '127.0.0.1', user: { uid: 'user-1' } });
-  const secondUserResponse = invoke({ ip: '127.0.0.1', user: { uid: 'user-2' } });
-  const blockedResponse = invoke({ ip: '127.0.0.1', user: { uid: 'user-1' } });
+  const firstUserResponse = await invoke({ ip: '127.0.0.1', user: { uid: 'user-1' } });
+  const secondUserResponse = await invoke({ ip: '127.0.0.1', user: { uid: 'user-2' } });
+  const blockedResponse = await invoke({ ip: '127.0.0.1', user: { uid: 'user-1' } });
 
   currentTime += 1_001;
-  const resetResponse = invoke({ ip: '127.0.0.1', user: { uid: 'user-1' } });
+  const resetResponse = await invoke({ ip: '127.0.0.1', user: { uid: 'user-1' } });
 
   assert.equal(nextCount, 3);
   assert.equal(firstUserResponse.statusCode, 200);

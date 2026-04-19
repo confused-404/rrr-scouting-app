@@ -7,10 +7,6 @@ const APP_ROLES = Object.freeze({
 export const resolveEffectiveRole = (tokenClaims, persistedRole) => {
   if (tokenClaims?.admin === true) return APP_ROLES.admin;
   if (tokenClaims?.driveTeam === true) return APP_ROLES.drive;
-
-  // Firestore metadata must not be able to elevate privileges above the
-  // verified token. It is only safe as a fallback for the default user role.
-  if (persistedRole === APP_ROLES.user) return APP_ROLES.user;
   return APP_ROLES.user;
 };
 

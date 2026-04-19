@@ -9,18 +9,8 @@ import { auth } from '../config/firebase';
 import { authApi } from '../services/api';
 import { createLogger, formatErrorForLogging } from '../utils/logger';
 import { AuthContext } from './auth-context';
+import { resolveRoleFromTokenClaims, type TokenClaims } from './auth-role';
 const authLogger = createLogger('AuthContext');
-
-type TokenClaims = {
-  admin?: unknown;
-  driveTeam?: unknown;
-};
-
-export const resolveRoleFromTokenClaims = (claims: TokenClaims | undefined | null): 'admin' | 'drive' | 'user' => {
-  if (claims?.admin) return 'admin';
-  if (claims?.driveTeam) return 'drive';
-  return 'user';
-};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);

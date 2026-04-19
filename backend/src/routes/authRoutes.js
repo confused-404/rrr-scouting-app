@@ -1,4 +1,5 @@
 import express from 'express';
+import { db } from '../config/firebase.js';
 import {
   signup, 
   getMe, 
@@ -19,33 +20,42 @@ import {
   deleteUser,
 } from '../controllers/authController.js';
 import { verifyToken, isAdmin, requireSetupSecret } from '../middleware/userAuth.js';
-import { createRateLimiter } from '../middleware/rateLimit.js';
+import { createFirestoreRateLimitStore, createRateLimiter } from '../middleware/rateLimit.js';
 
 const router = express.Router();
 const publicAuthKey = (prefix) => (req) => `${prefix}:${req.ip}`;
+const publicAuthAndEmailKey = (prefix) => (req) => {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : 'anonymous';
+  return `${prefix}:${req.ip}:${email || 'anonymous'}`;
+};
+const sharedRateLimitStore = createFirestoreRateLimitStore({ db });
 
 const initializeAdminLimiter = createRateLimiter({
   windowMs: 15 * 60_000,
   maxRequests: 10,
   keyResolver: publicAuthKey('initialize-admin'),
+  store: sharedRateLimitStore,
 });
 
 const signupLimiter = createRateLimiter({
   windowMs: 15 * 60_000,
   maxRequests: 5,
-  keyResolver: publicAuthKey('signup'),
+  keyResolver: publicAuthAndEmailKey('signup'),
+  store: sharedRateLimitStore,
 });
 
 const forgotPasswordLimiter = createRateLimiter({
   windowMs: 15 * 60_000,
   maxRequests: 5,
-  keyResolver: publicAuthKey('forgot-password'),
+  keyResolver: publicAuthAndEmailKey('forgot-password'),
+  store: sharedRateLimitStore,
 });
 
 const resetPasswordLimiter = createRateLimiter({
   windowMs: 15 * 60_000,
   maxRequests: 10,
-  keyResolver: publicAuthKey('reset-password'),
+  keyResolver: publicAuthAndEmailKey('reset-password'),
+  store: sharedRateLimitStore,
 });
 
 // BOOTSTRAP: Call this once to create your first admin and the 'users' collection

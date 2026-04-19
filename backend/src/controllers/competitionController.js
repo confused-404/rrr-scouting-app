@@ -1,7 +1,7 @@
 import { db } from '../config/firebase.js';
 import { competitionModel } from '../models/competitionModel.js';
 import { buildCreateCompetitionInput, buildUpdateCompetitionInput } from '../utils/competitionPayload.js';
-import { normalizeActiveFormIds } from '../utils/competitionState.js';
+import { serializeCompetition, serializeCompetitionList } from '../utils/competitionResponse.js';
 
 export const competitionController = {
   normalizeSuperscoutTeamKey: (rawTeam) => {
@@ -30,7 +30,7 @@ export const competitionController = {
   getAllCompetitions: async (req, res) => {
     try {
       const competitions = await competitionModel.getAllCompetitions();
-      res.json(competitions);
+      res.json(serializeCompetitionList(competitions, req.user));
     } catch (error) {
       console.error('Error in getAllCompetitions:', error);
       res.status(500).json({ message: error.message });
@@ -44,7 +44,7 @@ export const competitionController = {
       if (competitions.length === 0) {
         return res.json(null); // Return null if no active competition
       }
-      res.json(competitions[0]); // Return the single active competition
+      res.json(serializeCompetition(competitions[0], req.user)); // Return the single active competition
     } catch (error) {
       console.error('Error in getActiveCompetitions:', error);
       res.status(500).json({ message: error.message });
@@ -58,7 +58,7 @@ export const competitionController = {
       if (competitions.length === 0) {
         return res.status(404).json({ message: 'No active competition found' });
       }
-      res.json(competitions[0]);
+      res.json(serializeCompetition(competitions[0], req.user));
     } catch (error) {
       console.error('Error in getActiveCompetition:', error);
       res.status(500).json({ message: error.message });
@@ -72,7 +72,7 @@ export const competitionController = {
       if (!competition) {
         return res.status(404).json({ message: 'Competition not found' });
       }
-      res.json(competition);
+      res.json(serializeCompetition(competition, req.user));
     } catch (error) {
       console.error('Error in getCompetition:', error);
       res.status(500).json({ message: error.message });
@@ -93,7 +93,7 @@ export const competitionController = {
       res.status(201).json(newCompetition);
     } catch (error) {
       console.error('Error in createCompetition:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
@@ -112,7 +112,7 @@ export const competitionController = {
       res.json(updatedCompetition);
     } catch (error) {
       console.error('Error in updateCompetition:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 

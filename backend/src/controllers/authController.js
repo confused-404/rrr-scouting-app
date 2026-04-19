@@ -567,7 +567,7 @@ export const forgotPassword = async (req, res) => {
           return true;
         });
       },
-      finalizeDelivery: async ({ deliveryId, issuanceState }) => {
+      activateDelivery: async ({ deliveryId, issuanceState }) => {
         return db.runTransaction(async (transaction) => {
           const snapshot = await transaction.get(userRef);
           const currentState = snapshot.exists ? (snapshot.data() || {}) : {};
@@ -580,19 +580,26 @@ export const forgotPassword = async (req, res) => {
           return true;
         });
       },
-      clearDeliveryReservation: async ({ deliveryId }) => {
+      clearDeliveryState: async ({ deliveryId, issuanceState }) => {
         await db.runTransaction(async (transaction) => {
           const snapshot = await transaction.get(userRef);
           const currentState = snapshot.exists ? (snapshot.data() || {}) : {};
 
-          if (currentState.resetDeliveryPendingId !== deliveryId) {
+          const pendingMatches = currentState.resetDeliveryPendingId === deliveryId;
+          const issuedStateMatches = (
+            typeof issuanceState?.resetCodeHash === 'string'
+            && currentState.resetCodeHash === issuanceState.resetCodeHash
+          );
+
+          if (!pendingMatches && !issuedStateMatches) {
             return;
           }
 
-          transaction.set(userRef, {
-            resetDeliveryPendingId: admin.firestore.FieldValue.delete(),
-            resetDeliveryPendingUntil: admin.firestore.FieldValue.delete(),
-          }, { merge: true });
+          transaction.set(
+            userRef,
+            buildClearResetState(admin.firestore.FieldValue.delete()),
+            { merge: true },
+          );
         });
       },
       sendMail,
