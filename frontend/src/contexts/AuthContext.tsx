@@ -11,6 +11,17 @@ import { createLogger, formatErrorForLogging } from '../utils/logger';
 import { AuthContext } from './auth-context';
 const authLogger = createLogger('AuthContext');
 
+type TokenClaims = {
+  admin?: unknown;
+  driveTeam?: unknown;
+};
+
+export const resolveRoleFromTokenClaims = (claims: TokenClaims | undefined | null): 'admin' | 'drive' | 'user' => {
+  if (claims?.admin) return 'admin';
+  if (claims?.driveTeam) return 'drive';
+  return 'user';
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -34,18 +45,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const tokenResult = await user.getIdTokenResult(Boolean(options.forceRefresh));
       const tokenIsAdmin = !!tokenResult.claims.admin;
       const tokenIsDrive = !!tokenResult.claims.driveTeam;
+      const tokenRole = resolveRoleFromTokenClaims(tokenResult.claims as unknown as TokenClaims);
 
-      const profile = await authApi.getCurrentUser({ bypassCache: Boolean(options.forceRefresh) }) as {
-        role?: 'admin' | 'drive' | 'user';
-        scouterName?: string | null;
-      };
-      return {
-        uid: user.uid,
-        role: profile.role ?? (tokenIsAdmin ? 'admin' : (tokenIsDrive ? 'drive' : 'user')),
-        scouterName: profile.scouterName ?? null,
-        tokenIsAdmin,
-        tokenIsDrive,
-      };
+      try {
+        const profile = await authApi.getCurrentUser({ bypassCache: Boolean(options.forceRefresh) }) as {
+          role?: 'admin' | 'drive' | 'user';
+          scouterName?: string | null;
+        };
+        return {
+          uid: user.uid,
+          role: profile.role ?? tokenRole,
+          scouterName: profile.scouterName ?? null,
+          tokenIsAdmin,
+          tokenIsDrive,
+        };
+      } catch (error) {
+        authLogger.warn('Auth profile unavailable; falling back to verified token claims', {
+          uid: user.uid,
+          error: formatErrorForLogging(error),
+        });
+        return {
+          uid: user.uid,
+          role: tokenRole,
+          scouterName: null,
+          tokenIsAdmin,
+          tokenIsDrive,
+        };
+      }
     } catch (error) {
       authLogger.error('Failed to synchronize auth profile', {
         uid: user.uid,
