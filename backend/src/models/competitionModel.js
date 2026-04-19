@@ -1,6 +1,7 @@
 import { db } from '../config/firebase.js';
 import admin from 'firebase-admin';
 import { normalizeActiveFormIds, stripFormFromCompetitionState } from '../utils/competitionState.js';
+import { deleteWithRollback } from '../utils/deleteLifecycle.js';
 
 const COMPETITIONS_COLLECTION = 'competitions';
 const FORMS_COLLECTION = 'forms';
@@ -43,6 +44,26 @@ const mapCompetitionDocument = (doc) => {
     pitLocations: data.pitLocations || {},
     manualPickLists: data.manualPickLists || [],
   };
+};
+
+const restoreDocuments = async (documents) => {
+  for (let index = 0; index < documents.length; index += MAX_BATCH_SIZE) {
+    const batch = db.batch();
+    documents.slice(index, index + MAX_BATCH_SIZE).forEach(({ ref, data }) => {
+      batch.set(ref, data);
+    });
+    await batch.commit();
+  }
+};
+
+const deleteDocuments = async (docs) => {
+  for (let index = 0; index < docs.length; index += MAX_BATCH_SIZE) {
+    const batch = db.batch();
+    docs.slice(index, index + MAX_BATCH_SIZE).forEach((snapshotDoc) => {
+      batch.delete(snapshotDoc.ref);
+    });
+    await batch.commit();
+  }
 };
 
 export const competitionModel = {
@@ -254,26 +275,34 @@ export const competitionModel = {
 
     if (!doc.exists) return false;
 
-    const deleteSnapshotDocuments = async (snapshot) => {
-      const docs = snapshot.docs;
-
-      for (let index = 0; index < docs.length; index += MAX_BATCH_SIZE) {
-        const batch = db.batch();
-        docs.slice(index, index + MAX_BATCH_SIZE).forEach((snapshotDoc) => {
-          batch.delete(snapshotDoc.ref);
-        });
-        await batch.commit();
-      }
-    };
-
     const [formsSnapshot, submissionsSnapshot] = await Promise.all([
       db.collection(FORMS_COLLECTION).where('competitionId', '==', id).get(),
       db.collection(SUBMISSIONS_COLLECTION).where('competitionId', '==', id).get(),
     ]);
 
-    await deleteSnapshotDocuments(submissionsSnapshot);
-    await deleteSnapshotDocuments(formsSnapshot);
-    await docRef.delete();
+    const formRecords = formsSnapshot.docs.map((snapshotDoc) => ({
+      ref: snapshotDoc.ref,
+      data: snapshotDoc.data(),
+    }));
+    const submissionRecords = submissionsSnapshot.docs.map((snapshotDoc) => ({
+      ref: snapshotDoc.ref,
+      data: snapshotDoc.data(),
+    }));
+
+    await deleteWithRollback({
+      deleteChildren: async () => {
+        await deleteDocuments(submissionsSnapshot.docs);
+        await deleteDocuments(formsSnapshot.docs);
+      },
+      deleteParent: async () => {
+        await docRef.delete();
+      },
+      restoreChildren: async () => {
+        await restoreDocuments(formRecords);
+        await restoreDocuments(submissionRecords);
+      },
+    });
+
     return true;
   },
 };

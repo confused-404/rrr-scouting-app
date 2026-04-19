@@ -1,5 +1,7 @@
 import { db } from '../config/firebase.js';
 import admin from 'firebase-admin';
+import { stripFormFromCompetitionState } from '../utils/competitionState.js';
+import { deleteWithRollback } from '../utils/deleteLifecycle.js';
 
 const FORMS_COLLECTION = 'forms';
 const SUBMISSIONS_COLLECTION = 'submissions';
@@ -39,6 +41,26 @@ const mapSubmissionDocument = (doc) => {
     timestamp: convertTimestamp(data.timestamp) || doc.createTime?.toDate().toISOString() || null,
     editedAt: data.editedAt ? (convertTimestamp(data.editedAt) || doc.updateTime?.toDate().toISOString() || null) : undefined,
   };
+};
+
+const restoreDocuments = async (documents) => {
+  for (let index = 0; index < documents.length; index += MAX_BATCH_SIZE) {
+    const batch = db.batch();
+    documents.slice(index, index + MAX_BATCH_SIZE).forEach(({ ref, data }) => {
+      batch.set(ref, data);
+    });
+    await batch.commit();
+  }
+};
+
+const deleteDocuments = async (docs) => {
+  for (let index = 0; index < docs.length; index += MAX_BATCH_SIZE) {
+    const batch = db.batch();
+    docs.slice(index, index + MAX_BATCH_SIZE).forEach((snapshotDoc) => {
+      batch.delete(snapshotDoc.ref);
+    });
+    await batch.commit();
+  }
 };
 
 export const formModel = {
@@ -128,18 +150,6 @@ export const formModel = {
   },
 
   deleteForm: async (id) => {
-    const deleteSnapshotDocuments = async (snapshot) => {
-      const docs = snapshot.docs;
-
-      for (let index = 0; index < docs.length; index += MAX_BATCH_SIZE) {
-        const batch = db.batch();
-        docs.slice(index, index + MAX_BATCH_SIZE).forEach((snapshotDoc) => {
-          batch.delete(snapshotDoc.ref);
-        });
-        await batch.commit();
-      }
-    };
-
     const [formDoc, submissionsSnapshot] = await Promise.all([
       db.collection(FORMS_COLLECTION).doc(id).get(),
       db.collection(SUBMISSIONS_COLLECTION).where('formId', '==', id).get(),
@@ -149,24 +159,38 @@ export const formModel = {
       return false;
     }
 
-    await deleteSnapshotDocuments(submissionsSnapshot);
-    await formDoc.ref.delete();
+    const formData = formDoc.data();
+    const competitionRef = db.collection(COMPETITIONS_COLLECTION).doc(formData.competitionId);
+    const submissionRecords = submissionsSnapshot.docs.map((doc) => ({
+      ref: doc.ref,
+      data: doc.data(),
+    }));
+
+    await deleteWithRollback({
+      deleteChildren: async () => {
+        await deleteDocuments(submissionsSnapshot.docs);
+      },
+      deleteParent: async () => {
+        await db.runTransaction(async (transaction) => {
+          const currentFormDoc = await transaction.get(formDoc.ref);
+          if (!currentFormDoc.exists) {
+            return;
+          }
+
+          const currentCompetitionDoc = await transaction.get(competitionRef);
+          if (currentCompetitionDoc.exists) {
+            transaction.update(competitionRef, stripFormFromCompetitionState(currentCompetitionDoc.data(), id));
+          }
+
+          transaction.delete(formDoc.ref);
+        });
+      },
+      restoreChildren: async () => {
+        await restoreDocuments(submissionRecords);
+      },
+    });
+
     return true;
-  },
-
-  deleteSubmissionsByFormId: async (formId) => {
-    const snapshot = await db.collection(SUBMISSIONS_COLLECTION)
-      .where('formId', '==', formId)
-      .get();
-
-    const docs = snapshot.docs;
-    for (let index = 0; index < docs.length; index += MAX_BATCH_SIZE) {
-      const batch = db.batch();
-      docs.slice(index, index + MAX_BATCH_SIZE).forEach((snapshotDoc) => {
-        batch.delete(snapshotDoc.ref);
-      });
-      await batch.commit();
-    }
   },
 
   // Submission operations

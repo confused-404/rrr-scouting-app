@@ -1,4 +1,3 @@
-import { db } from '../config/firebase.js';
 import { formModel } from '../models/formModel.js';
 import {
   createValidationError,
@@ -468,42 +467,15 @@ export const formController = {
   // Delete form
   deleteForm: async (req, res) => {
     try {
-      const form = await formModel.getFormById(req.params.id);
-      if (!form) {
+      const deleted = await formModel.deleteForm(req.params.id);
+      if (!deleted) {
         return res.status(404).json({ message: 'Form not found' });
       }
-
-      const formRef = db.collection('forms').doc(req.params.id);
-      const competitionRef = db.collection('competitions').doc(form.competitionId);
-
-      await db.runTransaction(async (transaction) => {
-        const formDoc = await transaction.get(formRef);
-        if (!formDoc.exists) {
-          return;
-        }
-
-        const competitionDoc = await transaction.get(competitionRef);
-        if (competitionDoc.exists) {
-          const currentCompetition = competitionDoc.data() || {};
-          transaction.update(competitionRef, {
-            formIds: Array.isArray(currentCompetition.formIds)
-              ? currentCompetition.formIds.filter((currentFormId) => currentFormId !== req.params.id)
-              : [],
-            activeFormIds: Array.isArray(currentCompetition.activeFormIds)
-              ? currentCompetition.activeFormIds.filter((currentFormId) => currentFormId !== req.params.id)
-              : [],
-          });
-        }
-
-        transaction.delete(formRef);
-      });
-
-      await formModel.deleteSubmissionsByFormId(req.params.id);
 
       res.json({ message: 'Form deleted successfully' });
     } catch (error) {
       console.error('Error in deleteForm:', error);
-      res.status(500).json({ message: error.message });
+      res.status(error.status || 500).json({ message: error.message });
     }
   },
 
