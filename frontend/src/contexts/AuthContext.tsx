@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   signInWithEmailAndPassword,
   signOut,
@@ -18,6 +18,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [role, setRole] = useState<'admin' | 'drive' | 'user'>('user');
   const [scouterName, setScouterName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const syncUserProfile = useCallback(async (user: User, options: { forceRefresh?: boolean } = {}) => {
+    try {
+      const tokenResult = await user.getIdTokenResult(Boolean(options.forceRefresh));
+      const tokenIsAdmin = !!tokenResult.claims.admin;
+      const tokenIsDrive = !!tokenResult.claims.driveTeam;
+
+      const profile = await authApi.getCurrentUser({ bypassCache: Boolean(options.forceRefresh) }) as {
+        role?: 'admin' | 'drive' | 'user';
+        scouterName?: string | null;
+      };
+      const nextRole = profile.role ?? (tokenIsAdmin ? 'admin' : (tokenIsDrive ? 'drive' : 'user'));
+
+      setRole(nextRole);
+      setIsAdmin(nextRole === 'admin');
+      setIsDriveTeam(nextRole === 'drive');
+      setScouterName(profile.scouterName ?? null);
+
+      authLogger.info('User profile synchronized', {
+        uid: user.uid,
+        role: nextRole,
+        tokenIsAdmin,
+        tokenIsDrive,
+      });
+    } catch (error) {
+      authLogger.error('Failed to synchronize auth profile', {
+        uid: user.uid,
+        error: formatErrorForLogging(error),
+      });
+      setIsAdmin(false);
+      setIsDriveTeam(false);
+      setRole('user');
+      setScouterName(null);
+    }
+  }, []);
 
   const signup = async (email: string, password: string) => {
     authLogger.info('Signup requested', { email });
@@ -76,35 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       
       if (user) {
-        try {
-          // Get the ID Token Result to check for custom claims
-          // Using true forces a refresh to ensure we get the latest claims
-          const tokenResult = await user.getIdTokenResult(true);
-          const nextIsAdmin = !!tokenResult.claims.admin;
-          const nextIsDrive = !!tokenResult.claims.driveTeam;
-          setIsAdmin(nextIsAdmin);
-          setIsDriveTeam(nextIsDrive);
-          setRole(nextIsAdmin ? 'admin' : (nextIsDrive ? 'drive' : 'user'));
-          authLogger.info('User claims loaded', {
-            uid: user.uid,
-            isAdmin: nextIsAdmin,
-            isDriveTeam: nextIsDrive,
-          });
-        } catch (error) {
-          authLogger.error('Failed to fetch auth claims', {
-            uid: user.uid,
-            error: formatErrorForLogging(error),
-          });
-          setIsAdmin(false);
-          setIsDriveTeam(false);
-          setRole('user');
-        }
-        try {
-          const profile = await authApi.getCurrentUser() as { scouterName?: string | null };
-          setScouterName(profile.scouterName ?? null);
-        } catch {
-          setScouterName(null);
-        }
+        await syncUserProfile(user, { forceRefresh: true });
       } else {
         setIsAdmin(false);
         setIsDriveTeam(false);
@@ -116,7 +123,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return unsubscribe;
-  }, []);
+  }, [syncUserProfile]);
+
+  useEffect(() => {
+    if (!currentUser) return undefined;
+
+    const refreshProfile = () => {
+      void syncUserProfile(currentUser, { forceRefresh: true });
+    };
+
+    const intervalId = window.setInterval(refreshProfile, 60_000);
+    window.addEventListener('focus', refreshProfile);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshProfile);
+    };
+  }, [currentUser, syncUserProfile]);
 
   const value = {
     currentUser,

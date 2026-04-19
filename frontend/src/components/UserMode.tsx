@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Layout, Clock, Image as ImageIcon } from 'lucide-react';
-import type { FormField as FormFieldType, Form, Submission, SubmissionValue } from '../types/form.types';
+import type { FormField as FormFieldType, Form, SubmissionValue } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { FormField } from './FormField';
 import { formApi } from '../services/api';
@@ -163,29 +163,16 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
 
     const loadCrossFormValues = async () => {
       try {
-        const values: Record<string, unknown> = {};
-
-        for (const form of competitionForms) {
-          if (form.id === currentFormId) continue;
-
-          const teamFieldId = resolveTeamFieldId(form);
-          if (teamFieldId === null) continue;
-
-          const submissions = await formApi.getSubmissions(form.id);
-          const matching = submissions
-            .filter((submission: Submission) => (
-              normalizeTeamNumber(submission.data?.[String(teamFieldId)]) === currentTeamKey
-            ))
-            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-          const latest = matching[0];
-          if (!latest) continue;
-
-          Object.entries(latest.data || {}).forEach(([fieldId, value]) => {
-            values[`${form.id}:${fieldId}`] = value;
-          });
+        if (!currentFormId) {
+          if (!cancelled) setCrossFormValues({});
+          return;
         }
 
+        const values = await formApi.getCrossFormValuesByTeam(
+          selectedCompetition.id,
+          currentFormId,
+          currentTeamKey,
+        );
         if (!cancelled) setCrossFormValues(values);
       } catch (error) {
         console.error('Error loading cross-form conditional context:', error);

@@ -2,6 +2,9 @@ import { db } from '../config/firebase.js';
 import admin from 'firebase-admin';
 
 const COMPETITIONS_COLLECTION = 'competitions';
+const FORMS_COLLECTION = 'forms';
+const SUBMISSIONS_COLLECTION = 'submissions';
+const MAX_BATCH_SIZE = 450;
 
 const convertTimestamp = (timestamp) => {
   if (!timestamp) return null;
@@ -113,23 +116,13 @@ export const competitionModel = {
   },
 
   createCompetition: async (competitionData) => {
-    if (competitionData.status === 'active') {
-      const snapshot = await db.collection(COMPETITIONS_COLLECTION)
-        .where('status', '==', 'active')
-        .get();
-      const batch = db.batch();
-      snapshot.docs.forEach((doc) => {
-        batch.update(doc.ref, { status: 'draft' });
-      });
-      await batch.commit();
-    }
-
-    const docRef = await db.collection(COMPETITIONS_COLLECTION).add({
+    const docRef = db.collection(COMPETITIONS_COLLECTION).doc();
+    const competitionDocument = {
       name: competitionData.name,
       season: competitionData.season,
       status: competitionData.status,
-      startDate: competitionData.startDate, // Store as string
-      endDate: competitionData.endDate, // Store as string
+      startDate: competitionData.startDate,
+      endDate: competitionData.endDate,
       formIds: competitionData.formIds || [],
       activeFormIds: competitionData.activeFormIds || (competitionData.activeFormId ? [competitionData.activeFormId] : []),
       scoutingTeams: competitionData.scoutingTeams || [],
@@ -142,7 +135,23 @@ export const competitionModel = {
       pitLocations: competitionData.pitLocations || {},
       manualPickLists: competitionData.manualPickLists || [],
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+
+    if (competitionData.status === 'active') {
+      await db.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(
+          db.collection(COMPETITIONS_COLLECTION).where('status', '==', 'active'),
+        );
+
+        snapshot.docs.forEach((activeCompetitionDoc) => {
+          transaction.update(activeCompetitionDoc.ref, { status: 'draft' });
+        });
+
+        transaction.set(docRef, competitionDocument);
+      });
+    } else {
+      await docRef.set(competitionDocument);
+    }
     
     const doc = await docRef.get();
     const data = doc.data();
@@ -175,20 +184,6 @@ export const competitionModel = {
     if (!doc.exists) return null;
     
     // If setting status to active, deactivate all other competitions
-    if (competitionData.status === 'active') {
-      const snapshot = await db.collection(COMPETITIONS_COLLECTION)
-        .where('status', '==', 'active')
-        .get();
-      
-      const batch = db.batch();
-      snapshot.docs.forEach(doc => {
-        if (doc.id !== id) {
-          batch.update(doc.ref, { status: 'draft' });
-        }
-      });
-      await batch.commit();
-    }
-    
     // Build update object with only provided fields
     const updateData = {};
     if (competitionData.name !== undefined) updateData.name = competitionData.name;
@@ -213,7 +208,23 @@ export const competitionModel = {
     if (competitionData.pitLocations !== undefined) updateData.pitLocations = competitionData.pitLocations;
     if (competitionData.manualPickLists !== undefined) updateData.manualPickLists = competitionData.manualPickLists;
     
-    await docRef.update(updateData);
+    if (competitionData.status === 'active') {
+      await db.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(
+          db.collection(COMPETITIONS_COLLECTION).where('status', '==', 'active'),
+        );
+
+        snapshot.docs.forEach((activeCompetitionDoc) => {
+          if (activeCompetitionDoc.id !== id) {
+            transaction.update(activeCompetitionDoc.ref, { status: 'draft' });
+          }
+        });
+
+        transaction.update(docRef, updateData);
+      });
+    } else {
+      await docRef.update(updateData);
+    }
     
     return competitionModel.getCompetitionById(id);
   },
@@ -224,6 +235,25 @@ export const competitionModel = {
 
     if (!doc.exists) return false;
 
+    const deleteSnapshotDocuments = async (snapshot) => {
+      const docs = snapshot.docs;
+
+      for (let index = 0; index < docs.length; index += MAX_BATCH_SIZE) {
+        const batch = db.batch();
+        docs.slice(index, index + MAX_BATCH_SIZE).forEach((snapshotDoc) => {
+          batch.delete(snapshotDoc.ref);
+        });
+        await batch.commit();
+      }
+    };
+
+    const [formsSnapshot, submissionsSnapshot] = await Promise.all([
+      db.collection(FORMS_COLLECTION).where('competitionId', '==', id).get(),
+      db.collection(SUBMISSIONS_COLLECTION).where('competitionId', '==', id).get(),
+    ]);
+
+    await deleteSnapshotDocuments(submissionsSnapshot);
+    await deleteSnapshotDocuments(formsSnapshot);
     await docRef.delete();
     return true;
   },

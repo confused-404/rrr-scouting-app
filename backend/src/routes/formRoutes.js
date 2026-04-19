@@ -16,6 +16,7 @@ router.delete('/:id', verifyToken, isAdmin, formController.deleteForm);
 // Submission routes
 router.get('/:id/submissions', verifyToken, isAdmin, formController.getSubmissions);
 router.get('/competition/:competitionId/submissions', verifyToken, isAdmin, formController.getSubmissionsByCompetition);
+router.get('/competition/:competitionId/cross-form-values', verifyToken, formController.getCrossFormValuesByTeam);
 router.post('/submissions', verifyToken, formController.createSubmission);
 
 // Admin-only: update an existing submission in-place (no new document created)

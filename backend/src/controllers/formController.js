@@ -26,6 +26,28 @@ const createValidationError = (message) => {
 const normalizeString = (value) => String(value ?? '').trim();
 
 const toLookupKey = (value) => normalizeString(value).toLowerCase();
+const teamFieldRegex = /team|team number|team #/i;
+
+const normalizeTeamNumber = (value) => {
+  if (value === null || value === undefined) return null;
+  const text = normalizeString(value);
+  if (!text) return null;
+  if (/^frc\d+$/i.test(text)) return text.replace(/^frc/i, '') || null;
+  const digits = text.match(/\d+/)?.[0];
+  return digits || null;
+};
+
+const resolveTeamNumberFieldId = (form) => {
+  if (Number.isInteger(form?.teamNumberFieldId)) {
+    return Number(form.teamNumberFieldId);
+  }
+
+  return form?.fields?.find((field) => teamFieldRegex.test(normalizeString(field.label)))?.id ?? null;
+};
+
+const resolvePicturePathPrefix = ({ competitionId, formId, fieldId, ownerUid }) => (
+  `form-submissions/${competitionId}/${formId}/${ownerUid}/${fieldId}/`
+);
 
 const sanitizeOptions = (field) => {
   const options = Array.isArray(field.options)
@@ -315,12 +337,63 @@ const evaluateConditionForSubmission = (condition, values, currentFormId) => {
   }
 };
 
-const shouldIncludeField = (field, values, currentFormId) => {
+const shouldIncludeField = (field, values, currentFormId, crossFormValues = {}) => {
   if (!field.condition) return true;
-  return evaluateConditionForSubmission(field.condition, values, currentFormId);
+
+  const resolveValue = (referencedFormId, fieldId) => {
+    if (referencedFormId === currentFormId) {
+      return values[String(fieldId)];
+    }
+
+    return crossFormValues[`${referencedFormId}:${fieldId}`];
+  };
+
+  const evaluateWithCrossFormSupport = (conditionNode) => {
+    if (!conditionNode) return true;
+
+    if (conditionNode.type === 'group') {
+      const children = Array.isArray(conditionNode.conditions) ? conditionNode.conditions : [];
+      if (children.length === 0) return true;
+
+      if (conditionNode.combinator === 'or') {
+        return children.some((child) => evaluateWithCrossFormSupport(child));
+      }
+
+      return children.every((child) => evaluateWithCrossFormSupport(child));
+    }
+
+    const rawFormId = normalizeString(conditionNode.formId);
+    const referencedFormId = (!rawFormId || rawFormId === '__current__') ? currentFormId : rawFormId;
+    const dependentValue = resolveValue(referencedFormId, conditionNode.fieldId);
+
+    if (dependentValue === undefined || dependentValue === null || dependentValue === '') {
+      return false;
+    }
+
+    switch (conditionNode.operator) {
+      case 'equals':
+        return dependentValue === conditionNode.value;
+      case 'not_equals':
+        return dependentValue !== conditionNode.value;
+      case 'contains':
+        if (Array.isArray(dependentValue)) {
+          return dependentValue.includes(conditionNode.value);
+        }
+        return String(dependentValue).includes(String(conditionNode.value));
+      case 'not_contains':
+        if (Array.isArray(dependentValue)) {
+          return !dependentValue.includes(conditionNode.value);
+        }
+        return !String(dependentValue).includes(String(conditionNode.value));
+      default:
+        return true;
+    }
+  };
+
+  return evaluateWithCrossFormSupport(field.condition);
 };
 
-const sanitizePictureValue = (value) => {
+const sanitizePictureValue = (value, options) => {
   if (value === undefined || value === null || value === '') {
     return undefined;
   }
@@ -347,6 +420,19 @@ const sanitizePictureValue = (value) => {
 
   if (process.env.FIREBASE_STORAGE_BUCKET && bucket && bucket !== process.env.FIREBASE_STORAGE_BUCKET) {
     throw createValidationError('Picture upload bucket does not match server configuration.');
+  }
+
+  const allowedOwnerUids = Array.isArray(options?.allowedOwnerUids) ? options.allowedOwnerUids : [];
+  const normalizedOwnerUids = allowedOwnerUids.map((uid) => normalizeString(uid)).filter(Boolean);
+  const allowedPrefixes = normalizedOwnerUids.map((ownerUid) => resolvePicturePathPrefix({
+    competitionId: options.competitionId,
+    formId: options.formId,
+    fieldId: options.fieldId,
+    ownerUid,
+  }));
+
+  if (!allowedPrefixes.some((prefix) => path.startsWith(prefix))) {
+    throw createValidationError('Picture upload path is outside the allowed submission scope.');
   }
 
   return {
@@ -392,18 +478,50 @@ export const validateSubmissionCompetition = (form, competitionId) => {
   }
 };
 
-const sanitizeSubmissionData = (form, payload) => {
+const buildCrossFormValuesForTeam = async ({ competitionId, currentFormId, teamNumber }) => {
+  const normalizedTeam = normalizeTeamNumber(teamNumber);
+  if (!competitionId || !normalizedTeam) {
+    return {};
+  }
+
+  const forms = await formModel.getFormsByCompetition(competitionId);
+  const values = {};
+
+  for (const form of forms) {
+    if (form.id === currentFormId) continue;
+
+    const teamNumberFieldId = resolveTeamNumberFieldId(form);
+    if (teamNumberFieldId === null) continue;
+
+    const submissions = await formModel.getSubmissions(form.id);
+    const latestMatch = submissions
+      .filter((submission) => normalizeTeamNumber(submission.data?.[String(teamNumberFieldId)]) === normalizedTeam)
+      .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime())[0];
+
+    if (!latestMatch) continue;
+
+    Object.entries(latestMatch.data || {}).forEach(([fieldId, fieldValue]) => {
+      values[`${form.id}:${fieldId}`] = fieldValue;
+    });
+  }
+
+  return values;
+};
+
+const sanitizeSubmissionData = (form, payload, options = {}) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw createValidationError('Submission data must be an object.');
   }
 
   const sanitized = {};
+  const crossFormValues = options.crossFormValues || {};
+  const allowedOwnerUids = options.allowedOwnerUids || [];
 
   for (const field of form.fields || []) {
     const key = String(field.id);
     const rawValue = payload[key];
 
-    if (!shouldIncludeField(field, payload, form.id)) {
+    if (!shouldIncludeField(field, payload, form.id, crossFormValues)) {
       const hasValue = !(rawValue === '' || rawValue === null || rawValue === undefined || (Array.isArray(rawValue) && rawValue.length === 0));
       if (!hasValue) continue;
     }
@@ -503,7 +621,12 @@ const sanitizeSubmissionData = (form, payload) => {
       }
 
       case 'picture': {
-        const pictureValue = sanitizePictureValue(rawValue);
+        const pictureValue = sanitizePictureValue(rawValue, {
+          competitionId: form.competitionId,
+          formId: form.id,
+          fieldId: field.id,
+          allowedOwnerUids,
+        });
         if (!pictureValue) {
           if (field.required) throw createValidationError(`Field "${field.label}" is required.`);
           break;
@@ -749,6 +872,34 @@ export const formController = {
     }
   },
 
+  getCrossFormValuesByTeam: async (req, res) => {
+    try {
+      const competitionId = normalizeString(req.params.competitionId);
+      const currentFormId = normalizeString(req.query.currentFormId);
+      const teamNumber = normalizeString(req.query.teamNumber);
+
+      if (!competitionId || !currentFormId || !teamNumber) {
+        return res.status(400).json({ message: 'competitionId, currentFormId, and teamNumber are required.' });
+      }
+
+      const currentForm = await formModel.getFormById(currentFormId);
+      if (!currentForm) {
+        return res.status(404).json({ message: 'Form not found' });
+      }
+
+      validateSubmissionCompetition(currentForm, competitionId);
+      const values = await buildCrossFormValuesForTeam({
+        competitionId,
+        currentFormId,
+        teamNumber,
+      });
+      return res.json(values);
+    } catch (error) {
+      console.error('Error in getCrossFormValuesByTeam:', error);
+      return res.status(error.status || 500).json({ message: error.message });
+    }
+  },
+
   // Create submission
   createSubmission: async (req, res) => {
     try {
@@ -768,8 +919,19 @@ export const formController = {
       }
 
       validateSubmissionCompetition(form, competitionId);
+      const teamNumberFieldId = resolveTeamNumberFieldId(form);
+      const crossFormValues = teamNumberFieldId === null
+        ? {}
+        : await buildCrossFormValuesForTeam({
+          competitionId,
+          currentFormId: form.id,
+          teamNumber: data[String(teamNumberFieldId)],
+        });
 
-      const sanitizedData = sanitizeSubmissionData(form, data);
+      const sanitizedData = sanitizeSubmissionData(form, data, {
+        crossFormValues,
+        allowedOwnerUids: [req.user.uid],
+      });
       const newSubmission = await formModel.createSubmission({ formId, competitionId, data: sanitizedData });
       res.status(201).json(newSubmission);
     } catch (error) {
@@ -805,8 +967,32 @@ export const formController = {
         return res.status(404).json({ message: 'Form definition not found' });
       }
 
-      // Sanitize & validate using the same logic as createSubmission
-      const sanitizedData = sanitizeSubmissionData(form, data);
+      validateSubmissionCompetition(form, existingSubmission.competitionId);
+
+      const teamNumberFieldId = resolveTeamNumberFieldId(form);
+      const currentTeamNumber = teamNumberFieldId === null
+        ? null
+        : data[String(teamNumberFieldId)] ?? existingSubmission.data?.[String(teamNumberFieldId)];
+      const existingOwnerUids = Object.values(existingSubmission.data || {})
+        .filter((value) => value && typeof value === 'object' && !Array.isArray(value) && typeof value.path === 'string')
+        .map((value) => {
+          const match = String(value.path).match(/^form-submissions\/[^/]+\/[^/]+\/([^/]+)\/\d+\//);
+          return match?.[1] || '';
+        })
+        .filter(Boolean);
+      const allowedOwnerUids = Array.from(new Set([req.user.uid, ...existingOwnerUids]));
+      const crossFormValues = teamNumberFieldId === null || !currentTeamNumber
+        ? {}
+        : await buildCrossFormValuesForTeam({
+          competitionId: existingSubmission.competitionId,
+          currentFormId: form.id,
+          teamNumber: currentTeamNumber,
+        });
+
+      const sanitizedData = sanitizeSubmissionData(form, data, {
+        crossFormValues,
+        allowedOwnerUids,
+      });
 
       const updatedSubmission = await formModel.updateSubmission(id, sanitizedData);
       res.json(updatedSubmission);

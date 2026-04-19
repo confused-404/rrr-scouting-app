@@ -372,10 +372,11 @@ export const authApi = {
       return response.data;
     }, ['auth:me', 'auth:users']);
   },
-  getCurrentUser: async () => {
+  getCurrentUser: async (options: { bypassCache?: boolean } = {}) => {
     return cachedGet('/auth/me', {
       ttlMs: CACHE_TTLS.authProfile,
       tags: ['auth:me'],
+      bypassCache: options.bypassCache,
     });
   },
   forgotPassword: async (email: string) => {
@@ -574,6 +575,17 @@ export const formApi = {
       ttlMs: CACHE_TTLS.submissions,
       tags: ['submissions', `submissions:competition:${competitionId}`],
       scope: 'session',
+    });
+  },
+  getCrossFormValuesByTeam: async (
+    competitionId: string,
+    currentFormId: string,
+    teamNumber: string,
+  ): Promise<Record<string, unknown>> => {
+    return cachedGet(`/forms/competition/${competitionId}/cross-form-values`, {
+      params: { currentFormId, teamNumber },
+      ttlMs: CACHE_TTLS.submissions,
+      tags: ['submissions', `submissions:cross-form:${competitionId}:${currentFormId}:${teamNumber}`],
     });
   },
   createSubmission: async (formId: string, competitionId: string, data: Record<string, unknown>): Promise<Submission> => {

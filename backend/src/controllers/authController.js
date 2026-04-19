@@ -297,9 +297,7 @@ export const savePinnedMatches = async (req, res) => {
       .slice(0, 20);
 
     await db.collection('users').doc(req.user.uid).set({
-      pinnedMatchesByCompetition: {
-        [competitionId]: sanitized,
-      },
+      [`pinnedMatchesByCompetition.${competitionId}`]: sanitized,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
 
@@ -363,9 +361,7 @@ export const saveTeamBank = async (req, res) => {
     )).slice(0, 100);
 
     await db.collection('users').doc(req.user.uid).set({
-      teamBankByCompetition: {
-        [competitionId]: sanitized,
-      },
+      [`teamBankByCompetition.${competitionId}`]: sanitized,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
 

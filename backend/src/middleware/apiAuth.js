@@ -7,18 +7,7 @@ const getConfiguredApiKey = () => {
   return isProduction ? '' : DEFAULT_DEV_API_KEY;
 };
 
-const getRateLimitKey = (req) => {
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (typeof forwardedFor === 'string' && forwardedFor.trim() !== '') {
-    return forwardedFor.split(',')[0].trim();
-  }
-
-  if (Array.isArray(forwardedFor) && forwardedFor.length > 0) {
-    return String(forwardedFor[0]).trim();
-  }
-
-  return req.ip || 'unknown';
-};
+const getRateLimitKey = (req) => req.ip || 'unknown';
 
 export const validateApiKey = (req, res, next) => {
   if (req.method === 'OPTIONS') {
