@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   signInWithEmailAndPassword,
   signOut,
@@ -18,6 +18,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [role, setRole] = useState<'admin' | 'drive' | 'user'>('user');
   const [scouterName, setScouterName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const authSessionVersionRef = useRef(0);
+  const profileSyncRequestRef = useRef(0);
+  const isMountedRef = useRef(true);
+
+  const clearProfileState = useCallback(() => {
+    setIsAdmin(false);
+    setIsDriveTeam(false);
+    setRole('user');
+    setScouterName(null);
+  }, []);
 
   const syncUserProfile = useCallback(async (user: User, options: { forceRefresh?: boolean } = {}) => {
     try {
@@ -29,29 +39,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role?: 'admin' | 'drive' | 'user';
         scouterName?: string | null;
       };
-      const nextRole = profile.role ?? (tokenIsAdmin ? 'admin' : (tokenIsDrive ? 'drive' : 'user'));
-
-      setRole(nextRole);
-      setIsAdmin(nextRole === 'admin');
-      setIsDriveTeam(nextRole === 'drive');
-      setScouterName(profile.scouterName ?? null);
-
-      authLogger.info('User profile synchronized', {
+      return {
         uid: user.uid,
-        role: nextRole,
+        role: profile.role ?? (tokenIsAdmin ? 'admin' : (tokenIsDrive ? 'drive' : 'user')),
+        scouterName: profile.scouterName ?? null,
         tokenIsAdmin,
         tokenIsDrive,
-      });
+      };
     } catch (error) {
       authLogger.error('Failed to synchronize auth profile', {
         uid: user.uid,
         error: formatErrorForLogging(error),
       });
-      setIsAdmin(false);
-      setIsDriveTeam(false);
-      setRole('user');
-      setScouterName(null);
+      return {
+        uid: user.uid,
+        role: 'user' as const,
+        scouterName: null,
+        tokenIsAdmin: false,
+        tokenIsDrive: false,
+      };
     }
+  }, []);
+
+  const runProfileSync = useCallback(async (
+    user: User,
+    sessionVersion: number,
+    options: { forceRefresh?: boolean } = {},
+  ) => {
+    const requestId = profileSyncRequestRef.current + 1;
+    profileSyncRequestRef.current = requestId;
+
+    const result = await syncUserProfile(user, options);
+    const requestIsStale = (
+      !isMountedRef.current
+      || authSessionVersionRef.current !== sessionVersion
+      || profileSyncRequestRef.current !== requestId
+      || auth.currentUser?.uid !== result.uid
+    );
+
+    if (requestIsStale) {
+      authLogger.debug('Discarded stale auth profile sync result', {
+        uid: result.uid,
+        sessionVersion,
+        activeSessionVersion: authSessionVersionRef.current,
+        requestId,
+        activeRequestId: profileSyncRequestRef.current,
+        currentAuthUid: auth.currentUser?.uid,
+      });
+      return false;
+    }
+
+    setRole(result.role);
+    setIsAdmin(result.role === 'admin');
+    setIsDriveTeam(result.role === 'drive');
+    setScouterName(result.scouterName);
+
+    authLogger.info('User profile synchronized', {
+      uid: result.uid,
+      role: result.role,
+      tokenIsAdmin: result.tokenIsAdmin,
+      tokenIsDrive: result.tokenIsDrive,
+      requestId,
+    });
+
+    return true;
+  }, [syncUserProfile]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      authSessionVersionRef.current += 1;
+      profileSyncRequestRef.current += 1;
+    };
   }, []);
 
   const signup = async (email: string, password: string) => {
@@ -103,6 +162,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      const sessionVersion = authSessionVersionRef.current + 1;
+      authSessionVersionRef.current = sessionVersion;
       setLoading(true);
       setCurrentUser(user);
       authLogger.info('Auth state changed', {
@@ -111,25 +172,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       
       if (user) {
-        await syncUserProfile(user, { forceRefresh: true });
+        await runProfileSync(user, sessionVersion, { forceRefresh: true });
       } else {
-        setIsAdmin(false);
-        setIsDriveTeam(false);
-        setRole('user');
-        setScouterName(null);
+        clearProfileState();
       }
-      
-      setLoading(false);
+
+      if (isMountedRef.current && authSessionVersionRef.current === sessionVersion) {
+        setLoading(false);
+      }
     });
 
     return unsubscribe;
-  }, [syncUserProfile]);
+  }, [clearProfileState, runProfileSync]);
 
   useEffect(() => {
     if (!currentUser) return undefined;
+    const sessionVersion = authSessionVersionRef.current;
 
     const refreshProfile = () => {
-      void syncUserProfile(currentUser, { forceRefresh: true });
+      void runProfileSync(currentUser, sessionVersion, { forceRefresh: true });
     };
 
     const intervalId = window.setInterval(refreshProfile, 60_000);
@@ -139,7 +200,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       window.clearInterval(intervalId);
       window.removeEventListener('focus', refreshProfile);
     };
-  }, [currentUser, syncUserProfile]);
+  }, [currentUser, runProfileSync]);
 
   const value = {
     currentUser,
