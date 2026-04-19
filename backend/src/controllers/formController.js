@@ -9,6 +9,8 @@ import {
   validateSubmissionCompetition,
 } from '../utils/submissionValidation.js';
 import { buildCrossFormValuesForTeam } from '../utils/crossFormValues.js';
+import { assertFormAllowsSubmission, collectCrossFormFieldReferences } from '../utils/submissionAccess.js';
+import { competitionModel } from '../models/competitionModel.js';
 
 const VALID_FIELD_TYPES = new Set([
   'text',
@@ -540,6 +542,7 @@ export const formController = {
       }
 
       validateSubmissionCompetition(currentForm, competitionId);
+      const referencedFieldsByFormId = collectCrossFormFieldReferences(currentForm);
       const { forms, submissions } = await loadCrossFormLookupContext({
         competitionId,
         currentFormId,
@@ -551,6 +554,7 @@ export const formController = {
         teamNumber,
         forms,
         submissions,
+        referencedFieldsByFormId,
       });
       return res.json(values);
     } catch (error) {
@@ -578,8 +582,11 @@ export const formController = {
       }
 
       validateSubmissionCompetition(form, competitionId);
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      assertFormAllowsSubmission(competition, formId);
       const teamNumberFieldId = resolveTeamNumberFieldId(form);
       const normalizedTeam = resolveSubmissionNormalizedTeamNumber(form, data);
+      const referencedFieldsByFormId = collectCrossFormFieldReferences(form);
       const crossFormValues = teamNumberFieldId === null
         ? {}
         : buildCrossFormValuesForTeam({
@@ -591,6 +598,7 @@ export const formController = {
             currentFormId: form.id,
             teamNumber: normalizedTeam,
           })),
+          referencedFieldsByFormId,
         });
 
       const sanitizedData = sanitizeSubmissionData(form, data, {
@@ -654,6 +662,7 @@ export const formController = {
         })
         .filter(Boolean);
       const allowedOwnerUids = Array.from(new Set([req.user.uid, ...existingOwnerUids]));
+      const referencedFieldsByFormId = collectCrossFormFieldReferences(form);
       const crossFormData = teamNumberFieldId === null || !normalizedTeam
         ? { forms: [], submissions: [] }
         : await loadCrossFormLookupContext({
@@ -669,6 +678,7 @@ export const formController = {
           teamNumber: normalizedTeam,
           forms: crossFormData.forms,
           submissions: crossFormData.submissions,
+          referencedFieldsByFormId,
         });
 
       const sanitizedData = sanitizeSubmissionData(form, data, {

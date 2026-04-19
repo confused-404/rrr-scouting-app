@@ -187,3 +187,33 @@ test('sanitizeTeamNumberFieldId requires the referenced field to exist', () => {
     /must reference an existing field/,
   );
 });
+
+test('sanitizeSubmissionData rejects duplicate rank_order options', () => {
+  const form = {
+    id: 'form-a',
+    competitionId: 'comp-1',
+    fields: [
+      { id: 1, type: 'rank_order', label: 'Priority', required: true, options: ['A', 'B', 'C'] },
+    ],
+  };
+
+  assert.throws(
+    () => sanitizeSubmissionData(form, { 1: ['A', 'A', 'B'] }),
+    /cannot contain duplicate ranked options/,
+  );
+});
+
+test('sanitizeSubmissionData requires rank_order fields to rank every option', () => {
+  const form = {
+    id: 'form-a',
+    competitionId: 'comp-1',
+    fields: [
+      { id: 1, type: 'rank_order', label: 'Priority', required: true, options: ['A', 'B', 'C'] },
+    ],
+  };
+
+  assert.throws(
+    () => sanitizeSubmissionData(form, { 1: ['A', 'B'] }),
+    /must rank every configured option exactly once/,
+  );
+});

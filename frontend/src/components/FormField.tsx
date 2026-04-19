@@ -38,8 +38,12 @@ const RankOrderField: React.FC<RankOrderFieldProps> = ({ field, value, onChange 
   const ranked = Array.isArray(value)
     ? value.map((item) => String(item ?? '').trim()).filter((item) => item !== '')
     : [];
+  const availableOptions = options.filter((option) => !ranked.includes(option));
 
   const addOptionToEnd = (option: string) => {
+    if (ranked.includes(option)) {
+      return;
+    }
     onChange([...ranked, option]);
   };
 
@@ -103,7 +107,7 @@ const RankOrderField: React.FC<RankOrderFieldProps> = ({ field, value, onChange 
               <div className="flex-1 overflow-hidden border-b border-gray-200 p-4 lg:border-b-0 lg:border-r">
                 <h4 className="mb-3 text-sm font-medium text-gray-700">Available Options</h4>
                 <div className="h-full space-y-2 overflow-y-auto">
-                  {options.length > 0 ? options.map((option) => (
+                  {availableOptions.length > 0 ? availableOptions.map((option) => (
                     <button
                       key={option}
                       type="button"
@@ -113,7 +117,11 @@ const RankOrderField: React.FC<RankOrderFieldProps> = ({ field, value, onChange 
                       {option}
                     </button>
                   )) : (
-                    <p className="text-sm text-gray-500">No options configured for this field.</p>
+                    <p className="text-sm text-gray-500">
+                      {options.length === 0
+                        ? 'No options configured for this field.'
+                        : 'All options have been ranked.'}
+                    </p>
                   )}
                 </div>
               </div>

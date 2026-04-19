@@ -399,6 +399,14 @@ export const sanitizeSubmissionData = (form, payload, options = {}) => {
           throw createValidationError(`Field "${field.label}" contains an invalid ranked option.`);
         }
 
+        if (new Set(values).size !== values.length) {
+          throw createValidationError(`Field "${field.label}" cannot contain duplicate ranked options.`);
+        }
+
+        if (values.length !== field.options.length) {
+          throw createValidationError(`Field "${field.label}" must rank every configured option exactly once.`);
+        }
+
         sanitized[key] = values;
         break;
       }

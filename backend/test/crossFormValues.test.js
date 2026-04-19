@@ -56,12 +56,14 @@ test('buildCrossFormValuesForTeam uses the latest submission per eligible form',
         data: { '3': '111', '4': 'wrong team' },
       },
     ],
+    referencedFieldsByFormId: new Map([
+      ['form-b', new Set([8])],
+      ['form-c', new Set([4])],
+    ]),
   });
 
   assert.deepEqual(values, {
-    'form-b:7': 'Team 254',
     'form-b:8': 5,
-    'form-c:3': 'frc254',
     'form-c:4': 'latest note',
   });
 });
@@ -92,5 +94,34 @@ test('buildCrossFormValuesForTeam ignores ineligible forms and invalid input', (
         data: { '9': 'ignored' },
       },
     ],
+    referencedFieldsByFormId: new Map([['form-b', new Set([9])]]),
   }), {});
+});
+
+test('buildCrossFormValuesForTeam omits forms without referenced fields', () => {
+  const values = buildCrossFormValuesForTeam({
+    competitionId: 'comp-1',
+    currentFormId: 'form-a',
+    teamNumber: '254',
+    forms: [
+      {
+        id: 'form-b',
+        competitionId: 'comp-1',
+        teamNumberFieldId: 7,
+        fields: [{ id: 7, label: 'Team Number' }, { id: 8, label: 'Cycles' }],
+      },
+    ],
+    submissions: [
+      {
+        id: 'sub-1',
+        formId: 'form-b',
+        competitionId: 'comp-1',
+        timestamp: '2026-01-01T01:00:00.000Z',
+        data: { '7': '254', '8': 4 },
+      },
+    ],
+    referencedFieldsByFormId: new Map(),
+  });
+
+  assert.deepEqual(values, {});
 });

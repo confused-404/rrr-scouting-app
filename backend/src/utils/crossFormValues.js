@@ -7,7 +7,14 @@ const getSubmissionTime = (submission) => {
   return Number.isFinite(timestampMs) ? timestampMs : 0;
 };
 
-export const buildCrossFormValuesForTeam = ({ competitionId, currentFormId, teamNumber, forms, submissions }) => {
+export const buildCrossFormValuesForTeam = ({
+  competitionId,
+  currentFormId,
+  teamNumber,
+  forms,
+  submissions,
+  referencedFieldsByFormId,
+}) => {
   const normalizedTeam = normalizeTeamNumber(teamNumber);
   if (!competitionId || !normalizedTeam) {
     return {};
@@ -29,6 +36,10 @@ export const buildCrossFormValuesForTeam = ({ competitionId, currentFormId, team
   if (eligibleForms.size === 0) {
     return {};
   }
+
+  const requestedReferences = referencedFieldsByFormId instanceof Map
+    ? referencedFieldsByFormId
+    : new Map();
 
   const latestSubmissionByFormId = new Map();
   for (const submission of submissions || []) {
@@ -53,7 +64,15 @@ export const buildCrossFormValuesForTeam = ({ competitionId, currentFormId, team
 
   const values = {};
   for (const [formId, submission] of latestSubmissionByFormId.entries()) {
+    const requestedFieldIds = requestedReferences.get(formId);
+    if (!(requestedFieldIds instanceof Set) || requestedFieldIds.size === 0) {
+      continue;
+    }
+
     Object.entries(submission.data || {}).forEach(([fieldId, fieldValue]) => {
+      if (!requestedFieldIds.has(Number(fieldId))) {
+        return;
+      }
       values[`${formId}:${fieldId}`] = fieldValue;
     });
   }
