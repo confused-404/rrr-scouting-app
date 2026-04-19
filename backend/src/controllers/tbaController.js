@@ -1,5 +1,21 @@
+import { applyUpstreamCacheHeaders, getCachedUpstreamJson } from '../utils/upstreamCache.js';
+
 const TBA_BASE_URL = 'https://www.thebluealliance.com/api/v3';
 const TBA_API_KEY = process.env.TBA_API_KEY;
+const TBA_TTLS = {
+  status: 5 * 60_000,
+  team: 12 * 60 * 60_000,
+  teamEvents: 12 * 60 * 60_000,
+  teamEventMatches: 2 * 60_000,
+  teamsSimple: 12 * 60 * 60_000,
+  events: 12 * 60 * 60_000,
+  event: 12 * 60 * 60_000,
+  eventTeams: 30 * 60_000,
+  eventMatches: 2 * 60_000,
+  eventRankings: 2 * 60_000,
+  eventOPRs: 5 * 60_000,
+  match: 2 * 60_000,
+};
 
 if (!TBA_API_KEY) {
   console.warn('WARNING: TBA_API_KEY environment variable is not set');
@@ -37,6 +53,8 @@ const fetchTBA = async (path, params = {}) => {
   return response.json();
 };
 
+const shouldBypassUpstreamCache = (req) => String(req.get('X-Bypass-Upstream-Cache') || '').toLowerCase() === 'true';
+
 export const tbaController = {
   /**
    * GET /api/tba/status
@@ -44,7 +62,15 @@ export const tbaController = {
    */
   getStatus: async (req, res) => {
     try {
-      const data = await fetchTBA('/status');
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'tba',
+        path: '/status',
+        params: {},
+        ttlMs: TBA_TTLS.status,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchTBA('/status'),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getStatus:', error);
@@ -65,7 +91,15 @@ export const tbaController = {
         return res.status(400).json({ message: 'Team key is required' });
       }
 
-      const data = await fetchTBA(`/team/${team_key}`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'tba',
+        path: `/team/${team_key}`,
+        params: {},
+        ttlMs: TBA_TTLS.team,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchTBA(`/team/${team_key}`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getTeam:', error);
@@ -89,7 +123,15 @@ export const tbaController = {
         return res.status(400).json({ message: 'Team key and year are required' });
       }
 
-      const data = await fetchTBA(`/team/${team_key}/events/${year}`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'tba',
+        path: `/team/${team_key}/events/${year}`,
+        params: {},
+        ttlMs: TBA_TTLS.teamEvents,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchTBA(`/team/${team_key}/events/${year}`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getTeamEvents:', error);
@@ -113,7 +155,15 @@ export const tbaController = {
         return res.status(400).json({ message: 'Team key and event key are required' });
       }
 
-      const data = await fetchTBA(`/team/${team_key}/event/${event_key}/matches`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'tba',
+        path: `/team/${team_key}/event/${event_key}/matches`,
+        params: {},
+        ttlMs: TBA_TTLS.teamEventMatches,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchTBA(`/team/${team_key}/event/${event_key}/matches`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getTeamEventMatches:', error);
@@ -135,7 +185,15 @@ export const tbaController = {
       if (!year) {
         return res.status(400).json({ message: 'Year is required' });
       }
-      const data = await fetchTBA(`/teams/${year}/simple`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'tba',
+        path: `/teams/${year}/simple`,
+        params: {},
+        ttlMs: TBA_TTLS.teamsSimple,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchTBA(`/teams/${year}/simple`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getTeamsSimple:', error);
@@ -157,7 +215,15 @@ export const tbaController = {
         return res.status(400).json({ message: 'Year is required' });
       }
 
-      const data = await fetchTBA(`/events/${year}`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'tba',
+        path: `/events/${year}`,
+        params: {},
+        ttlMs: TBA_TTLS.events,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchTBA(`/events/${year}`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getEvents:', error);
@@ -178,7 +244,15 @@ export const tbaController = {
         return res.status(400).json({ message: 'Event key is required' });
       }
 
-      const data = await fetchTBA(`/event/${event_key}`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'tba',
+        path: `/event/${event_key}`,
+        params: {},
+        ttlMs: TBA_TTLS.event,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchTBA(`/event/${event_key}`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getEvent:', error);
@@ -202,7 +276,15 @@ export const tbaController = {
         return res.status(400).json({ message: 'Event key is required' });
       }
 
-      const data = await fetchTBA(`/event/${event_key}/teams`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'tba',
+        path: `/event/${event_key}/teams`,
+        params: {},
+        ttlMs: TBA_TTLS.eventTeams,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchTBA(`/event/${event_key}/teams`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getEventTeams:', error);
@@ -226,7 +308,15 @@ export const tbaController = {
         return res.status(400).json({ message: 'Event key is required' });
       }
 
-      const data = await fetchTBA(`/event/${event_key}/matches`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'tba',
+        path: `/event/${event_key}/matches`,
+        params: {},
+        ttlMs: TBA_TTLS.eventMatches,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchTBA(`/event/${event_key}/matches`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getEventMatches:', error);
@@ -253,7 +343,15 @@ export const tbaController = {
         return res.status(400).json({ message: 'Event key is required' });
       }
 
-      const data = await fetchTBA(`/event/${event_key}/rankings`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'tba',
+        path: `/event/${event_key}/rankings`,
+        params: {},
+        ttlMs: TBA_TTLS.eventRankings,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchTBA(`/event/${event_key}/rankings`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getEventRankings:', error);
@@ -277,7 +375,15 @@ export const tbaController = {
         return res.status(400).json({ message: 'Event key is required' });
       }
 
-      const data = await fetchTBA(`/event/${event_key}/oprs`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'tba',
+        path: `/event/${event_key}/oprs`,
+        params: {},
+        ttlMs: TBA_TTLS.eventOPRs,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchTBA(`/event/${event_key}/oprs`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getEventOPRs:', error);
@@ -301,7 +407,15 @@ export const tbaController = {
         return res.status(400).json({ message: 'Match key is required' });
       }
 
-      const data = await fetchTBA(`/match/${match_key}`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'tba',
+        path: `/match/${match_key}`,
+        params: {},
+        ttlMs: TBA_TTLS.match,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchTBA(`/match/${match_key}`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getMatch:', error);

@@ -1,4 +1,16 @@
+import { applyUpstreamCacheHeaders, getCachedUpstreamJson } from '../utils/upstreamCache.js';
+
 const STATBOTICS_BASE_URL = 'https://api.statbotics.io/v3';
+const STATBOTICS_TTLS = {
+  teamEvent: 10 * 60_000,
+  teamEventTeleopBalls: 10 * 60_000,
+  teamEvents: 10 * 60_000,
+  teamMatches: 5 * 60_000,
+  team: 12 * 60 * 60_000,
+  event: 12 * 60 * 60_000,
+  eventMatches: 2 * 60_000,
+  teamYear: 12 * 60 * 60_000,
+};
 
 /**
  * Generic fetch helper for the Statbotics API.
@@ -30,6 +42,8 @@ const fetchStatbotics = async (path, params = {}) => {
 
   return response.json();
 };
+
+const shouldBypassUpstreamCache = (req) => String(req.get('X-Bypass-Upstream-Cache') || '').toLowerCase() === 'true';
 
 /**
  * Extract teleop balls from a Statbotics team_event object.
@@ -102,7 +116,15 @@ export const statboticsController = {
         return res.status(400).json({ message: 'Team number and event key are required' });
       }
 
-      const data = await fetchStatbotics(`/team_event/${team}/${event}`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'statbotics',
+        path: `/team_event/${team}/${event}`,
+        params: {},
+        ttlMs: STATBOTICS_TTLS.teamEvent,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchStatbotics(`/team_event/${team}/${event}`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getTeamEvent:', error);
@@ -127,7 +149,15 @@ export const statboticsController = {
         return res.status(400).json({ message: 'Team number and event key are required' });
       }
 
-      const data = await fetchStatbotics(`/team_event/${team}/${event}`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'statbotics',
+        path: `/team_event/${team}/${event}`,
+        params: {},
+        ttlMs: STATBOTICS_TTLS.teamEventTeleopBalls,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchStatbotics(`/team_event/${team}/${event}`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       const teleopBalls = extractTeleopBalls(data);
 
       res.json({
@@ -169,7 +199,7 @@ export const statboticsController = {
         offset = 0,
       } = req.query;
 
-      const data = await fetchStatbotics('/team_events', {
+      const params = {
         team,
         year,
         event,
@@ -180,7 +210,16 @@ export const statboticsController = {
         type,
         limit,
         offset,
+      };
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'statbotics',
+        path: '/team_events',
+        params,
+        ttlMs: STATBOTICS_TTLS.teamEvents,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchStatbotics('/team_events', params),
       });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
 
       res.json(data);
     } catch (error) {
@@ -201,7 +240,16 @@ export const statboticsController = {
   getTeamMatches: async (req, res) => {
     try {
       const { team, year, event, limit = 500, offset = 0 } = req.query;
-      const data = await fetchStatbotics('/team_matches', { team, year, event, limit, offset });
+      const params = { team, year, event, limit, offset };
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'statbotics',
+        path: '/team_matches',
+        params,
+        ttlMs: STATBOTICS_TTLS.teamMatches,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchStatbotics('/team_matches', params),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getTeamMatches:', error);
@@ -225,7 +273,15 @@ export const statboticsController = {
         return res.status(400).json({ message: 'Team number is required' });
       }
 
-      const data = await fetchStatbotics(`/team/${team}`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'statbotics',
+        path: `/team/${team}`,
+        params: {},
+        ttlMs: STATBOTICS_TTLS.team,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchStatbotics(`/team/${team}`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getTeam:', error);
@@ -249,7 +305,15 @@ export const statboticsController = {
         return res.status(400).json({ message: 'Event key is required' });
       }
 
-      const data = await fetchStatbotics(`/event/${event}`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'statbotics',
+        path: `/event/${event}`,
+        params: {},
+        ttlMs: STATBOTICS_TTLS.event,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchStatbotics(`/event/${event}`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getEvent:', error);
@@ -273,7 +337,15 @@ export const statboticsController = {
         return res.status(400).json({ message: 'Event key is required' });
       }
 
-      const data = await fetchStatbotics('/matches', { event });
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'statbotics',
+        path: '/matches',
+        params: { event },
+        ttlMs: STATBOTICS_TTLS.eventMatches,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchStatbotics('/matches', { event }),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getEventMatches:', error);
@@ -300,7 +372,15 @@ export const statboticsController = {
         return res.status(400).json({ message: 'Team number and year are required' });
       }
 
-      const data = await fetchStatbotics(`/team_year/${team}/${year}`);
+      const { data, cacheStatus, ttlMs } = await getCachedUpstreamJson({
+        namespace: 'statbotics',
+        path: `/team_year/${team}/${year}`,
+        params: {},
+        ttlMs: STATBOTICS_TTLS.teamYear,
+        bypassCache: shouldBypassUpstreamCache(req),
+        loader: () => fetchStatbotics(`/team_year/${team}/${year}`),
+      });
+      applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
     } catch (error) {
       console.error('Error in getTeamYear:', error);
