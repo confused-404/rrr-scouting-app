@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -9,29 +9,8 @@ import {
 import { auth } from '../config/firebase';
 import { authApi } from '../services/api';
 import { createLogger, formatErrorForLogging } from '../utils/logger';
-
-interface AuthContextType {
-  currentUser: User | null;
-  isAdmin: boolean;
-  isDriveTeam: boolean;
-  role: 'admin' | 'drive' | 'user';
-  scouterName: string | null;
-  loading: boolean;
-  signup: (email: string, password: string) => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { AuthContext } from './auth-context';
 const authLogger = createLogger('AuthContext');
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);

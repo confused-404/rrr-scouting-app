@@ -1,6 +1,17 @@
 import React, { useState } from 'react';
 import { authApi } from '../services/api';
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  const responseMessage = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  return typeof responseMessage === 'string' && responseMessage.trim() !== ''
+    ? responseMessage
+    : 'Request failed';
+};
+
 export const ForgotPassword: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -20,8 +31,8 @@ export const ForgotPassword: React.FC<{ onBack: () => void }> = ({ onBack }) => 
       await authApi.forgotPassword(email);
       setMessage('If an account with that email exists you should receive a code shortly.');
       setStage('enterCode');
-    } catch (err: any) {
-      setError(err.message || 'Failed to send reset code');
+    } catch (error) {
+      setError(getErrorMessage(error) || 'Failed to send reset code');
     } finally {
       setLoading(false);
     }
@@ -48,8 +59,8 @@ export const ForgotPassword: React.FC<{ onBack: () => void }> = ({ onBack }) => 
       setConfirmPassword('');
       // automatically go back to login after a short pause
       setTimeout(() => onBack(), 2000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to reset password');
+    } catch (error) {
+      setError(getErrorMessage(error) || 'Failed to reset password');
     } finally {
       setLoading(false);
     }

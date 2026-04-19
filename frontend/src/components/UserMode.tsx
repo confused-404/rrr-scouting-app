@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Layout, Clock, Image as ImageIcon } from 'lucide-react';
-import type { FormField as FormFieldType, Form, Submission } from '../types/form.types';
+import type { FormField as FormFieldType, Form, Submission, SubmissionValue } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
 import { FormField } from './FormField';
 import { formApi } from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import { TeamLookup } from './TeamLookup';
 import { MatchSchedule } from './MatchSchedule';
 import { ScoutingScheduleViewer } from './ScoutingScheduleViewer';
 import { evaluateCondition } from '../utils/formConditions';
+import { isPictureFieldValue } from '../utils/formValues';
 
 interface UserModeProps {
   selectedCompetition: Competition | null;
@@ -51,7 +52,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
   const [competitionForms, setCompetitionForms] = useState<Form[]>([]);
   const [currentForm, setCurrentForm] = useState<Form | null>(null);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
-  const [responses, setResponses] = useState<Record<string, any>>({});
+  const [responses, setResponses] = useState<Record<string, SubmissionValue>>({});
   const [crossFormValues, setCrossFormValues] = useState<Record<string, unknown>>({});
   const [currentFormId, setCurrentFormId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -229,12 +230,12 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     }
   }, [responses, formFields]);
 
-  const handleInputChange = (fieldId: number, value: any) => {
+  const handleInputChange = (fieldId: number, value: SubmissionValue) => {
     const key = String(fieldId);
     setResponses((prev) => ({ ...prev, [key]: value }));
   };
 
-  const validate = (fields: FormFieldType[], data: Record<string, any>) => {
+  const validate = (fields: FormFieldType[], data: Record<string, SubmissionValue>) => {
     const nextErrors: FieldErrors = {};
 
     for (const field of fields) {
@@ -303,7 +304,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
         }
 
         case 'picture': {
-          const valid = value && typeof value === 'object' && typeof value.url === 'string' && typeof value.path === 'string';
+          const valid = isPictureFieldValue(value);
           if (!valid) {
             nextErrors[field.id] = 'Please upload a picture.';
           }
@@ -358,7 +359,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
 
     setLoading(true);
     try {
-      const normalizedResponses: Record<string, any> = { ...responses };
+      const normalizedResponses: Record<string, SubmissionValue> = { ...responses };
 
       // Keep rank_order payloads compact and clean before submit.
       formFields.forEach((field) => {

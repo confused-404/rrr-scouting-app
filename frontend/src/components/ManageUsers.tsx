@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { UserCog, Save, RefreshCw, Trash2, X } from 'lucide-react';
 import { authApi } from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import type { Competition } from '../types/competition.types';
 
 interface UserRecord {

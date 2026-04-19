@@ -1,0 +1,43 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  buildCreateCompetitionInput,
+  buildUpdateCompetitionInput,
+} from '../src/utils/competitionPayload.js';
+
+test('buildCreateCompetitionInput preserves formIds and activeFormIds', () => {
+  const input = buildCreateCompetitionInput({
+    name: 'Test Event',
+    season: '2026',
+    formIds: ['form-a', ' form-b ', '', null],
+    activeFormIds: ['active-a'],
+  });
+
+  assert.deepEqual(input.formIds, ['form-a', 'form-b']);
+  assert.deepEqual(input.activeFormIds, ['active-a']);
+});
+
+test('buildCreateCompetitionInput applies defaults for optional fields', () => {
+  const input = buildCreateCompetitionInput({
+    name: 'Test Event',
+    season: '2026',
+  });
+
+  assert.equal(input.status, 'draft');
+  assert.deepEqual(input.manualPickLists, []);
+  assert.deepEqual(input.robotBreakTimelineOverrides, {});
+});
+
+test('buildUpdateCompetitionInput keeps explicit empty arrays and null active form', () => {
+  const input = buildUpdateCompetitionInput({
+    formIds: [],
+    activeFormIds: [],
+    activeFormId: '',
+    pitMapImageUrl: '  ',
+  });
+
+  assert.deepEqual(input.formIds, []);
+  assert.deepEqual(input.activeFormIds, []);
+  assert.equal(input.activeFormId, null);
+  assert.equal(input.pitMapImageUrl, '');
+});

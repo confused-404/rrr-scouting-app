@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import type { Competition } from '../types/competition.types';
-import type { Submission, Form, FormField as FormFieldType } from '../types/form.types';
+import type { Submission, Form, FormField as FormFieldType, SubmissionValue } from '../types/form.types';
 import { formApi } from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import { FormField } from './FormField';
 import { Filter, X, Download, Edit2, Save, AlertTriangle, ChevronLeft } from 'lucide-react';
 import { isPictureFieldValue, submissionValueToText } from '../utils/formValues';
@@ -100,8 +100,8 @@ const EditModal: React.FC<EditModalProps> = ({
   selectedCompetition,
 }) => {
   // Seed draft from the existing submission data, casting to the right shape
-  const [draft, setDraft] = useState<Record<string, unknown>>(
-    () => ({ ...(submission.data as Record<string, unknown>) })
+  const [draft, setDraft] = useState<Record<string, SubmissionValue>>(
+    () => ({ ...submission.data })
   );
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
@@ -124,7 +124,7 @@ const EditModal: React.FC<EditModalProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, form.fields]);
 
-  const handleChange = useCallback((fieldId: number, value: unknown) => {
+  const handleChange = useCallback((fieldId: number, value: SubmissionValue) => {
     setDraft(prev => ({ ...prev, [String(fieldId)]: value }));
     // Clear error for this field on change
     setErrors(prev => {
@@ -319,6 +319,8 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
     if (selectedCompetition) {
       formApi.getFormsByCompetition(selectedCompetition.id).then(data => {
         setForms(data);
+        setFilterFieldId(data[0]?.fields[0]?.id ?? null);
+        setLoading(data.length > 0);
         setSelectedForm(data.length > 0 ? data[0] : null);
       });
     }
@@ -326,12 +328,9 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
 
   useEffect(() => {
     if (selectedForm) {
-      setLoading(true);
       formApi.getSubmissions(selectedForm.id)
         .then(subs => { setSubmissions(subs); setLoading(false); })
         .catch(() => setLoading(false));
-
-      if (selectedForm.fields.length > 0) setFilterFieldId(selectedForm.fields[0].id);
     }
   }, [selectedForm?.id]);
 
@@ -470,7 +469,12 @@ export const ResponseViewer: React.FC<{ selectedCompetition?: Competition | null
           </label>
           <select
             value={selectedForm?.id || ''}
-            onChange={e => setSelectedForm(forms.find(f => f.id === e.target.value) || null)}
+            onChange={(e) => {
+              const nextForm = forms.find((f) => f.id === e.target.value) || null;
+              setFilterFieldId(nextForm?.fields[0]?.id ?? null);
+              setLoading(Boolean(nextForm));
+              setSelectedForm(nextForm);
+            }}
             className="w-full bg-gray-50 border-none rounded-lg px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-blue-500"
           >
             {forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}

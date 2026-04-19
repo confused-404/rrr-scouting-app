@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+import '../src/loadEnv.js';
 import express from 'express';
 import cors from 'cors';
 import formRoutes from '../src/routes/formRoutes.js';
@@ -8,9 +8,6 @@ import tbaRoutes from '../src/routes/tbaRoutes.js';
 import statboticsRoutes from '../src/routes/statboticsRoutes.js';
 import { errorHandler } from '../src/middleware/errorHandler.js';
 import { validateApiKey, rateLimit } from '../src/middleware/apiAuth.js';
-
-dotenv.config();
-
 const app = express();
 
 // CORS configuration - must be FIRST

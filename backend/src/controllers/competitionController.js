@@ -1,4 +1,5 @@
 import { competitionModel } from '../models/competitionModel.js';
+import { buildCreateCompetitionInput, buildUpdateCompetitionInput } from '../utils/competitionPayload.js';
 
 export const competitionController = {
   normalizeSuperscoutTeamKey: (rawTeam) => {
@@ -79,25 +80,13 @@ export const competitionController = {
   // Create competition
   createCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormIds, eventKey, pitMapImageUrl, pitLocations, manualPickLists, robotBreakTimelineOverrides } = req.body;
+      const input = buildCreateCompetitionInput(req.body);
       
-      if (!name || !season) {
+      if (!input.name || !input.season) {
         return res.status(400).json({ message: 'Name and season are required' });
       }
 
-      const newCompetition = await competitionModel.createCompetition({
-        name,
-        season,
-        status: status || 'draft',
-        startDate: startDate || new Date().toISOString(),
-        endDate: endDate || new Date().toISOString(),
-        activeFormIds: activeFormIds || [],
-        eventKey,
-        pitMapImageUrl: pitMapImageUrl || '',
-        pitLocations: pitLocations || {},
-        manualPickLists: manualPickLists || [],
-        robotBreakTimelineOverrides: robotBreakTimelineOverrides || {},
-      });
+      const newCompetition = await competitionModel.createCompetition(input);
       
       res.status(201).json(newCompetition);
     } catch (error) {
@@ -109,26 +98,10 @@ export const competitionController = {
   // Update competition
   updateCompetition: async (req, res) => {
     try {
-      const { name, season, status, startDate, endDate, activeFormId, activeFormIds, scoutingTeams, scoutingAssignments, eventKey, superscouterNotes, driveTeamStrategyByTeam, pitMapImageUrl, pitLocations, manualPickLists, robotBreakTimelineOverrides } = req.body;
-      
-      const updatedCompetition = await competitionModel.updateCompetition(req.params.id, {
-        ...(name && { name }),
-        ...(season && { season }),
-        ...(status && { status }),
-        ...(startDate && { startDate }),
-        ...(endDate && { endDate }),
-        ...(activeFormIds !== undefined && { activeFormIds }),
-        ...(activeFormId !== undefined && { activeFormId }),
-        ...(scoutingTeams !== undefined && { scoutingTeams }),
-        ...(scoutingAssignments !== undefined && { scoutingAssignments }),
-        ...(eventKey !== undefined && { eventKey }),
-        ...(superscouterNotes !== undefined && { superscouterNotes }),
-        ...(driveTeamStrategyByTeam !== undefined && { driveTeamStrategyByTeam }),
-        ...(robotBreakTimelineOverrides !== undefined && { robotBreakTimelineOverrides }),
-        ...(pitMapImageUrl !== undefined && { pitMapImageUrl }),
-        ...(pitLocations !== undefined && { pitLocations }),
-        ...(manualPickLists !== undefined && { manualPickLists }),
-      });
+      const updatedCompetition = await competitionModel.updateCompetition(
+        req.params.id,
+        buildUpdateCompetitionInput(req.body),
+      );
       
       if (!updatedCompetition) {
         return res.status(404).json({ message: 'Competition not found' });

@@ -4,7 +4,7 @@ import { AdminMode } from './components/AdminMode';
 import { AdminTeamMatches } from './components/AdminTeamMatches';
 import { UserMode } from './components/UserMode';
 import { Login } from './components/Login';
-import { useAuth } from './contexts/AuthContext';
+import { useAuth } from './contexts/useAuth';
 import type { Competition } from './types/competition.types';
 import { competitionApi, forceApiRefresh } from './services/api';
 import { createLogger, formatErrorForLogging } from './utils/logger';

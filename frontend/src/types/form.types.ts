@@ -17,6 +17,14 @@ export type PictureFieldValue = {
   uploadedAt?: string;
 };
 
+export type SubmissionValue =
+  | string
+  | number
+  | string[]
+  | PictureFieldValue
+  | null
+  | undefined;
+
 export type ConditionOperator = 'equals' | 'not_equals' | 'contains' | 'not_contains';
 
 export interface ConditionRule {
@@ -70,5 +78,5 @@ export interface Submission {
   /** * Maps field.id to the user's response.
    * AdminMode uses this to extract team numbers and climb data.
    */
-  data: Record<string, any>; 
+  data: Record<string, SubmissionValue>;
 }

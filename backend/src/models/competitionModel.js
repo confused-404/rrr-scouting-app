@@ -219,7 +219,12 @@ export const competitionModel = {
   },
 
   deleteCompetition: async (id) => {
-    await db.collection(COMPETITIONS_COLLECTION).doc(id).delete();
+    const docRef = db.collection(COMPETITIONS_COLLECTION).doc(id);
+    const doc = await docRef.get();
+
+    if (!doc.exists) return false;
+
+    await docRef.delete();
     return true;
   },
 };

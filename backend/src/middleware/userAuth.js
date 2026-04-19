@@ -1,35 +1,44 @@
 import { auth } from '../config/firebase.js';
+import { extractBearerToken, hasRequiredRole, isSetupSecretValid } from '../utils/authz.js';
 
 export const verifyToken = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const token = extractBearerToken(req.headers.authorization);
+
+    if (!token) {
       return res.status(401).json({ message: 'No token provided' });
     }
-    
-    const token = authHeader.split('Bearer ')[1];
+
     const decodedToken = await auth.verifyIdToken(token);
-    
-    // The decodedToken contains any Custom Claims (like { admin: true })
     req.user = decodedToken;
-    next();
+    return next();
   } catch (error) {
     console.error('Auth error:', error);
-    res.status(401).json({ message: 'Invalid token' });
+    return res.status(401).json({ message: 'Invalid token' });
   }
 };
 
-// NEW: Check for admin status
-export const isAdmin = (req, res, next) => {
-  // verifyToken must run BEFORE this to populate req.user
-  if (req.user && req.user.admin === true) {
-    next();
-  } else {
-    res.status(403).json({ message: 'Forbidden: Admin access required' });
+export const requireRoles = (...allowedRoles) => (req, res, next) => {
+  if (hasRequiredRole(req.user, allowedRoles)) {
+    return next();
   }
+
+  return res.status(403).json({ message: 'Forbidden' });
 };
 
-export const optionalAuth = async (req, res, next) => {
-  // ... your existing optionalAuth code ...
+export const isAdmin = requireRoles('admin');
+export const isAdminOrDriveTeam = requireRoles('admin', 'drive');
+
+export const requireSetupSecret = (req, res, next) => {
+  const providedSecret = req.headers['x-setup-secret'];
+  const expectedSecret = process.env.INITIAL_ADMIN_SETUP_SECRET;
+
+  if (!isSetupSecretValid(
+    Array.isArray(providedSecret) ? providedSecret[0] : providedSecret,
+    expectedSecret,
+  )) {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+
+  return next();
 };

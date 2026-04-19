@@ -18,12 +18,12 @@ import {
   setUserRole,
   deleteUser,
 } from '../controllers/authController.js';
-import { verifyToken, isAdmin } from '../middleware/userAuth.js';
+import { verifyToken, isAdmin, requireSetupSecret } from '../middleware/userAuth.js';
 
 const router = express.Router();
 
 // BOOTSTRAP: Call this once to create your first admin and the 'users' collection
-router.post('/initialize-admin', initializeFirstAdmin);
+router.post('/initialize-admin', requireSetupSecret, initializeFirstAdmin);
 
 // PUBLIC
 router.post('/signup', signup);
