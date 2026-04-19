@@ -3,6 +3,7 @@ import {
   createValidationError,
   normalizeTeamNumber,
   resolveTeamNumberFieldId,
+  resolveSubmissionNormalizedTeamNumber,
   sanitizeSubmissionData,
   sanitizeTeamNumberFieldId,
   validateSubmissionCompetition,
@@ -578,9 +579,7 @@ export const formController = {
 
       validateSubmissionCompetition(form, competitionId);
       const teamNumberFieldId = resolveTeamNumberFieldId(form);
-      const normalizedTeam = teamNumberFieldId === null
-        ? null
-        : normalizeTeamNumber(data[String(teamNumberFieldId)]);
+      const normalizedTeam = resolveSubmissionNormalizedTeamNumber(form, data);
       const crossFormValues = teamNumberFieldId === null
         ? {}
         : buildCrossFormValuesForTeam({

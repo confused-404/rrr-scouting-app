@@ -35,6 +35,15 @@ export const resolveTeamNumberFieldId = (form) => {
   return form?.fields?.find((field) => teamFieldRegex.test(normalizeLabel(field.label)))?.id ?? null;
 };
 
+export const resolveSubmissionNormalizedTeamNumber = (form, submissionData) => {
+  const teamNumberFieldId = resolveTeamNumberFieldId(form);
+  if (teamNumberFieldId === null) {
+    return null;
+  }
+
+  return normalizeTeamNumber(submissionData?.[String(teamNumberFieldId)]);
+};
+
 const resolvePicturePathPrefix = ({ competitionId, formId, fieldId, ownerUid }) => (
   `form-submissions/${competitionId}/${formId}/${ownerUid}/${fieldId}/`
 );

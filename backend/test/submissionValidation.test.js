@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   normalizeTeamNumber,
   resolveTeamNumberFieldId,
+  resolveSubmissionNormalizedTeamNumber,
   sanitizeSubmissionData,
   sanitizeTeamNumberFieldId,
   validateSubmissionCompetition,
@@ -157,6 +158,20 @@ test('resolveTeamNumberFieldId returns null for ambiguous team labels', () => {
 test('normalizeTeamNumber strips frc prefix and other text', () => {
   assert.equal(normalizeTeamNumber('frc254'), '254');
   assert.equal(normalizeTeamNumber('Team 1678 Citrus'), '1678');
+});
+
+test('resolveSubmissionNormalizedTeamNumber derives the normalized team from the configured field', () => {
+  assert.equal(resolveSubmissionNormalizedTeamNumber({
+    fields: [{ id: 4, label: 'Team Number' }],
+  }, {
+    '4': 'frc1678',
+  }), '1678');
+
+  assert.equal(resolveSubmissionNormalizedTeamNumber({
+    fields: [{ id: 4, label: 'Comments' }],
+  }, {
+    '4': 'ignored',
+  }), null);
 });
 
 test('validateSubmissionCompetition rejects mismatched competitions', () => {
