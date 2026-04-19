@@ -7,16 +7,21 @@ import competitionRoutes from '../src/routes/competitionRoutes.js';
 import tbaRoutes from '../src/routes/tbaRoutes.js';
 import statboticsRoutes from '../src/routes/statboticsRoutes.js';
 import { errorHandler } from '../src/middleware/errorHandler.js';
+import { buildAllowedCorsOrigins, isAllowedCorsOrigin } from '../src/utils/cors.js';
 const app = express();
 app.set('trust proxy', 1);
 
 // CORS configuration - must be FIRST
+const allowedCorsOrigins = buildAllowedCorsOrigins();
 const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'https://rrr-scouting.vercel.app',
-  ],
+  origin: (origin, callback) => {
+    if (isAllowedCorsOrigin(origin, allowedCorsOrigins)) {
+      return callback(null, true);
+    }
+
+    console.warn(`Blocked CORS request from origin: ${origin}`);
+    return callback(null, false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Bypass-Upstream-Cache'],

@@ -86,6 +86,20 @@ VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
 Keep using the existing Firebase project/auth variables already required by the
 app; the storage bucket is the only new value for picture uploads.
 
+## CORS configuration
+
+The backend allows local development origins by default. For deployed frontends,
+set `FRONTEND_URL` to the exact production origin and, if needed, add more exact
+origins in `CORS_ORIGINS` as a comma-separated list.
+
+Example:
+
+```env
+BACKEND/.env.local
+FRONTEND_URL=https://rrr-scouting.vercel.app
+CORS_ORIGINS=https://rrr-scouting-preview-123.vercel.app,https://custom-domain.example
+```
+
 ## Project Structure
 
 ```
