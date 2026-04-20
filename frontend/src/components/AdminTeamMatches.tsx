@@ -118,6 +118,8 @@ const getMatchLabel = (match: Record<string, unknown>) => {
   const matchNumber = Number(match.match_number || 0);
 
   if (compLevel === 'QM') return `QM${matchNumber}`;
+  if (compLevel === 'SF') return `SF${setNumber}`;
+  if (compLevel === 'F') return `F${matchNumber}`;
   if (setNumber > 0) return `${compLevel}${setNumber}-${matchNumber}`;
   return `${compLevel}${matchNumber}`;
 };
