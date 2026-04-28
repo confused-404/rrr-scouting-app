@@ -1,14 +1,43 @@
-# rrr scouting app
+# RRR Scouting App
 
-# MY VIBE CODING EXPERIMENT
+Full-stack scouting platform used by an FRC team to collect, analyze, and export match data in real time during competition.
 
-**Node.js version**: 20.19.6
+## Why we built this
+
+Competitive robotics teams rely on fast, accurate match data to make strategy decisions. Existing tools were either too slow or not tailored to our workflow, so we built a custom system used by Red Rock Robotics.
+
+## Features
+
+* Real-time match data entry from multiple scouts
+* Centralized storage and aggregation of scouting data
+* Data visualization and filtering for match strategy
+* Export tools for alliance selection and scouting reports
+* Designed for reliability in competition environments (multiple devices, unstable Wi-Fi)
+
+## Usage
+
+Used by Red Rock Robotics during official FRC competitions.
+
+* Supports multiple simultaneous scouts
+* Handles full match scouting workflow end-to-end
+
+## Tech Stack
+
+* Frontend: React (Vite)
+* Backend: Node.js + Express
+* Database/Auth/Storage: Firebase
+
+## Architecture
+
+Scouts → frontend (data entry) → backend API → database → aggregation → visualization/export
+
+---
 
 ## Development
 
 ### Quick Start
 
-```
+```bash
 # Terminal 1 - Backend
 cd backend
 npm i
@@ -27,7 +56,7 @@ Frontend runs on `http://localhost:3000`
 
 Create `.env` files in each directory using `.env.example` as a template:
 
-```
+```bash
 # Backend
 cd backend && cp .env.example .env
 
@@ -35,74 +64,20 @@ cd backend && cp .env.example .env
 cd frontend && cp .env.example .env.local
 ```
 
-## Password reset workflow
+---
 
-A forgot‑password link on the login form lets users request a temporary code by
-email. The backend generates a six‑digit code stored in Firestore and sends it
-via SMTP; the user submits that code along with their new password in order to
-complete the reset.  To enable this feature you must provide SMTP credentials
-in the backend environment (see `.env.example`).
+## Notable Implementation Details
 
-> 🛠 **Local development tip:**
->
-> * Make sure your SMTP credentials live in the file that gets loaded by
->   backend/loadEnv.js (`.env.local` in development).  The loader uses
->   `dotenv.config({ path: ".env.local" })`, so putting them in `necessary.env`
->   or `.env` alone won’t help in dev.
-> * If you see an error such as `ECONNREFUSED 127.0.0.1:587` or `::1:587`, it
->   means `EMAIL_HOST` was blank and nodemailer fell back to localhost.
-> * You can use Mailtrap, SendGrid, Gmail SMTP, etc. for testing; Mailtrap’s
->   settings are convenient because they don’t require a real inbox.
-> * Regardless of provider, add the variables below to the appropriate
->   env file before restarting the server:
->
-> ```env
-> EMAIL_HOST=smtp.example.com
-> EMAIL_PORT=587
-> EMAIL_SECURE=false
-> EMAIL_USER=your@address
-> EMAIL_PASS=yourpassword
-> EMAIL_FROM="Scouting App <no-reply@yourdomain.com>"
-> ```
->
-> * If SMTP still isn’t available, the reset code is logged to the console so
->   you can copy it manually and complete the flow without email.
-> * Alternatively, set `BREVO_API_KEY` instead of the SMTP variables; the
->   mailer will automatically use Brevo's REST API.
+* Handles concurrent submissions from multiple clients
+* Structured data model for efficient querying and export
+* Direct image uploads from frontend to Firebase Storage
+* Password reset flow using SMTP or API-based email providers
 
-## Picture uploads
-
-Form picture fields upload directly from the frontend to Firebase Storage and
-store the resulting file metadata in submission records. Add these variables:
-
-```env
-# backend/.env.local
-FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
-
-# frontend/.env.local
-VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
-```
-
-Keep using the existing Firebase project/auth variables already required by the
-app; the storage bucket is the only new value for picture uploads.
-
-## CORS configuration
-
-The backend allows local development origins by default. For deployed frontends,
-set `FRONTEND_URL` to the exact production origin and, if needed, add more exact
-origins in `CORS_ORIGINS` as a comma-separated list.
-
-Example:
-
-```env
-BACKEND/.env.local
-FRONTEND_URL=https://rrr-scouting.vercel.app
-CORS_ORIGINS=https://rrr-scouting-preview-123.vercel.app,https://custom-domain.example
-```
+---
 
 ## Project Structure
 
-```
+```bash
 .
 ├── backend/          # Express API
 │   ├── src/
@@ -112,5 +87,10 @@ CORS_ORIGINS=https://rrr-scouting-preview-123.vercel.app,https://custom-domain.e
 │   ├── src/
 │   ├── vercel.json
 │   └── .env.example
-
 ```
+
+---
+
+## Credits
+
+Built collaboratively with another contributor. I led core development and system design, with significant contributions across the stack.
