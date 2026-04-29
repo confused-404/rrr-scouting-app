@@ -87,16 +87,21 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
     setFetchingForm(true);
     try {
       const loaded = await formApi.getFormsByCompetition(selectedCompetition.id);
+      const hasActiveFormList = Array.isArray(selectedCompetition.activeFormIds);
+      const actives = hasActiveFormList
+        ? selectedCompetition.activeFormIds
+        : (selectedCompetition.activeFormId ? [selectedCompetition.activeFormId] : null);
 
-      const actives = selectedCompetition.activeFormIds ||
-        (selectedCompetition.activeFormId ? [selectedCompetition.activeFormId] : []);
+      // Only expose forms that the competition explicitly marks as active.
+      // Falling back to every form makes scout mode pick forms the backend
+      // will reject on submit.
+      const activeForms = Array.isArray(actives)
+        ? actives
+          .map((id: string) => loaded.find((f: { id: string }) => f.id === id))
+          .filter(Boolean) as typeof loaded
+        : loaded;
 
-      // Filter to only active forms, preserving order
-      const activeForms = actives
-        .map((id: string) => loaded.find((f: { id: string }) => f.id === id))
-        .filter(Boolean) as typeof loaded;
-
-      const formsToShow = activeForms.length > 0 ? activeForms : loaded;
+      const formsToShow = Array.isArray(actives) ? activeForms : loaded;
       setCompetitionForms(loaded);
       setForms(formsToShow.map((form) => ({ id: form.id, name: form.name })));
 
