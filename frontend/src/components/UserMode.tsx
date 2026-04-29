@@ -380,7 +380,16 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
 
     setLoading(true);
     try {
-      const normalizedResponses: Record<string, SubmissionValue> = { ...responses };
+      const visibleResponses: Record<string, SubmissionValue> = {};
+
+      formFields.forEach((field) => {
+        if (shouldShowField(field, responses)) {
+          const key = String(field.id);
+          visibleResponses[key] = responses[key];
+        }
+      });
+
+      const normalizedResponses: Record<string, SubmissionValue> = { ...visibleResponses };
 
       // Keep rank_order payloads compact and clean before submit.
       formFields.forEach((field) => {
