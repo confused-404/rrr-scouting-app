@@ -19,6 +19,7 @@ import {
   setUserRole,
   deleteUser,
 } from '../controllers/authController.js';
+import { clientLogController } from '../controllers/clientLogController.js';
 import { verifyToken, isAdmin, requireSetupSecret } from '../middleware/userAuth.js';
 import { createFirestoreRateLimitStore, createRateLimiter } from '../middleware/rateLimit.js';
 
@@ -58,6 +59,13 @@ const resetPasswordLimiter = createRateLimiter({
   store: sharedRateLimitStore,
 });
 
+const clientLogLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 30,
+  keyResolver: (req) => `client-log:${req.ip}`,
+  store: sharedRateLimitStore,
+});
+
 // BOOTSTRAP: Call this once to create your first admin and the 'users' collection
 router.post('/initialize-admin', initializeAdminLimiter, requireSetupSecret, initializeFirstAdmin);
 
@@ -65,6 +73,7 @@ router.post('/initialize-admin', initializeAdminLimiter, requireSetupSecret, ini
 router.post('/signup', signupLimiter, signup);
 router.post('/forgot-password', forgotPasswordLimiter, forgotPassword);
 router.post('/reset-password', resetPasswordLimiter, resetPassword);
+router.post('/client-logs', clientLogLimiter, clientLogController.ingest);
 
 // AUTHENTICATED
 router.get('/me', verifyToken, getMe);

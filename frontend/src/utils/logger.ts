@@ -45,6 +45,17 @@ const CONSOLE_SCOPE = 'console';
 const REDACTED = '[REDACTED]';
 const SENSITIVE_KEY_PATTERN = /token|secret|password|authorization|api[-_]?key|cookie/i;
 const isDebugApiEnabled = import.meta.env.DEV || import.meta.env.VITE_EXPOSE_DEBUG_LOGGER === 'true';
+const isClientLogForwardingEnabled = import.meta.env.VITE_FORWARD_CLIENT_LOGS === 'true'
+  || import.meta.env.PROD;
+
+const getApiBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) return envUrl;
+  if (import.meta.env.DEV) return '/api';
+  return `${window.location.protocol}//${window.location.host}/api`;
+};
+
+const clientLogForwardUrl = new URL('/auth/client-logs', getApiBaseUrl()).toString();
 
 const levelOrder: Record<LogLevel, number> = {
   debug: 10,
@@ -67,6 +78,7 @@ let activeLevel = readInitialLevel();
 let consolePatched = false;
 let globalHandlersInstalled = false;
 let loggerInitialized = false;
+let forwardChain = Promise.resolve();
 
 function createId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `log-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -90,6 +102,48 @@ function isLogLevel(value: unknown): value is LogLevel {
 
 function persistLogs(): void {
   // Intentionally in-memory only. Frontend logs should not persist user data to browser storage.
+}
+
+function queueClientLogForward(entry: LogEntry): void {
+  if (!isClientLogForwardingEnabled || typeof window === 'undefined') {
+    return;
+  }
+
+  const payload = {
+    sessionId: entry.sessionId,
+    timestamp: entry.timestamp,
+    level: entry.level,
+    scope: entry.scope,
+    message: entry.message,
+    context: entry.context,
+    url: window.location.href,
+    userAgent: window.navigator.userAgent,
+  };
+
+  const body = JSON.stringify(payload);
+
+  forwardChain = forwardChain
+    .catch(() => undefined)
+    .then(async () => {
+      try {
+        if (navigator.sendBeacon) {
+          const blob = new Blob([body], { type: 'application/json' });
+          if (navigator.sendBeacon(clientLogForwardUrl, blob)) {
+            return;
+          }
+        }
+
+        await fetch(clientLogForwardUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          keepalive: true,
+          credentials: 'omit',
+        });
+      } catch {
+        // Best-effort only. Logging must never break the app.
+      }
+    });
 }
 
 function shouldPrint(level: LogLevel): boolean {
@@ -209,6 +263,10 @@ function pushEntry(entry: LogEntry): void {
 
   if (logEntries.length > MAX_LOG_ENTRIES) {
     logEntries.splice(0, logEntries.length - MAX_LOG_ENTRIES);
+  }
+
+  if (entry.level === 'warn' || entry.level === 'error') {
+    queueClientLogForward(entry);
   }
 
   persistLogs();

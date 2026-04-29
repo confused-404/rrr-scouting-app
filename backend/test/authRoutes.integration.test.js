@@ -108,3 +108,24 @@ test('POST /api/auth/initialize-admin provisions the first admin when the setup 
   assert.equal(harness.fixture._system.initialAdminSetup.status, 'completed');
   assert.equal(harness.fixture._system.initialAdminSetup.uid, 'user-new-admin');
 });
+
+test('POST /api/auth/client-logs accepts forwarded client warnings and errors', async () => {
+  const response = await requestJson('/api/auth/client-logs', {
+    method: 'POST',
+    body: {
+      sessionId: 'session-1',
+      timestamp: '2026-04-29T20:14:43.824Z',
+      level: 'error',
+      scope: 'api',
+      message: 'API request failed',
+      context: {
+        requestId: 'req-123',
+        token: 'secret-token',
+      },
+      url: 'https://app.example.com/scout',
+      userAgent: 'Mozilla/5.0',
+    },
+  });
+
+  assert.equal(response.status, 204);
+});
