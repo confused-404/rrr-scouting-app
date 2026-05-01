@@ -19,6 +19,7 @@ const TEAM_OPTIONS: TeamOption[] = [
 ];
 
 const DRIVE_TEAM_SELECTED_TEAM_STORAGE_KEY = 'adminTeamMatches.selectedTeam';
+const DRIVE_TEAM_STRATEGY_DRAFT_STORAGE_KEY_PREFIX = 'adminTeamMatches.strategyDraft';
 const teamFieldRegex = /team|team number|team #/i;
 const autoPathFieldRegex = /auto.*path|path.*auto|starting position|start position/i;
 
@@ -219,6 +220,7 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
   const [strategyError, setStrategyError] = useState('');
   const [isEditingStrategy, setIsEditingStrategy] = useState(false);
   const [liveMatchCounter, setLiveMatchCounter] = useState(1);
+  const [hasRestoredLocalDraft, setHasRestoredLocalDraft] = useState(false);
 
   const cardRefs = useRef<Array<HTMLDivElement | null>>([]);
   const holdTimerRef = useRef<number | null>(null);
@@ -435,20 +437,46 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
       if (!selectedCompetition?.id || !selectedMatchKey) {
         setStrategyValue('');
         setStrategyDraft('');
+        setHasRestoredLocalDraft(false);
         return;
       }
 
       setStrategyLoading(true);
       setStrategyError('');
       try {
+        const draftKey = [
+          DRIVE_TEAM_STRATEGY_DRAFT_STORAGE_KEY_PREFIX,
+          selectedCompetition.id,
+          selectedTeam,
+          selectedMatchKey,
+        ].join(':');
+
+        let localDraft = '';
+        try {
+          localDraft = window.localStorage.getItem(draftKey) || '';
+        } catch {
+          localDraft = '';
+        }
+
+        if (localDraft) {
+          setStrategyDraft(localDraft);
+          setHasRestoredLocalDraft(true);
+        } else {
+          setHasRestoredLocalDraft(false);
+        }
+
         const response = await competitionApi.getDriveTeamStrategy(selectedCompetition.id, selectedTeam, selectedMatchKey);
         const strategy = typeof response.strategy === 'string' ? response.strategy : '';
         setStrategyValue(strategy);
-        setStrategyDraft(strategy);
+        if (!localDraft) {
+          setStrategyDraft(strategy);
+        }
       } catch {
-        setStrategyError('Could not load strategy notes.');
-        setStrategyValue('');
-        setStrategyDraft('');
+        if (!hasRestoredLocalDraft) {
+          setStrategyError('Could not load strategy notes.');
+          setStrategyValue('');
+          setStrategyDraft('');
+        }
       } finally {
         setStrategyLoading(false);
       }
@@ -457,6 +485,27 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
     setIsEditingStrategy(false);
     loadStrategy();
   }, [selectedCompetition?.id, selectedTeam, selectedMatchKey]);
+
+  useEffect(() => {
+    if (!selectedCompetition?.id || !selectedMatchKey) return;
+
+    const draftKey = [
+      DRIVE_TEAM_STRATEGY_DRAFT_STORAGE_KEY_PREFIX,
+      selectedCompetition.id,
+      selectedTeam,
+      selectedMatchKey,
+    ].join(':');
+
+    try {
+      if (strategyDraft.trim()) {
+        window.localStorage.setItem(draftKey, strategyDraft);
+      } else {
+        window.localStorage.removeItem(draftKey);
+      }
+    } catch {
+      // Ignore browser storage failures.
+    }
+  }, [selectedCompetition?.id, selectedTeam, selectedMatchKey, strategyDraft]);
 
   const clearHoldTimer = () => {
     if (holdTimerRef.current !== null) {
@@ -497,6 +546,17 @@ export const AdminTeamMatches: React.FC<AdminTeamMatchesProps> = ({ selectedComp
     try {
       await competitionApi.saveDriveTeamStrategy(selectedCompetition.id, selectedTeam, selectedMatchKey, strategyDraft);
       setStrategyValue(strategyDraft);
+      try {
+        const draftKey = [
+          DRIVE_TEAM_STRATEGY_DRAFT_STORAGE_KEY_PREFIX,
+          selectedCompetition.id,
+          selectedTeam,
+          selectedMatchKey,
+        ].join(':');
+        window.localStorage.removeItem(draftKey);
+      } catch {
+        // Ignore browser storage failures.
+      }
       setIsEditingStrategy(false);
     } catch {
       setStrategyError('Could not save strategy notes.');
