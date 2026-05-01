@@ -2,6 +2,13 @@
 
 Full-stack scouting platform used by an FRC team to collect, analyze, and export match data in real time during competition.
 
+## Impact
+
+* Used in live strategy workflows for Red Rock Robotics
+* Has supported roughly 20 concurrent users during competition, can handle many more
+* Runs for a worldwide top 150 team out of 3724 teams
+* Supports the #1 ranked team in Utah for strategy and match preparation
+
 ## Why we built this
 
 Competitive robotics teams rely on fast, accurate match data to make strategy decisions. Existing tools were either too slow or not tailored to our workflow, so we built a custom system used by Red Rock Robotics.
@@ -20,6 +27,7 @@ Used by Red Rock Robotics during official FRC competitions.
 
 * Supports multiple simultaneous scouts
 * Handles full match scouting workflow end-to-end
+* Powers drive team prep, pit notes, and live match strategy
 
 ## Tech Stack
 
@@ -72,6 +80,7 @@ cd frontend && cp .env.example .env.local
 * Structured data model for efficient querying and export
 * Direct image uploads from frontend to Firebase Storage
 * Password reset flow using SMTP or API-based email providers
+* Cache-backed upstream integrations for event and team data
 
 ---
 
