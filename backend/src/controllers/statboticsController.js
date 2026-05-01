@@ -2,6 +2,7 @@ import { applyUpstreamCacheHeaders, getCachedUpstreamJson } from '../utils/upstr
 import { fetchJsonWithTimeout } from '../utils/upstreamFetch.js';
 
 const STATBOTICS_BASE_URL = 'https://api.statbotics.io/v3';
+const STATBOTICS_TIMEOUT_MS = 15_000;
 const STATBOTICS_TTLS = {
   teamEvent: 10 * 60_000,
   teamEventTeleopBalls: 10 * 60_000,
@@ -17,7 +18,7 @@ const STATBOTICS_TTLS = {
  * Generic fetch helper for the Statbotics API.
  * Throws a structured error if the upstream request fails.
  */
-const fetchStatbotics = async (path, params = {}) => {
+const fetchStatbotics = async (path, params = {}, timeoutMs) => {
   const url = new URL(`${STATBOTICS_BASE_URL}${path}`);
 
   // Append any query params, filtering out undefined/null values
@@ -32,6 +33,7 @@ const fetchStatbotics = async (path, params = {}) => {
     headers: {
       Accept: 'application/json',
     },
+    ...(timeoutMs ? { timeoutMs } : {}),
   });
 };
 
@@ -114,7 +116,7 @@ export const statboticsController = {
         params: {},
         ttlMs: STATBOTICS_TTLS.teamEvent,
         bypassCache: shouldBypassUpstreamCache(req),
-        loader: () => fetchStatbotics(`/team_event/${team}/${event}`),
+        loader: () => fetchStatbotics(`/team_event/${team}/${event}`, {}, STATBOTICS_TIMEOUT_MS),
       });
       applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       res.json(data);
@@ -147,7 +149,7 @@ export const statboticsController = {
         params: {},
         ttlMs: STATBOTICS_TTLS.teamEventTeleopBalls,
         bypassCache: shouldBypassUpstreamCache(req),
-        loader: () => fetchStatbotics(`/team_event/${team}/${event}`),
+        loader: () => fetchStatbotics(`/team_event/${team}/${event}`, {}, STATBOTICS_TIMEOUT_MS),
       });
       applyUpstreamCacheHeaders(res, { cacheStatus, ttlMs });
       const teleopBalls = extractTeleopBalls(data);
