@@ -81,7 +81,9 @@ export const CompetitionManager: React.FC<{ onCompetitionUpdate?: () => void }> 
 
         try {
             const result = await competitionApi.warmCache(activeCompetition.id);
-            setCacheWarmMessage(`Warmed cache for ${result.eventKey} (${result.teamCount} teams).`);
+            setCacheWarmMessage(
+                result.message || `Warm cache job started for ${activeCompetition.eventKey || activeCompetition.name}.`,
+            );
         } catch (error) {
             competitionManagerLogger.error('Competition cache warm failed', {
                 competitionId: activeCompetition.id,
