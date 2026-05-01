@@ -5,6 +5,7 @@ import type { Competition, CompetitionStatus } from '../types/competition.types'
 import { competitionApi } from '../services/api';
 import { auth, storage } from '../config/firebase';
 import { compressImageFile } from '../utils/imageUpload';
+import { createLogger, formatErrorForLogging } from '../utils/logger';
 
 const sanitizeFileName = (name: string) =>
     name
@@ -13,12 +14,16 @@ const sanitizeFileName = (name: string) =>
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '') || 'pit-map.jpg';
 
+const competitionManagerLogger = createLogger('CompetitionManager');
+
 export const CompetitionManager: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCompetitionUpdate }) => {
     const [competitions, setCompetitions] = useState<Competition[]>([]);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isUploadingPitMap, setIsUploadingPitMap] = useState(false);
+    const [isWarmingCache, setIsWarmingCache] = useState(false);
+    const [cacheWarmMessage, setCacheWarmMessage] = useState('');
     
     const [formData, setFormData] = useState({
         name: '',
@@ -61,6 +66,30 @@ export const CompetitionManager: React.FC<{ onCompetitionUpdate?: () => void }> 
             if (onCompetitionUpdate) onCompetitionUpdate();
         } catch (error) {
             console.error('Delete failed:', error);
+        }
+    };
+
+    const handleWarmCache = async () => {
+        const activeCompetition = competitions.find((competition) => competition.status === 'active');
+        if (!activeCompetition) {
+            setCacheWarmMessage('No active competition to warm.');
+            return;
+        }
+
+        setIsWarmingCache(true);
+        setCacheWarmMessage('');
+
+        try {
+            const result = await competitionApi.warmCache(activeCompetition.id);
+            setCacheWarmMessage(`Warmed cache for ${result.eventKey} (${result.teamCount} teams).`);
+        } catch (error) {
+            competitionManagerLogger.error('Competition cache warm failed', {
+                competitionId: activeCompetition.id,
+                error: formatErrorForLogging(error),
+            });
+            setCacheWarmMessage('Could not warm the cache.');
+        } finally {
+            setIsWarmingCache(false);
         }
     };
 
@@ -173,13 +202,28 @@ export const CompetitionManager: React.FC<{ onCompetitionUpdate?: () => void }> 
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-gray-800 tracking-tight">Competition Settings</h2>
-                <button 
-                    onClick={() => { setEditingId(null); setIsFormOpen(true); }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 font-bold shadow-md transition-all active:scale-95"
-                >
-                    <Plus size={20} /> New Event
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={handleWarmCache}
+                        disabled={isWarmingCache}
+                        className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black flex items-center gap-2 font-bold shadow-md transition-all active:scale-95 disabled:opacity-60"
+                    >
+                        {isWarmingCache ? 'Warming cache...' : 'Warm Active Cache'}
+                    </button>
+                    <button 
+                        onClick={() => { setEditingId(null); setIsFormOpen(true); }}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 font-bold shadow-md transition-all active:scale-95"
+                    >
+                        <Plus size={20} /> New Event
+                    </button>
+                </div>
             </div>
+            {cacheWarmMessage && (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                    {cacheWarmMessage}
+                </div>
+            )}
 
             {/* DELETE CONFIRMATION MODAL */}
             {deleteConfirmId && (

@@ -16,6 +16,7 @@ router.delete('/:id', verifyToken, isAdmin, competitionController.deleteCompetit
 router.post('/:id/forms/add', verifyToken, isAdmin, competitionController.addFormId);
 router.post('/:id/forms/remove', verifyToken, isAdmin, competitionController.removeFormId);
 router.post('/:id/forms/set-active', verifyToken, isAdmin, competitionController.setActiveFormId);
+router.post('/:id/cache/warm', verifyToken, isAdmin, competitionController.warmActiveCompetitionCache);
 
 // Superscouternotesroutes
 router.post('/:id/superscouterNotes', verifyToken, isAdmin, competitionController.saveSuperscouterNotes);

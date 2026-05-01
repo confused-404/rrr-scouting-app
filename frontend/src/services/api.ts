@@ -468,6 +468,12 @@ export const competitionApi = {
   delete: async (id: string): Promise<void> => {
     await runMutation(() => api.delete(`/competitions/${id}`), ['competitions', 'competitions:list', 'competitions:active', `competition:${id}`]);
   },
+  warmCache: async (id: string): Promise<{ message: string; eventKey: string; teamCount: number }> => {
+    return runMutation(async () => {
+      const response = await api.post(`/competitions/${id}/cache/warm`);
+      return response.data;
+    }, ['competitions', 'competitions:list', 'competitions:active', `competition:${id}`]);
+  },
   addForm: async (competitionId: string, formId: string): Promise<Competition> => {
     return runMutation(async () => {
       const response = await api.post(`/competitions/${competitionId}/forms/add`, { formId });

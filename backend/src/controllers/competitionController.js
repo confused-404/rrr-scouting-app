@@ -2,6 +2,141 @@ import { db } from '../config/firebase.js';
 import { competitionModel } from '../models/competitionModel.js';
 import { buildCreateCompetitionInput, buildUpdateCompetitionInput } from '../utils/competitionPayload.js';
 import { serializeCompetition, serializeCompetitionList } from '../utils/competitionResponse.js';
+import { getCachedUpstreamJson } from '../utils/upstreamCache.js';
+import { fetchJsonWithTimeout } from '../utils/upstreamFetch.js';
+
+const TBA_BASE_URL = 'https://www.thebluealliance.com/api/v3';
+const STATBOTICS_BASE_URL = 'https://api.statbotics.io/v3';
+const TBA_API_KEY = process.env.TBA_API_KEY;
+const WARM_CACHE_TIMEOUT_MS = 15_000;
+const warmCacheJobs = new Set();
+
+const fetchTBA = async (path, params = {}) => {
+  const url = new URL(`${TBA_BASE_URL}${path}`);
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      url.searchParams.append(key, value);
+    }
+  });
+
+  return fetchJsonWithTimeout({
+    url: url.toString(),
+    headers: {
+      Accept: 'application/json',
+      'X-TBA-Auth-Key': TBA_API_KEY || '',
+    },
+    timeoutMs: WARM_CACHE_TIMEOUT_MS,
+  });
+};
+
+const fetchStatbotics = async (path, params = {}) => {
+  const url = new URL(`${STATBOTICS_BASE_URL}${path}`);
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      url.searchParams.append(key, value);
+    }
+  });
+
+  return fetchJsonWithTimeout({
+    url: url.toString(),
+    headers: { Accept: 'application/json' },
+    timeoutMs: WARM_CACHE_TIMEOUT_MS,
+  });
+};
+
+const normalizeEventKey = (value) => String(value ?? '').trim().toLowerCase();
+const normalizeTeamNumber = (value) => String(value ?? '').trim().replace(/^frc/i, '').match(/\d+/)?.[0] ?? '';
+
+const warmActiveCompetitionCaches = async (competition) => {
+  const eventKey = normalizeEventKey(competition?.eventKey);
+  if (!eventKey) {
+    throw new Error('The active competition does not have an event key configured.');
+  }
+
+  const [eventTeams, eventMatches, eventOprs, statboticsEvent, statboticsMatches, statboticsTeamEvents, statboticsTeamMatches] = await Promise.all([
+    getCachedUpstreamJson({
+      namespace: 'tba',
+      path: `/event/${eventKey}/teams`,
+      params: {},
+      ttlMs: 30 * 60_000,
+      loader: () => fetchTBA(`/event/${eventKey}/teams`),
+    }),
+    getCachedUpstreamJson({
+      namespace: 'tba',
+      path: `/event/${eventKey}/matches`,
+      params: {},
+      ttlMs: 2 * 60_000,
+      loader: () => fetchTBA(`/event/${eventKey}/matches`),
+    }),
+    getCachedUpstreamJson({
+      namespace: 'tba',
+      path: `/event/${eventKey}/oprs`,
+      params: {},
+      ttlMs: 5 * 60_000,
+      loader: () => fetchTBA(`/event/${eventKey}/oprs`),
+    }),
+    getCachedUpstreamJson({
+      namespace: 'statbotics',
+      path: `/event/${eventKey}`,
+      params: {},
+      ttlMs: 12 * 60 * 60_000,
+      loader: () => fetchStatbotics(`/event/${eventKey}`),
+    }),
+    getCachedUpstreamJson({
+      namespace: 'statbotics',
+      path: `/event/${eventKey}/matches`,
+      params: {},
+      ttlMs: 2 * 60_000,
+      loader: () => fetchStatbotics(`/event/${eventKey}/matches`),
+    }),
+    getCachedUpstreamJson({
+      namespace: 'statbotics',
+      path: '/team_events',
+      params: { event: eventKey, limit: 999 },
+      ttlMs: 10 * 60_000,
+      loader: () => fetchStatbotics('/team_events', { event: eventKey, limit: 999 }),
+    }),
+    getCachedUpstreamJson({
+      namespace: 'statbotics',
+      path: '/team_matches',
+      params: { event: eventKey, limit: 999 },
+      ttlMs: 5 * 60_000,
+      loader: () => fetchStatbotics('/team_matches', { event: eventKey, limit: 999 }),
+    }),
+  ]);
+
+  const teams = Array.isArray(eventTeams.data)
+    ? eventTeams.data
+      .map((team) => normalizeTeamNumber(team?.team_key ?? team?.key ?? team?.team ?? team))
+      .filter(Boolean)
+    : [];
+
+  const teamEventPrefetches = teams.map((team) => getCachedUpstreamJson({
+    namespace: 'statbotics',
+    path: `/team_event/${team}/${eventKey}`,
+    params: {},
+    ttlMs: 10 * 60_000,
+    loader: () => fetchStatbotics(`/team_event/${team}/${eventKey}`),
+  }));
+
+  await Promise.all(teamEventPrefetches);
+
+  return {
+    eventKey,
+    teamCount: teams.length,
+    cached: {
+      tbaTeams: Array.isArray(eventTeams.data) ? eventTeams.data.length : 0,
+      tbaMatches: Array.isArray(eventMatches.data) ? eventMatches.data.length : 0,
+      tbaOprs: eventOprs.data && typeof eventOprs.data === 'object' ? Object.keys(eventOprs.data).length : 0,
+      statboticsTeamEvents: Array.isArray(statboticsTeamEvents.data) ? statboticsTeamEvents.data.length : 0,
+      statboticsTeamMatches: Array.isArray(statboticsTeamMatches.data) ? statboticsTeamMatches.data.length : 0,
+      statboticsTeamsPrefetched: teamEventPrefetches.length,
+      statboticsEventCached: Boolean(statboticsEvent.data),
+    },
+  };
+};
 
 export const competitionController = {
   normalizeSuperscoutTeamKey: (rawTeam) => {
@@ -13,6 +148,57 @@ export const competitionController = {
     }
     const digits = text.match(/\d+/)?.[0];
     return digits || text;
+  },
+
+  warmActiveCompetitionCache: async (req, res) => {
+    try {
+      const competitionId = String(req.params.id || '').trim();
+      if (!competitionId) {
+        return res.status(400).json({ message: 'Competition ID is required' });
+      }
+
+      const competition = await competitionModel.getCompetitionById(competitionId);
+      if (!competition) {
+        return res.status(404).json({ message: 'Competition not found' });
+      }
+
+      if (warmCacheJobs.has(competitionId)) {
+        return res.status(202).json({
+          message: 'Competition cache warm is already running.',
+          competitionId,
+        });
+      }
+
+      warmCacheJobs.add(competitionId);
+      queueMicrotask(() => {
+        warmActiveCompetitionCaches(competition)
+          .then((result) => {
+            console.info('Competition cache warm completed', {
+              competitionId,
+              eventKey: result.eventKey,
+              teamCount: result.teamCount,
+            });
+          })
+          .catch((error) => {
+            console.error('Competition cache warm failed', {
+              competitionId,
+              message: error.message,
+              status: error.status,
+            });
+          })
+          .finally(() => {
+            warmCacheJobs.delete(competitionId);
+          });
+      });
+
+      res.status(202).json({
+        message: 'Competition cache warm started.',
+        competitionId,
+      });
+    } catch (error) {
+      console.error('Error in warmActiveCompetitionCache:', error);
+      res.status(error.status || 500).json({ message: error.message });
+    }
   },
 
   normalizeDriveTeamKey: (rawTeam) => {
