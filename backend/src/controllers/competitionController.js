@@ -8,7 +8,7 @@ import { fetchJsonWithTimeout } from '../utils/upstreamFetch.js';
 const TBA_BASE_URL = 'https://www.thebluealliance.com/api/v3';
 const STATBOTICS_BASE_URL = 'https://api.statbotics.io/v3';
 const TBA_API_KEY = process.env.TBA_API_KEY;
-const WARM_CACHE_TIMEOUT_MS = 15_000;
+const WARM_CACHE_TIMEOUT_MS = 30_000;
 const warmCacheJobs = new Set();
 
 const fetchTBA = async (path, params = {}) => {

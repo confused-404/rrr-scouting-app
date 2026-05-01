@@ -2,7 +2,7 @@ import { applyUpstreamCacheHeaders, getCachedUpstreamJson } from '../utils/upstr
 import { fetchJsonWithTimeout } from '../utils/upstreamFetch.js';
 
 const STATBOTICS_BASE_URL = 'https://api.statbotics.io/v3';
-const STATBOTICS_TIMEOUT_MS = 15_000;
+const STATBOTICS_TIMEOUT_MS = 30_000;
 const STATBOTICS_TTLS = {
   teamEvent: 10 * 60_000,
   teamEventTeleopBalls: 10 * 60_000,
