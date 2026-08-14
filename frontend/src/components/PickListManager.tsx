@@ -170,6 +170,7 @@ export const PickListManager: React.FC<{
     setSelectedManualId((selectedCompetitionManualPickLists || [])[0]?.id || '');
   }, [selectedCompetition, selectedCompetitionId, selectedCompetitionManualPickLists]);
 
+
   useEffect(() => {
     const loadSubmissionData = async () => {
       if (!selectedCompetition) return;
@@ -298,6 +299,7 @@ export const PickListManager: React.FC<{
     }
     return Array.from(set).sort();
   }, [teamAggregates, selectedCompetition?.eventKey]);
+
 
   useEffect(() => {
     if (!selectedQualCategory && qualitativeCategories.length > 0) {

@@ -5,7 +5,8 @@ import type {
   RobotBreakTimelineOverrideStatus,
 } from '../types/competition.types';
 import type { Form, Submission, FormField, PictureFieldValue } from '../types/form.types';
-import { competitionApi, formApi, tbaApi, statboticsApi } from '../services/api';
+import type { ConfigRole, GameProfile, PreviewDataSource, ProfileTestData } from '../types/game-profile.types';
+import { competitionApi, formApi, gameProfileApi, tbaApi, statboticsApi } from '../services/api';
 import { matchesTeamQuery } from '../utils/teamNameSearch';
 import { BarChart3, ClipboardList, Zap } from 'lucide-react';
 import { submissionValueToText, isPictureFieldValue } from '../utils/formValues';
@@ -73,6 +74,9 @@ interface TeamLookupProps {
   superscoutNotes?: string;
   targetTeam?: string;
   isAdminMode?: boolean;
+  previewProfile?: GameProfile | null;
+  previewRole?: ConfigRole;
+  previewDataSource?: PreviewDataSource;
 }
 
 export const TeamLookup: React.FC<TeamLookupProps> = ({
@@ -80,10 +84,14 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   superscoutNotes,
   targetTeam,
   isAdminMode = false,
+  previewProfile = null,
+  previewRole = 'scout',
+  previewDataSource = 'legacy',
 }) => {
   const [forms, setForms] = useState<Form[]>([]);
   const [allSubmissions, setAllSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(false);
+  const [profileTestData, setProfileTestData] = useState<ProfileTestData | null>(null);
 
   const [teamQuery, setTeamQuery] = useState('');
   const [teamInfo, setTeamInfo] = useState<unknown | null>(null);
@@ -204,6 +212,11 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   }, [selectedCompetition?.id]);
 
   useEffect(() => {
+    if (!previewProfile || previewDataSource === 'legacy' || previewDataSource === 'none') { setProfileTestData(null); return; }
+    void gameProfileApi.getTestData(previewProfile.id).then(setProfileTestData).catch(() => setProfileTestData(null));
+  }, [previewProfile?.id, previewDataSource]);
+
+  useEffect(() => {
     const eventKey = selectedCompetition?.eventKey;
     if (!eventKey) { setEventTeams([]); return; }
     (async () => {
@@ -274,14 +287,59 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
       });
     });
 
-    return matched;
-  }, [allSubmissions, forms, teamQuery]);
+    if (!previewProfile || previewDataSource === 'legacy') return matched;
+    const testMatches = profileTestData && normalizeTeamNumber(profileTestData.teamNumber) === normalizedQuery
+      ? forms.flatMap((form) => profileTestData.forms[form.id] ? [{ id: `preview-${form.id}`, formId: form.id, data: profileTestData.forms[form.id], timestamp: new Date().toISOString() } as Submission] : []) : [];
+    return previewDataSource === 'none' ? [] : previewDataSource === 'test' ? testMatches : [...matched, ...testMatches];
+  }, [allSubmissions, forms, teamQuery, previewProfile, previewDataSource, profileTestData]);
+
+  const configuredScoutKeys = useMemo(() => {
+    if (!previewProfile) return null;
+    return new Set(previewProfile.configuration.metrics
+      .filter((metric) => metric.destinations.includes('team_lookup') && metric.visibility.includes(previewRole) && metric.source === 'scout')
+      .map((metric) => metric.sourceKey));
+  }, [previewProfile, previewRole]);
+
+  const isConfiguredMetricVisible = (sourceKey: string) => !previewProfile || previewProfile.configuration.metrics.some((metric) => metric.sourceKey === sourceKey && metric.destinations.includes('team_lookup') && metric.visibility.includes(previewRole));
+
+  const sectionRank = (id: string) => {
+    if (!previewProfile) return 0;
+    const index = previewProfile.configuration.teamLookupSections.findIndex((section) => section.id === id);
+    return index < 0 ? 10_000 : index;
+  };
+
+  const isConfiguredFieldVisible = (formId: string, fieldId: number) => !configuredScoutKeys || configuredScoutKeys.has(`form-${formId}-field-${fieldId}`);
+
+  const emptyConfiguredMetrics = useMemo(() => {
+    if (!previewProfile) return [];
+    const renderedByLegacyBlock = new Set(['epa.teleop_per_match', 'superscout_notes', 'robot_reliability']);
+    return previewProfile.configuration.metrics.filter((metric) => metric.source !== 'scout'
+      && metric.destinations.includes('team_lookup')
+      && metric.visibility.includes(previewRole)
+      && !renderedByLegacyBlock.has(metric.sourceKey));
+  }, [previewProfile, previewRole]);
+
+  const emptyMetricGroups = emptyConfiguredMetrics
+    .slice()
+    .sort((left, right) => sectionRank(`metric-${left.id}`) - sectionRank(`metric-${right.id}`))
+    .reduce<Array<{ rank: number; metrics: typeof emptyConfiguredMetrics }>>((groups, metric) => {
+      const rank = sectionRank(`metric-${metric.id}`);
+      const numeric = metric.format === 'number' || metric.format === 'percentage';
+      const previous = groups.at(-1);
+      const previousIsNumeric = previous?.metrics.every((item) => item.format === 'number' || item.format === 'percentage');
+      if (numeric && previous && previousIsNumeric && rank === previous.rank + previous.metrics.length) {
+        previous.metrics.push(metric);
+      } else {
+        groups.push({ rank, metrics: [metric] });
+      }
+      return groups;
+    }, []);
 
   const stats = useMemo(() => {
     const fieldStats: Record<string, { key: string; field: FormField; vals: number[] }> = {};
     forms.forEach(form => {
       const formSubs = filteredSubs.filter((sub) => sub.formId === form.id);
-      form.fields.filter(isQuantitative).forEach(field => {
+      form.fields.filter((field) => isQuantitative(field) && isConfiguredFieldVisible(form.id, field.id)).forEach(field => {
         const statKey = `${form.id}:${field.id}`;
         if (!fieldStats[statKey]) {
           fieldStats[statKey] = { key: statKey, field, vals: [] };
@@ -294,11 +352,14 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
         });
       });
     });
-    return Object.values(fieldStats).map(({ key, field, vals }) => {
+    return Object.values(fieldStats).sort((left, right) => {
+      const leftForm = left.key.split(':')[0]; const rightForm = right.key.split(':')[0];
+      return sectionRank(`form-${leftForm}`) - sectionRank(`form-${rightForm}`);
+    }).map(({ key, field, vals }) => {
       const avg = vals.length === 0 ? 0 : vals.reduce((a, b) => a + b, 0) / vals.length;
       return { key, field, mean: avg.toFixed(2), count: vals.length };
     });
-  }, [forms, filteredSubs]);
+  }, [forms, filteredSubs, configuredScoutKeys]);
 
   const qualitativeSummary = useMemo(() => {
     const summary: Record<string, { type: FormField['type']; data: unknown }> = {};
@@ -306,7 +367,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
     forms.forEach(form => {
       const formSubs = filteredSubs.filter((sub) => sub.formId === form.id);
       form.fields.forEach(field => {
-        if (!isQuantitative(field)) {
+        if (!isQuantitative(field) && isConfiguredFieldVisible(form.id, field.id)) {
           const fieldKey = `${form.id}|${field.label}|${field.id}`;
 
           if (field.type === 'picture') {
@@ -372,8 +433,8 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
         }
       });
     });
-    return summary;
-  }, [forms, filteredSubs]);
+    return Object.fromEntries(Object.entries(summary).sort(([left], [right]) => sectionRank(`form-${left.split('|')[0]}`) - sectionRank(`form-${right.split('|')[0]}`)));
+  }, [forms, filteredSubs, configuredScoutKeys]);
 
   const handleSearch = async () => {
     const q = teamQuery.trim();
@@ -584,7 +645,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
   const teamInfoTyped = teamInfo as { nickname?: string; team_number?: number; city?: string; state_prov?: string; country?: string } | null;
 
   return (
-    <div className="space-y-4 sm:space-y-6 pb-20">
+    <div className="flex flex-col gap-6 pb-20">
       {expandedImage && (
         <ImageLightbox
           imageUrl={expandedImage.url}
@@ -595,7 +656,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
       )}
 
       {/* Team search */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-3 sm:gap-4 items-stretch md:items-center">
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-3 sm:gap-4 items-stretch md:items-center" style={{ order: -2 }}>
         <div className="relative flex-1">
           <input
             placeholder="Team # or name…"
@@ -633,7 +694,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
       </div>
 
       {teamInfoTyped && (
-        <div className="bg-white p-4 rounded-lg shadow">
+        <div className="bg-white p-4 rounded-lg shadow" style={{ order: -1 }}>
           <div className="font-black text-lg">{teamInfoTyped.nickname || teamInfoTyped.team_number}</div>
           <div className="text-sm text-gray-600">{teamInfoTyped.team_number && `#${teamInfoTyped.team_number}`}</div>
           {teamInfoTyped.city && (
@@ -645,8 +706,8 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
       )}
 
       {/* ── TELEOP BALLS (Statbotics) ── */}
-      {teamQuery.trim() && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      {teamQuery.trim() && isConfiguredMetricVisible('epa.teleop_per_match') && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" style={{ order: sectionRank('metric-statbotics-teleop-match') }}>
           <div className="flex items-center gap-2 px-5 py-3 bg-orange-50 border-b border-orange-100">
             <Zap size={16} className="text-orange-500" />
             <span className="font-black text-xs uppercase tracking-widest text-orange-700">
@@ -697,8 +758,8 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
       )}
 
       {/* NEW: Superscouter Notes Section */}
-      {showNotes && (
-        <div className="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-xl shadow-sm">
+      {showNotes && isConfiguredMetricVisible('superscout_notes') && (
+        <div className="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-xl shadow-sm" style={{ order: sectionRank('metric-superscout-notes') }}>
           <div className="flex items-center gap-2 mb-3 text-amber-800 font-black uppercase text-xs tracking-widest">
             <ClipboardList size={18} /> Superscouter Insight
           </div>
@@ -709,8 +770,8 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
       )}
 
       {/* ── Robot Breakdown Timeline ── */}
-      {normalizedQuery && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      {normalizedQuery && isConfiguredMetricVisible('robot_reliability') && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" style={{ order: sectionRank('metric-robot-reliability') }}>
           <div className="flex items-center gap-2 px-5 py-3 bg-red-50 border-b border-red-100">
             <span className="text-sm">⚠</span>
             <span className="font-black text-xs uppercase tracking-widest text-red-700">
@@ -780,12 +841,20 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
         </div>
       )}
 
+      {emptyMetricGroups.map((group) => {
+        const numeric = group.metrics.every((metric) => metric.format === 'number' || metric.format === 'percentage');
+        const card = (metric: typeof group.metrics[number]) => <div key={metric.id} className="bg-blue-600 text-white p-5 rounded-2xl shadow-lg border-b-4 border-blue-800"><div className="flex items-center gap-2 mb-2 opacity-80 uppercase text-[10px] font-black tracking-widest"><BarChart3 size={14} /> {metric.label}</div><div className="text-3xl font-black">0.00</div><div className="text-[10px] mt-1 opacity-60 font-bold uppercase tracking-tight">No data available</div></div>;
+        if (numeric && group.metrics.length >= 2) return <div key={`numeric-${group.rank}`} className="grid gap-4" style={{ order: group.rank, gridTemplateColumns: `repeat(${group.metrics.length}, minmax(0, 1fr))` }}>{group.metrics.map(card)}</div>;
+        const metric = group.metrics[0];
+        return numeric ? <div key={metric.id} style={{ order: group.rank }}>{card(metric)}</div> : <div key={metric.id} className="bg-white p-4 rounded-lg shadow" style={{ order: group.rank }}><div className="font-black text-sm mb-2">{metric.label}</div><div className="text-sm text-gray-600 mb-2">0 unique responses</div><div className="text-sm text-gray-500 text-center py-4">No data available yet</div></div>;
+      })}
+
       {loading ? (
-        <div className="py-20 text-center font-black text-gray-300 animate-pulse tracking-widest uppercase">Fetching Data...</div>
+        <div className="py-20 text-center font-black text-gray-300 animate-pulse tracking-widest uppercase" style={{ order: sectionRank(`form-${forms[0]?.id || ''}`) }}>Fetching Data...</div>
       ) : (
-        <>
+        <div className="space-y-4" style={{ order: Math.min(...forms.map((form) => sectionRank(`form-${form.id}`)), 10_000) }}>
           {/* Stats Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.max(stats.length, 1)}, minmax(0, 1fr))` }}>
             {stats.map(s => (
               <div key={s.key} className="bg-blue-600 text-white p-5 rounded-2xl shadow-lg border-b-4 border-blue-800">
                 <div className="flex items-center gap-2 mb-2 opacity-80 uppercase text-[10px] font-black tracking-widest">
@@ -904,7 +973,7 @@ export const TeamLookup: React.FC<TeamLookupProps> = ({
               })}
             </div>
           )}
-        </>
+        </div>
       )}
 
       {editingTimelinePoint && isAdminMode && (

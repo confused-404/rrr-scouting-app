@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, X, Star, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Trophy, UserCog, Search, Plus } from 'lucide-react';
+import { Settings, FileText, BarChart, Users, ClipboardList, Edit3, Save, X, Star, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Trophy, UserCog, Search, Plus, SlidersHorizontal } from 'lucide-react';
 import { CompetitionManager } from './CompetitionManager';
 import { FormManager } from './FormManager';
 import { ResponseViewer } from './ResponseViewer';
@@ -10,19 +10,24 @@ import { ScoutingTeams } from './ScoutingTeams';
 import { PickListManager } from './PickListManager';
 import { ManageUsers } from './ManageUsers';
 import { AdminDriveTeam } from './AdminDriveTeam';
+import { ConfigurationWorkspace } from './ConfigurationWorkspace';
+import { StatisticalAnalysis } from './StatisticalAnalysis';
+import { StatisticalTeamRankings } from './StatisticalTeamRankings';
 import { authApi, competitionApi, formApi, statboticsApi, tbaApi } from '../services/api';
 import { matchesTeamQuery } from '../utils/teamNameSearch';
 import type { Competition } from '../types/competition.types';
+import type { ConfigRole, GameProfile, PreviewDataSource } from '../types/game-profile.types';
 import type { Form, Submission } from '../types/form.types';
 
-type AdminTab = 'competitions' | 'forms' | 'scoutingTeams' | 'analytics' | 'superscout' | 'driveTeam' | 'picklists' | 'manageUsers';
-type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule' | 'unfinishedAssignments';
+type AdminTab = 'configuration' | 'competitions' | 'forms' | 'scoutingTeams' | 'analytics' | 'superscout' | 'driveTeam' | 'picklists' | 'manageUsers';
+type AnalyticsTab = 'responses' | 'teamLookup' | 'schedule' | 'unfinishedAssignments' | 'statisticalAnalysis' | 'statisticalTeamRankings';
 
 const ADMIN_ACTIVE_TAB_STORAGE_KEY = 'adminMode.activeTab';
 const ADMIN_ANALYTICS_TAB_STORAGE_KEY = 'adminMode.analyticsTab';
 
 const isAdminTab = (value: unknown): value is AdminTab => (
-  value === 'competitions'
+  value === 'configuration'
+  || value === 'competitions'
   || value === 'forms'
   || value === 'scoutingTeams'
   || value === 'analytics'
@@ -37,6 +42,8 @@ const isAnalyticsTab = (value: unknown): value is AnalyticsTab => (
   || value === 'teamLookup'
   || value === 'schedule'
   || value === 'unfinishedAssignments'
+  || value === 'statisticalAnalysis'
+  || value === 'statisticalTeamRankings'
 );
 
 // ─── climbing points by answer ───────────────────────────────────────────────
@@ -144,7 +151,7 @@ const computeScore = (
   return avgTeleop + avgAuto + avgEndgame + avgClimb;
 };
 
-export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCompetitionUpdate }) => {
+export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void; onPreview?: (profile: GameProfile, role: ConfigRole, dataSource: PreviewDataSource) => void; previewProfile?: GameProfile | null; previewDataSource?: PreviewDataSource }> = ({ onCompetitionUpdate, onPreview, previewProfile = null, previewDataSource = 'legacy' }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>(() => {
     if (typeof window === 'undefined') return 'competitions';
     try {
@@ -686,6 +693,7 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
       <div className="bg-white rounded-xl shadow-sm p-2 border border-gray-100 flex gap-2 overflow-x-auto">
         {(
           [
+            ['configuration', SlidersHorizontal, 'Configure'],
             ['competitions', Settings, 'Competitions'],
             ['forms', FileText, 'Forms'],
             ['scoutingTeams', Users, 'Scouting Teams'],
@@ -712,6 +720,9 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
       </div>
 
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className={activeTab === 'configuration' ? '' : 'hidden'}>
+          <ConfigurationWorkspace onPreview={(profile, role, dataSource) => onPreview?.(profile, role, dataSource)} />
+        </div>
         {activeTab === 'competitions' && <CompetitionManager onCompetitionUpdate={handleCompetitionUpdate} />}
         {activeTab === 'forms' && (
           <FormManager selectedCompetition={activeCompetition} onCompetitionUpdate={handleCompetitionUpdate} />
@@ -1068,6 +1079,18 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
               >
                 Unfinished
               </button>
+              <button
+                onClick={() => setAnalyticsTab('statisticalAnalysis')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${analyticsTab === 'statisticalAnalysis' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200'}`}
+              >
+                Statistical Analysis
+              </button>
+              <button
+                onClick={() => setAnalyticsTab('statisticalTeamRankings')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${analyticsTab === 'statisticalTeamRankings' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200'}`}
+              >
+                Statistical Team Rankings
+              </button>
             </div>
 
             <div>
@@ -1080,6 +1103,9 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
                   superscoutNotes={scouterNotes}
                   targetTeam={targetTeam}
                   isAdminMode
+                  previewProfile={previewProfile}
+                  previewRole="admin"
+                  previewDataSource={previewDataSource}
                 />
               )}
               {analyticsTab === 'schedule' && (
@@ -1094,6 +1120,8 @@ export const AdminMode: React.FC<{ onCompetitionUpdate?: () => void }> = ({ onCo
               {analyticsTab === 'unfinishedAssignments' && (
                 <UnfinishedAssignments selectedCompetition={activeCompetition} />
               )}
+              {analyticsTab === 'statisticalAnalysis' && <StatisticalAnalysis />}
+              {analyticsTab === 'statisticalTeamRankings' && <StatisticalTeamRankings selectedCompetition={activeCompetition} />}
             </div>
 
             </div>

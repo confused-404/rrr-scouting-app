@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Layout, Clock, Image as ImageIcon } from 'lucide-react';
 import type { FormField as FormFieldType, Form, SubmissionValue } from '../types/form.types';
 import type { Competition } from '../types/competition.types';
+import type { GameProfile, PreviewDataSource } from '../types/game-profile.types';
 import { FormField } from './FormField';
 import { formApi } from '../services/api';
 import { useAuth } from '../contexts/useAuth';
@@ -14,6 +15,8 @@ import { cleanupPictureUploads, getPictureCleanupPaths } from '../utils/pictureC
 
 interface UserModeProps {
   selectedCompetition: Competition | null;
+  previewProfile?: GameProfile | null;
+  previewDataSource?: PreviewDataSource;
 }
 
 type UserTab = 'scout' | 'teamLookup' | 'schedule' | 'scoutingSchedule' | 'pitMap';
@@ -46,7 +49,7 @@ const resolveTeamFieldId = (form: Form): number | null => {
 
 type FieldErrors = Record<number, string>;
 
-export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
+export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition, previewProfile = null, previewDataSource = 'legacy' }) => {
   const selectedCompetitionId = selectedCompetition?.id;
   const { scouterName } = useAuth();
   const [formFields, setFormFields] = useState<FormFieldType[]>([]);
@@ -611,7 +614,7 @@ export const UserMode: React.FC<UserModeProps> = ({ selectedCompetition }) => {
           )}
         </div>
       ) : activeTab === 'teamLookup' ? (
-        <TeamLookup selectedCompetition={selectedCompetition} targetTeam={targetTeam} />
+        <TeamLookup selectedCompetition={selectedCompetition} targetTeam={targetTeam} previewProfile={previewProfile} previewRole="scout" previewDataSource={previewDataSource} />
       ) : (
         <MatchSchedule
           selectedCompetition={selectedCompetition}

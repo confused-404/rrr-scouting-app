@@ -122,6 +122,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [syncUserProfile]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
       isMountedRef.current = false;
       authSessionVersionRef.current += 1;

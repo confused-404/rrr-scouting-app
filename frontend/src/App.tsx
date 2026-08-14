@@ -6,6 +6,7 @@ import { UserMode } from './components/UserMode';
 import { Login } from './components/Login';
 import { useAuth } from './contexts/useAuth';
 import type { Competition } from './types/competition.types';
+import type { ConfigRole, GameProfile, PreviewDataSource } from './types/game-profile.types';
 import { competitionApi, forceApiRefresh } from './services/api';
 import { createLogger, formatErrorForLogging } from './utils/logger';
 import './App.css';
@@ -30,6 +31,9 @@ function App() {
   const [modeInitializedForUid, setModeInitializedForUid] = useState<string | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [previewProfile, setPreviewProfile] = useState<GameProfile | null>(null);
+  const [previewRole, setPreviewRole] = useState<ConfigRole | null>(null);
+  const [previewDataSource, setPreviewDataSource] = useState<PreviewDataSource>('legacy');
   const pendingRestoredModeRef = useRef<AppMode | null>(null);
   
   // Roles are pulled from AuthContext custom claims
@@ -124,6 +128,30 @@ function App() {
   const handleModeChange = (nextMode: AppMode) => {
     setMode(nextMode);
     persistModeSelection(nextMode);
+  };
+
+  const handleConfigurationPreview = (profile: GameProfile, role: ConfigRole, dataSource: PreviewDataSource) => {
+    setPreviewProfile(profile);
+    setPreviewRole(role);
+    setPreviewDataSource(dataSource);
+    if (role === 'scout') {
+      handleModeChange('user');
+      return;
+    }
+
+    if (role === 'driveTeam') {
+      handleModeChange('adminTeamMatches');
+      return;
+    }
+
+    handleModeChange('admin');
+  };
+
+  const exitPreview = () => {
+    setPreviewProfile(null);
+    setPreviewRole(null);
+    setPreviewDataSource('legacy');
+    handleModeChange('admin');
   };
 
   // Security check based on role claims.
@@ -320,12 +348,23 @@ function App() {
       </div>
 
       <div className={`max-w-4xl mx-auto px-3 sm:px-4 ${isDriveTeamPage ? 'pt-2 pb-5 sm:pt-2 sm:pb-8' : 'py-5 sm:py-8'}`}>
-        {mode === 'admin' && isAdmin ? (
-          <AdminMode key={`admin-${refreshVersion}`} onCompetitionUpdate={loadCompetitions} />
-        ) : mode === 'adminTeamMatches' && (isAdmin || isDriveTeam) ? (
+        {previewProfile && previewRole && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <span>
+              Previewing {previewRole === 'driveTeam' ? 'Drive Team' : previewRole === 'admin' ? 'Admin' : 'Scout'} view with {previewProfile.name} ({previewProfile.status}).
+            </span>
+            <button type="button" onClick={exitPreview} className="whitespace-nowrap font-bold underline">Exit Preview</button>
+          </div>
+        )}
+        {isAdmin && (
+          <div className={mode === 'admin' ? '' : 'hidden'}>
+            <AdminMode key={`admin-${refreshVersion}`} onCompetitionUpdate={loadCompetitions} onPreview={handleConfigurationPreview} previewProfile={previewProfile} previewDataSource={previewDataSource} />
+          </div>
+        )}
+        {mode === 'adminTeamMatches' && (isAdmin || isDriveTeam) ? (
           <AdminTeamMatches key={`admin-team-${refreshVersion}`} selectedCompetition={selectedCompetition} />
-        ) : (
-          <UserMode key={`user-${refreshVersion}`} selectedCompetition={selectedCompetition} />
+        ) : mode !== 'admin' && (
+          <UserMode key={`user-${refreshVersion}`} selectedCompetition={selectedCompetition} previewProfile={previewProfile} previewDataSource={previewDataSource} />
         )}
       </div>
     </div>
