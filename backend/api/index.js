@@ -6,6 +6,7 @@ import authRoutes from '../src/routes/authRoutes.js';
 import competitionRoutes from '../src/routes/competitionRoutes.js';
 import tbaRoutes from '../src/routes/tbaRoutes.js';
 import statboticsRoutes from '../src/routes/statboticsRoutes.js';
+import gameProfileRoutes from '../src/routes/gameProfileRoutes.js';
 import { errorHandler } from '../src/middleware/errorHandler.js';
 import { buildAllowedCorsOrigins, isAllowedCorsOrigin } from '../src/utils/cors.js';
 const app = express();
@@ -50,6 +51,7 @@ app.use('/api/competitions', competitionRoutes);
 app.use('/api/forms', formRoutes);
 app.use('/api/tba', tbaRoutes);
 app.use('/api/statbotics', statboticsRoutes);
+app.use('/api/game-profiles', gameProfileRoutes);
 
 // Error handling
 app.use(errorHandler);

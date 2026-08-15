@@ -1,6 +1,7 @@
 import axios, { AxiosHeaders } from 'axios';
 import { auth } from '../config/firebase';
 import type { Form, FormField, Submission } from '../types/form.types';
+import type { GameProfile, ProfileTestData } from '../types/game-profile.types';
 import type { Competition } from '../types/competition.types';
 import { createLogger, formatErrorForLogging } from '../utils/logger';
 
@@ -606,6 +607,47 @@ export const formApi = {
       return response.data;
     }, ['submissions']);
   },
+};
+
+export const gameProfileApi = {
+  getAll: async (): Promise<GameProfile[]> => {
+    return cachedGet('/game-profiles', {
+      // A configuration editor must never reopen from a stale session snapshot.
+      // Profiles are small and this prevents navigation from appearing to undo a save.
+      ttlMs: 0,
+      tags: ['game-profiles'],
+      scope: 'memory',
+    });
+  },
+  create: async (payload: { name: string; season: string }): Promise<GameProfile> => {
+    return runMutation(async () => {
+      const response = await api.post('/game-profiles', payload);
+      return response.data;
+    }, ['game-profiles']);
+  },
+  update: async (id: string, payload: { name: string; season?: string; configuration?: GameProfile['configuration'] }): Promise<GameProfile> => {
+    return runMutation(async () => {
+      const response = await api.put(`/game-profiles/${id}`, payload);
+      return response.data;
+    }, ['game-profiles']);
+  },
+  delete: async (id: string): Promise<void> => {
+    await runMutation(() => api.delete(`/game-profiles/${id}`), ['game-profiles']);
+  },
+  publish: async (id: string): Promise<GameProfile> => {
+    return runMutation(async () => {
+      const response = await api.post(`/game-profiles/${id}/publish`);
+      return response.data;
+    }, ['game-profiles']);
+  },
+  lock: async (id: string): Promise<GameProfile> => {
+    return runMutation(async () => {
+      const response = await api.post(`/game-profiles/${id}/lock`);
+      return response.data;
+    }, ['game-profiles']);
+  },
+  getTestData: async (id: string): Promise<ProfileTestData> => cachedGet(`/game-profiles/${id}/test-data`, { ttlMs: 0, tags: [`game-profile-test-data:${id}`], scope: 'session' }),
+  setTestData: async (id: string, data: ProfileTestData): Promise<ProfileTestData> => runMutation(async () => (await api.put(`/game-profiles/${id}/test-data`, { data })).data, [`game-profile-test-data:${id}`]),
 };
 
 export const tbaApi = {
